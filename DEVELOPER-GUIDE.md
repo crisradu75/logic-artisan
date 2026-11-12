@@ -396,7 +396,7 @@ to this repo.
 **On GitHub Copilot CLI**, the marketplace install, one skill and both helper agents were
 smoke-tested with Copilot CLI 1.0.105 against `cla--v2.2.3`. The guard-hook wiring since
 `cla--v2.3.0` and its caveats (fail-open timeout, untested paths) are stated once, in the
-[plugin README](.claude/plugins/cla/README.md#layout). Some skills name Claude-specific tools and
+[plugin README](.claude/plugins/cla/README.md#copilot-cli-hook-caveats). Some skills name Claude-specific tools and
 the agent model selection fell back to `auto`; this is not full workflow parity. The Copilot app
 and cloud agent are out of scope. The [README](README.md#github-copilot-cli-experimental) has the
 details; follow-up work is linked from issue #302.
@@ -646,8 +646,10 @@ what enforces it; read that code rather than a copy of it here.
 2. **Put it in a dispatcher.** Add the file name to `_HOOK_FILES` in
    `hooks/dispatch-bash-pretooluse.py` (Bash and PowerShell) or
    `hooks/dispatch-edit-write-pretooluse.py` (Edit and Write). A guard that can change the outcome
-   goes ahead of the advisory ones and stays out of that file's `_ADVISORY_HOOKS`; a guard that
-   only warns goes in it, so budget pressure drops warnings before it drops a block. In
+   stays out of that file's `_ADVISORY_HOOKS`, which is what protects it from being skipped when
+   the budget runs short (in the Edit/Write dispatcher, order is not a backstop: its blocking guard
+   sits last). In the Bash dispatcher, also order it ahead of the advisory ones. A guard that only
+   warns goes in `_ADVISORY_HOOKS`, so budget pressure drops warnings before it drops a block. In
    `test_hooks_wiring.py`, `test_every_dispatcher_sibling_hook_exists` and
    `test_no_outcome_changing_hook_is_marked_advisory` fail on a miss. A post-edit warning is wired
    by hand: its own `PostToolUse` entry in `hooks/hooks.json` (as `warn-wholesale-rewrite.py` is).

@@ -157,7 +157,7 @@ Validated in that run:
 
 **Guard hooks on Copilot CLI (since `cla--v2.3.0`):** what was live-tested, and the caveats
 (fail-open timeout, untested paths), are stated once, in the
-[plugin README](.claude/plugins/cla/README.md#layout).
+[plugin README](.claude/plugins/cla/README.md#copilot-cli-hook-caveats).
 
 Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is not
 ported, so not every skill workflow is Copilot-compatible. Copilot app and cloud agent support are

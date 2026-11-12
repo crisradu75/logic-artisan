@@ -206,9 +206,15 @@ def test_the_install_docs_distinguish_copilot_guard_support_and_limits():
     assert "live timeout probe was inconclusive" in text, f"{doc} must not overstate live timeout validation"
     assert "pre-push" in text, f"{doc} must distinguish the Git push guard"
     assert "first ships in `cla--v2.3.0`" in text, f"{doc} must say which release first carries the hooks"
+    # GitHub's slug for this heading is the anchor the other docs link to; the heading must be unique.
+    headings = [ln for ln in (repo / doc).read_text(encoding="utf-8").splitlines()
+                if ln.strip() == "### Copilot CLI hook caveats"]
+    assert len(headings) == 1, f"{doc} must hold the caveats heading exactly once, found {len(headings)}"
     for other in ("README.md", "DEVELOPER-GUIDE.md"):
         linked = (repo / other).read_text(encoding="utf-8")
-        assert "(.claude/plugins/cla/README.md#layout)" in linked, f"{other} must link to the caveats in {doc}"
+        assert "(.claude/plugins/cla/README.md#copilot-cli-hook-caveats)" in linked, (
+            f"{other} must link to the caveats in {doc}"
+        )
     # Whitespace-joined, since the prose wraps lines. The install guide names the plugin profiles
     # and discloses the live model fallback.
     readme = " ".join((repo / "README.md").read_text(encoding="utf-8").split())

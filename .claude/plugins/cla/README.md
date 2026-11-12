@@ -319,6 +319,8 @@ to install.
     scripts/                   deterministic helpers (stdlib Python)
 ```
 
+### Copilot CLI hook caveats
+
 The Copilot CLI marketplace install, one skill and both helper agents were smoke-tested against
 `cla--v2.2.3` with Copilot CLI 1.0.105. The agents fell back to `auto` because their declared
 models were unavailable. Release `cla--v2.3.0` adds separate Copilot `PreToolUse`/`PostToolUse`

@@ -102,7 +102,7 @@ change a consumer notices, with its PR number, under Added, Changed or Fixed. No
 changelog, so this step is the only thing that keeps it current.
 
 Then re-run the suite — the version-agreement test, the two manifest tests and the doc-fact
-test are what confirm the five copies agree — and commit all five together:
+test are what confirm the five copies agree — and commit the five files plus `CHANGELOG.md` together:
 
 **A mutation batch anchored on the version literal breaks with every bump** — the anchor
 no longer appears and `mutate.py` refuses the whole batch in preflight. Nothing in the
@@ -191,7 +191,7 @@ merge being checked.
 
 ## Step 5 — Report
 
-State: the version cut, the five files bumped, the tag pushed and confirmed, and the
+State: the version cut, the five files bumped plus `CHANGELOG.md`, the tag pushed and confirmed, and the
 commands a consumer runs to pick it up (`claude plugin marketplace update cris-logic-artisan`, then
 `claude plugin update cla@cris-logic-artisan` and a restart, for Claude Code; for
 GitHub Copilot CLI, which is untested, `copilot plugin marketplace update` then
