@@ -230,15 +230,36 @@ def test_strip_quoted_spans_blanks_unexecuted_substitution_text():
         assert len(scanned) == len(command)
 
 
-def test_strip_quoted_spans_does_not_cover_heredoc_bodies():
-    # Pins a NAMED non-coverage, so nobody re-adds the (previously wrong)
-    # docstring claim that heredocs are handled. A heredoc body is unquoted
-    # text, so a git command inside one survives the scan and a caller WILL
-    # match it. This is the git hooks' most likely real-world false positive;
-    # it is accepted, and this test exists so it stays a known quantity.
-    command = "cat > x.sh <<'EOF'\ngit " + "push origin main\nEOF"
+def test_strip_quoted_spans_blanks_a_quoted_delimiter_heredoc_body():
+    command = "cat > x.md <<'EOF'\ngit " + "push origin main `git reset --hard`\nEOF"
     scanned = lib.strip_quoted_spans(command)
-    assert "push origin main" in scanned
+    assert "push origin main" not in scanned and "reset" not in scanned
+    assert len(scanned) == len(command) and scanned.count("\n") == command.count("\n")
+
+
+def test_strip_quoted_spans_keeps_substitutions_in_an_unquoted_heredoc_only():
+    command = "cat <<EOF\nprose git reset --hard $(git push -f) `git branch -D x`\nEOF"
+    scanned = lib.strip_quoted_spans(command)
+    assert "prose" not in scanned and "reset --hard" not in scanned
+    assert "$(git push -f)" in scanned and "`git branch -D x`" in scanned
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "bash <<'EOF'\ngit reset --hard\nEOF",   # a shell runs its stdin
+        "cat <<'EOF'\ngit reset --hard\n",        # no terminator line: leave it visible
+        "cat <<<x\ngit reset --hard\nx",          # here-string, not a heredoc
+    ],
+)
+def test_strip_quoted_spans_leaves_executed_heredoc_shapes_visible(command):
+    assert "reset --hard" in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_heredoc_in_substitution_ignores_apostrophes():
+    command = "x=\"$(cat <<'EOF'\ndon't\nEOF\n)\" && git reset --hard"
+    scanned = lib.strip_quoted_spans(command)
+    assert "git reset --hard" in scanned
 
 
 def test_strip_quoted_spans_matches_shell_semantics_for_a_midword_apostrophe():

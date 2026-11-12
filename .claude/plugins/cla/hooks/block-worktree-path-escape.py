@@ -184,7 +184,7 @@ def main() -> int:
         # tuned out and takes the real one with it. So ask whether this is a
         # work tree at all, and only speak up when it is. One extra subprocess,
         # on the already-failed path only.
-        if not override and _is_work_tree(cwd):
+        if _is_work_tree(cwd):
             _warn(f"could not resolve git dirs for {cwd!r}; not checking this write")
         return 0
     git_dir, git_common_dir = clone_paths
@@ -198,8 +198,7 @@ def main() -> int:
         # git_common_dir), so failing to resolve its root is a degraded git, not
         # a benign shape. Silence here is the difference between "checked and
         # allowed" and "never checked".
-        if not override:
-            _warn(f"in a worktree but could not resolve its root from {cwd!r}; not checking")
+        _warn(f"in a worktree but could not resolve its root from {cwd!r}; not checking")
         return 0
     primary_clone_root = os.path.dirname(git_common_dir)
 

@@ -481,6 +481,99 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 GIT_CMD = r"\b(?i:git)(?:\.(?i:exe|cmd|bat|com|ps1))?"
 
 
+def _blank_keeping_substitutions(text: str, keep_newlines: bool) -> str:
+    """`text` with every character replaced by `#`, EXCEPT the `$(...)` and
+    backtick substitutions the shell executes, which stay verbatim. Same length.
+    An escaped `$` or backtick is literal text and is blanked."""
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\":
+            out.append("##"[: len(text) - i])
+            i += 2
+            continue
+        if ch == "$" and text.startswith("$(", i):
+            depth, j = 0, i + 1
+            while j < len(text):
+                depth += (text[j] == "(") - (text[j] == ")")
+                if depth == 0:
+                    break
+                j += 1
+            end = min(j, len(text) - 1)  # unterminated: runs to the end
+        elif ch == "`":
+            j = i + 1
+            while j < len(text) and text[j] != "`":
+                j += 2 if text[j] == "\\" else 1
+            end = min(j, len(text) - 1)
+        else:
+            out.append(ch if keep_newlines and ch in "\r\n" else "#")
+            i += 1
+            continue
+        out.append(text[i : end + 1])
+        i = end + 1
+    return "".join(out)[: len(text)]
+
+
+_HEREDOC_OP = re.compile(
+    r"(?<!<)<<(?!<)(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([A-Za-z_]\w*))"
+)
+# A heredoc fed to a shell RUNS its body (`bash <<'EOF' … EOF`), so that body is
+# code, not data. Looked for before the operator, on its own line.
+_SHELL_WORD = re.compile(r"(?<![\w.\-/])(?:ba|z|da|k|c)?sh(?![\w.\-])|(?<![\w.\-])eval(?![\w.\-])")
+
+
+def _blank_heredoc_bodies(cmd: str) -> str:
+    """Blank heredoc bodies, keeping newlines and length.
+
+    A QUOTED delimiter (`<<'EOF'`, `<<"EOF"`, `<<\\EOF`) makes the body data the
+    shell never expands: blanked whole. An UNQUOTED one is expanded, so only its
+    `$(...)` and backtick substitutions stay visible; that includes Markdown
+    code spans in the prose, which the shell really does run. A body with no
+    terminator line is left alone (fails toward being seen), as is a body fed to
+    a shell on the same line (`bash <<'EOF'`), which executes it."""
+    out = cmd
+    last_nl, last_end = -1, 0
+    for m in _HEREDOC_OP.finditer(cmd):
+        if last_nl < m.start() < last_end:
+            continue  # an operator written inside an earlier body is data
+        nl = cmd.find("\n", m.end())
+        if nl < 0:
+            continue
+        quoted = m.group(2) is not None or m.group(3) is not None or m.group(4) == "\\"
+        delim = m.group(2) if m.group(2) is not None else (
+            m.group(3) if m.group(3) is not None else m.group(5)
+        )
+        start = last_end if nl == last_nl else nl + 1
+        pos = start
+        found = False
+        while pos <= len(cmd):
+            eol = cmd.find("\n", pos)
+            line = cmd[pos : eol if eol >= 0 else len(cmd)].rstrip("\r")
+            if (line.lstrip("\t") if m.group(1) else line) == delim:
+                found = True
+                break
+            if eol < 0:
+                break
+            pos = eol + 1
+        if not found:
+            continue
+        end_of_terminator = cmd.find("\n", pos)
+        last_nl = nl
+        last_end = len(cmd) if end_of_terminator < 0 else end_of_terminator + 1
+        line_start = cmd.rfind("\n", 0, m.start()) + 1
+        if _SHELL_WORD.search(cmd[line_start : m.start()]):
+            continue
+        body = cmd[start:pos]
+        body = (
+            "".join(c if c in "\r\n" else "#" for c in body)
+            if quoted
+            else _blank_keeping_substitutions(body, True)
+        )
+        out = out[:start] + body + out[pos:]
+    return out
+
+
 def strip_quoted_spans(cmd: str) -> str:
     """Replaces the contents of every quoted span with same-length,
     non-whitespace placeholder characters (the quote delimiters themselves are
@@ -505,10 +598,16 @@ def strip_quoted_spans(cmd: str) -> str:
 
     Scope, stated precisely so nobody assumes more than it does:
 
-    - NOT handled — heredoc bodies. Those are unquoted text, so a script
-      written via `cat <<'EOF' … git push origin main … EOF` still matches and
-      a block hook will fire on it. This is the most likely real-world false
-      positive of the git hooks; it is accepted, not solved.
+    - Heredoc bodies are blanked first (`_blank_heredoc_bodies`): wholly for a
+      quoted delimiter, keeping only executed substitutions for an unquoted one
+      (Markdown code spans in an unquoted body DO run, so they stay visible).
+      Not blanked: a body fed to a shell on the operator's line (`bash <<'EOF'`,
+      `eval`), a body with no terminator line, and `<<<` here-strings.
+    - NOT handled — `bash -c '…'` / `sh -c` / `eval '…'` bodies: single-quoted,
+      so blanked, as on main.
+    - NOT handled — the paren counter ignores quotes and `case` patterns, and
+      the single-quote pass runs first, so an apostrophe in earlier prose can
+      pair with a later one.
     - NOT handled — escaped or nested quotes (`\\'`, `"a 'b' c"` interactions),
       including a double quote inside a `$(...)` that sits in double quotes.
     - NOT handled — `<(...)` / `>(...)` process substitution inside double
@@ -527,40 +626,11 @@ def strip_quoted_spans(cmd: str) -> str:
         return span[0] + "#" * (len(span) - 2) + span[-1]
 
     def _double_quoted(match: re.Match[str]) -> str:
-        # Inside double quotes the shell still EXECUTES `$(...)` and backtick
-        # substitutions, so their bodies stay visible; all other text is blanked.
         span = match.group(0)
-        inner = span[1:-1]
-        out: list[str] = []
-        i = 0
-        while i < len(inner):
-            ch = inner[i]
-            if ch == "\\":  # an escaped `$` or backtick is literal text
-                out.append("##"[: len(inner) - i])
-                i += 2
-                continue
-            if ch == "$" and inner.startswith("$(", i):
-                depth, j = 0, i + 1
-                while j < len(inner):
-                    depth += (inner[j] == "(") - (inner[j] == ")")
-                    if depth == 0:
-                        break
-                    j += 1
-                end = min(j, len(inner) - 1)  # unterminated: runs to span end
-            elif ch == "`":
-                j = i + 1
-                while j < len(inner) and inner[j] != "`":
-                    j += 2 if inner[j] == "\\" else 1
-                end = min(j, len(inner) - 1)
-            else:
-                out.append("#")
-                i += 1
-                continue
-            out.append(inner[i : end + 1])
-            i = end + 1
-        return span[0] + "".join(out)[: len(inner)] + span[-1]
+        return span[0] + _blank_keeping_substitutions(span[1:-1], False) + span[-1]
 
-    stripped = re.sub(r"'[^']*'", _placeholder, cmd)
+    stripped = _blank_heredoc_bodies(cmd)
+    stripped = re.sub(r"'[^']*'", _placeholder, stripped)
     stripped = re.sub(r'"[^"]*"', _double_quoted, stripped)
     # No backtick pass: an unquoted backtick span is a command substitution the
     # shell runs, and one inside single quotes is already blanked above.

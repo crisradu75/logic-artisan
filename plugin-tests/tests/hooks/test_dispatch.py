@@ -304,6 +304,21 @@ def test_edit_write_dispatch_does_not_drop_earlier_warning_when_later_hook_block
     assert "2026-01-01" in r.stderr  # the earlier warning survived
 
 
+def test_override_notice_reaches_claude_through_the_edit_write_dispatcher(tmp_path):
+    primary, wt = _primary_and_worktree(tmp_path)
+    payload = {"tool_input": {"file_path": (primary / "src" / "thing.py").as_posix(),
+                              "content": "x = 1\n"}}
+    r = subprocess.run(
+        [sys.executable, str(_EDIT_WRITE_DISPATCH)],
+        input=json.dumps(payload),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(wt),
+        env={**os.environ, "ALLOW_WORKTREE_PATH_ESCAPE": "1", "CLAUDE_PROJECT_DIR": str(primary)},
+    )
+    assert r.returncode == 0
+    context = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "DISABLED by ALLOW_WORKTREE_PATH_ESCAPE=1" in context
+
+
 def test_edit_write_dispatch_isolates_a_broken_sibling_hook(tmp_path):
     hooks_dir = _hooks_copy(tmp_path)
     (hooks_dir / "warn-comment-dates.py").write_text("this is ) not ( valid python !!!", encoding="utf-8")
@@ -680,6 +695,15 @@ def test_the_edit_write_dispatcher_leaves_advisory_errors_as_context(monkeypatch
         ('echo "`git push --force origin feat`"', "force-push"),
         ('echo "x $(echo y; git push --force origin feat) z"', "force-push"),
         ('git commit -m "$(git reset --hard HEAD~1)"', "reset --hard"),
+        # the flag is the LAST thing before the substitution closes
+        ('echo "$(git reset --hard)"', "reset --hard"),
+        ('echo "$(git push -f)"', "force-push"),
+        ('echo "$(git push --force)"', "force-push"),
+        ("x=`git reset --hard`", "reset --hard"),
+        # an UNQUOTED heredoc is expanded, so its substitutions run
+        ("cat <<EOF\nnow $(git reset --hard HEAD)\nEOF", "reset --hard"),
+        # a heredoc fed to a shell executes its body
+        ("bash <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
     ],
 )
 def test_bash_dispatch_asks_on_a_destructive_command_inside_a_substitution(
@@ -703,6 +727,19 @@ def test_bash_dispatch_asks_on_a_destructive_command_inside_a_substitution(
         # text AFTER a closed substitution is still prose
         'echo "$(date) then git reset --hard HEAD~1"',
         'echo "`date` then git push --force origin feat"',
+        # heredoc bodies with a QUOTED delimiter are data, in every wrapper
+        'git commit -m "$(cat <<\'EOF\'\nfix: now asks on git reset --hard in a substitution\nEOF\n)"',
+        'git commit -m "$(cat <<\'EOF\'\nfix: do not git push -f; it\'s a git branch -D thing\nEOF\n)"',
+        'gh pr create --title t --body "$(cat <<\'EOF\'\nuse `gh pr merge 12` or Bash(gh pr merge:*)\nEOF\n)"',
+        'git commit -m "$(cat <<"EOF"\nreset --hard (see git reset --hard HEAD)\nEOF\n)"',
+        "cat > notes.md <<'EOF'\nRun `git push --force origin x` to fix.\nEOF",
+        "cat > notes.md <<'EOF'\n```bash\ngit reset --hard HEAD\n```\nEOF",
+        "gh pr comment 5 --body-file - <<'EOF'\nuse `git branch -D old` after\nEOF",
+        "cat <<-'EOF' > n.md\n\tgit reset --hard HEAD\n\tEOF",
+        # an unquoted heredoc's prose is data; only its substitutions run
+        "cat > n.md <<EOF\nplain git reset --hard prose\nEOF",
+        # a script written (not run) from a heredoc
+        "cat > x.sh <<'EOF'\ngit reset --hard HEAD\nEOF",
     ],
 )
 def test_bash_dispatch_stays_silent_when_the_shell_would_not_run_the_text(tmp_path, command):

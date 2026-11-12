@@ -257,8 +257,9 @@ def _abbrev(word: str, floor: int) -> str:
 # because the `\` sits directly against the `d`. That was fixed for
 # `git branch -D` and NOT carried to `--force`/`--hard`, which left the two
 # oldest and most-cited rules in this file bypassable by a line continuation
-# long after the same bug was closed one rule over.
-_END = r"(?:[\s\\]|=|$)"
+# long after the same bug was closed one rule over. `)` and a backtick end a flag
+# too: `echo "$(git reset --hard)"` closes the substitution right against it.
+_END = r"(?:[\s\\)`]|=|$)"
 
 # Two shapes force a push. The long flag, where the terminator is what spares
 # `--force-with-lease` / `--force-if-includes` (both are followed by `-`, which
@@ -271,7 +272,7 @@ _END = r"(?:[\s\\]|=|$)"
 # `--force-if-includes`, so `--f`, `--fo`, `--for` and `--forc` are all
 # ambiguous and git refuses them. There is no shorter spelling to miss.
 _FORCE_FLAG = re.compile(
-    r"(?:^|\s)(?:--force" + _END + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$))"
+    r"(?:^|\s)(?:--force" + _END + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\)`]|$))"
 )
 # `git push origin +feat:feat` — force expressed in the refspec, no flag at all.
 _FORCE_REFSPEC = re.compile(r"(?:^|\s)\+\S+")
@@ -329,7 +330,7 @@ PUSH_GUARD_SKIP_REASON = (
 # `\`+newline before word-splitting, so `git branch -D\`+newline+`  feat` is an
 # ordinary force-delete, and a bare `(?=\s|$)` rejected it because the `\` sits
 # directly against the `D`.
-_SHORT_CLUSTER = re.compile(r"(?<!\S)-([A-Za-z]+)(?=[\s\\]|$)")
+_SHORT_CLUSTER = re.compile(r"(?<!\S)-([A-Za-z]+)(?=[\s\\)`]|$)")
 
 # `git branch`'s complete short-option alphabet, from `git branch -h`:
 # -a -c -C -d -D -f -i -l -m -M -q -r -t -u -v. A dash-prefixed token whose
@@ -350,8 +351,8 @@ _BRANCH_SHORT_OPTS = frozenset("acCdDfilmMqrtuv")
 # backslash continuation abutting the flag is an ordinary multi-line command,
 # not a malformed one. All three patterns carry it; fixing only the short-flag
 # one left `--delete\`+newline+`--force` silently unmatched.
-_DELETE_LONG = re.compile(r"(?:^|\s)--d(?:e(?:l(?:e(?:t(?:e)?)?)?)?)?(?:[\s\\]|=|$)")
-_FORCE_LONG = re.compile(r"(?:^|\s)--forc(?:e)?(?:[\s\\]|=|$)")
+_DELETE_LONG = re.compile(r"(?:^|\s)--d(?:e(?:l(?:e(?:t(?:e)?)?)?)?)?(?:[\s\\)`]|=|$)")
+_FORCE_LONG = re.compile(r"(?:^|\s)--forc(?:e)?(?:[\s\\)`]|=|$)")
 
 
 def _force_deletes_a_branch(tail: str) -> bool:
@@ -419,7 +420,7 @@ _FORCE_DISCARD = re.compile(
     r"(?:^|\s)(?:"
     + "--" + _abbrev("force", 1) + _END
     + r"|--" + _abbrev("discard-changes", 2) + _END
-    + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$)"
+    + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\)`]|$)"
     + r")"
 )
 
@@ -437,11 +438,11 @@ _FORCE_DISCARD = re.compile(
 # (`--source` shares only `--s`), so those are the floors.
 _RESTORE_STAGED = re.compile(
     r"(?:^|\s)(?:--" + _abbrev("staged", 2) + _END
-    + r"|-[A-Za-z]*S[A-Za-z]*(?:[\s\\]|$))"
+    + r"|-[A-Za-z]*S[A-Za-z]*(?:[\s\\)`]|$))"
 )
 _RESTORE_WORKTREE = re.compile(
     r"(?:^|\s)(?:--" + _abbrev("worktree", 1) + _END
-    + r"|-[A-Za-z]*W[A-Za-z]*(?:[\s\\]|$))"
+    + r"|-[A-Za-z]*W[A-Za-z]*(?:[\s\\)`]|$))"
 )
 
 # Options whose VALUE is the next token, so that value is not a path operand.
@@ -536,14 +537,14 @@ def _unseparated_operands(tokens: list[tuple[str, str]]) -> list[str]:
 # option set rather than assumed.
 _CLEAN_FORCE = re.compile(
     r"(?:^|\s)(?:--" + _abbrev("force", 1) + _END
-    + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$))"
+    + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\)`]|$))"
 )
 # `--dry-run` is clean's only `--d*` option, so `git clean -f --d` really is a
 # dry run and prompting on it is pure noise. `_CLEAN_FORCE` two lines up got the
 # abbreviation treatment while its sibling on the same predicate did not.
 _CLEAN_DRY_RUN = re.compile(
     r"(?:^|\s)(?:--" + _abbrev("dry-run", 1) + _END
-    + r"|-[A-Za-z]*n[A-Za-z]*(?:[\s\\]|$))"
+    + r"|-[A-Za-z]*n[A-Za-z]*(?:[\s\\)`]|$))"
 )
 # `-x` also removes ignored files; `-X` removes ONLY ignored files. Neither has
 # a long form. Case matters, so these are two patterns rather than one.
@@ -555,8 +556,8 @@ _CLEAN_DRY_RUN = re.compile(
 # files nothing recovers. Under `-X` the default `??` predicate is wrong in both
 # directions at once: it prompted on untracked files `-X` will not touch, and
 # stayed silent on the ignored ones it will.
-_CLEAN_ALSO_IGNORED = re.compile(r"(?:^|\s)-[A-Za-z]*x[A-Za-z]*(?:[\s\\]|$)")
-_CLEAN_IGNORED_ONLY = re.compile(r"(?:^|\s)-[A-Za-z]*X[A-Za-z]*(?:[\s\\]|$)")
+_CLEAN_ALSO_IGNORED = re.compile(r"(?:^|\s)-[A-Za-z]*x[A-Za-z]*(?:[\s\\)`]|$)")
+_CLEAN_IGNORED_ONLY = re.compile(r"(?:^|\s)-[A-Za-z]*X[A-Za-z]*(?:[\s\\)`]|$)")
 
 
 def _line_kind(line: str) -> str:
