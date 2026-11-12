@@ -151,7 +151,9 @@ copilot plugin install cla@cris-logic-artisan
 **Response style:** Copilot CLI does not load plugin output styles automatically. Copy the
 contents of `.claude/plugins/cla/output-styles/COPILOT.md` from the installed plugin into the
 consuming repository's `.github/copilot-instructions.md`. This is a repository-level instruction
-file, not an automatic plugin setting; it does not change Claude Code's `CLA.md` output style.
+file, not an automatic plugin setting; plugin updates do not refresh it. After each plugin update,
+refresh the copied CLA guidance from the updated file, preserving any other repository-specific
+instructions. This does not change Claude Code's `CLA.md` output style.
 
 **Troubleshooting:** use `copilot --version` to confirm the CLI, `copilot plugin marketplace list`
 to check marketplace registration, and `copilot plugin list` to check installation. Run
