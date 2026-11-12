@@ -2,7 +2,7 @@
 
 ## Context
 
-See proposal.md for motivation and specs/guard-hooks/spec.md for required behavior. CLA currently has two Claude `PreToolUse` dispatchers, one `PostToolUse` rewrite warning, and a separate Git `pre-push` hook. Its Python guards accept Claude-shaped `tool_input` payloads; the dispatchers emit Claude's nested decision format. Copilot CLI supports hooks in Agent Plugins 1.0 under `com.github.copilot/hooks/hooks.json`, but uses its own decision output and documents fail-open hook timeouts.
+See proposal.md for motivation and specs/copilot-cli/spec.md for required behavior. CLA currently has two Claude `PreToolUse` dispatchers, one `PostToolUse` rewrite warning, and a separate Git `pre-push` hook. Its Python guards accept Claude-shaped `tool_input` payloads; the dispatchers emit Claude's nested decision format. Copilot CLI supports hooks in Agent Plugins 1.0 under `com.github.copilot/hooks/hooks.json`, but uses its own decision output and documents fail-open hook timeouts.
 
 ## Goals / Non-Goals
 

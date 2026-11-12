@@ -28,7 +28,7 @@ Names used below:
    `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`. Any other non-zero
    exit halts. The script does not look at uncommitted files, so also run `git status --porcelain`:
    a dirty tree with paths outside this run → Step 2 of
-   `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/precheck.md`. A dirty tree at the start
+   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/precheck.md`. A dirty tree at the start
    poisons every later item.
 3. **Run notes are ignored.** The skill's Phase 0 runs `git check-ignore` on its own notes file
    name. Non-zero → stop.

@@ -394,23 +394,14 @@ Overlays are optional: add `cla.io/overlays/<skill>.md` only when one skill need
 to this repo.
 
 **On GitHub Copilot CLI**, the marketplace install, one skill and both helper agents were
-smoke-tested with Copilot CLI 1.0.105 against `cla--v2.2.3`. The tagged profiles fell back because
-their declared models were unavailable; the current source omits Copilot model IDs so its profiles
-inherit the session model. Release `cla--v2.3.0` also has
-separate Copilot `PreToolUse`/`PostToolUse` guard wiring; Claude's hook configuration is unchanged.
-Live CLI checks covered allow, block, warning, and destructive-git confirmation. In autopilot, a
-confirmation cannot prompt and is denied. A live timeout probe confirmed fail-open behavior using a
-temporary plugin with a 1-second hook timeout and an 8-second sleep: the hook started but did not
-finish, while the tool call proceeded. The exact command and result are recorded in the root
-README. Edit/Write hook behavior is adapter-tested but not live-tested; Windows PowerShell wiring is
-also untested. The 30-second hook timeout is fail-open, so it is not a guarantee that a guard will
-block a call. Direct pushes to `main` are still protected separately by
-the Git `pre-push` hook, installed once per clone. The Copilot hook wiring first ships in
-`cla--v2.3.0`; the smoke test above predates it. Some skills require Claude-specific tools and are
-marked unsupported for Copilot CLI. Helper agents inherit the Copilot CLI session model; this is not
-full workflow parity. The Copilot app and cloud agent are out of scope. The
-[README](README.md#github-copilot-cli-experimental) has the details; follow-up work is linked from
-issue #302.
+smoke-tested with Copilot CLI 1.0.105 against `cla--v2.2.3`. Those tagged profiles fell back to
+`auto`; current source profiles omit model IDs and inherit the session model. The guard-hook wiring
+since `cla--v2.3.0` and its caveats are stated once, in the
+[plugin README](.claude/plugins/cla/README.md#copilot-cli-hook-caveats). Some skills requiring
+Claude-only delegation, skill chaining, model routing, or permission settings are marked unsupported.
+The Copilot app and cloud agent are out of scope. The
+[README](README.md#github-copilot-cli-experimental) has live-validation details; follow-up work is
+linked from issue #302.
 
 ### Going further
 
@@ -513,7 +504,10 @@ The published plugin; everything here ships to an installing repo:
   plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, smoke-tested with CLI 1.0.105
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
   com.github.copilot/agents/   the same two agents for GitHub Copilot CLI, generated from agents/
-  hooks/                       guard hooks + hooks.json wiring
+  com.github.copilot/hooks/    the Copilot CLI wiring for the guard hooks (hooks.json)
+  hooks/                       guard hooks + hooks.json wiring; copilot-pretooluse.py and
+                               copilot-posttooluse.py (the Copilot CLI adapters over the same dispatchers);
+                               probe-python.sh and probe-python.ps1 (interpreter probes); git/pre-push
   lib/log_run.py               the one ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill);
@@ -641,6 +635,50 @@ frontmatter forbids model invocation, also add it to the one sentence naming tho
 `CLAUDE.md` and in section 1. `plugin-tests/tests/consistency/test_doc_facts.py` fails if the phase
 table misses the skill or any of those three copies disagrees with the frontmatter; nothing checks
 the counts. A new skill's tests go in `plugin-tests/tests/skills/<name>/`, not beside the skill.
+
+### Adding a guard hook
+
+A guard is a script in `.claude/plugins/cla/hooks/` that a dispatcher runs. Each step below names
+what enforces it; read that code rather than a copy of it here.
+
+1. **Name it by what it does to the call.** `block-<what>.py` can refuse (exit 2), `ask-<what>.py`
+   escalates to a permission prompt, `warn-<what>.py` only adds advice. The README's recount
+   command (`ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn)-.*\.py$'`) counts guards by
+   this prefix, so a guard with another name is not counted.
+2. **Put it in a dispatcher.** Add the file name to `_HOOK_FILES` in
+   `hooks/dispatch-bash-pretooluse.py` (Bash and PowerShell) or
+   `hooks/dispatch-edit-write-pretooluse.py` (Edit and Write). A guard that can change the outcome
+   stays out of that file's `_ADVISORY_HOOKS`, which is what protects it from being skipped when
+   the budget runs short (in the Edit/Write dispatcher, order is not a backstop: its blocking guard
+   sits last). In the Bash dispatcher, also order it ahead of the advisory ones. A guard that only
+   warns goes in `_ADVISORY_HOOKS`, so budget pressure drops warnings before it drops a block. In
+   `test_hooks_wiring.py`, `test_every_dispatcher_sibling_hook_exists` and
+   `test_no_outcome_changing_hook_is_marked_advisory` fail on a miss. A post-edit warning is wired
+   by hand: its own `PostToolUse` entry in `hooks/hooks.json` (as `warn-wholesale-rewrite.py` is).
+3. **Add its `HOOK_WORST_CASE_SECONDS` entry** in `hooks/_dispatch_lib.py`: the seconds it can spend
+   (git calls times their timeout; `0.0` for pure text inspection), with the arithmetic in a comment
+   on that entry. `test_the_budget_table_covers_every_dispatched_hook` and
+   `test_enforcing_hooks_fit_inside_the_handler_budget` fail on a missing entry or a sum over the
+   budget. They cannot tell whether the figure is right, so state it per entry.
+4. **Wire a new dispatcher or event, if you added one.** A new hook inside an existing dispatcher
+   needs no change to `hooks/hooks.json`. A new dispatcher or event needs a `hooks.json` entry in
+   the shape the existing ones use (the probe-python wiring, `timeout` equal to
+   `HANDLER_TIMEOUT_SECONDS`; `test_every_wiring_is_byte_identical_up_to_its_hook`). Copilot CLI
+   reaches the same dispatchers through `hooks/copilot-pretooluse.py`, whose `_DISPATCHERS` maps a
+   tool name to a dispatcher, and runs the post-edit warning through `hooks/copilot-posttooluse.py`;
+   a new tool or dispatcher needs a line there and an entry in
+   `com.github.copilot/hooks/hooks.json`. `test_copilot_hooks.py` pins that wiring.
+5. **Write the tests in `plugin-tests/tests/hooks/test_<hook_name>.py`**: calls the guard must
+   refuse, ask about or warn on, and calls it must let through, including the near-miss spelling of
+   each. A guard that only has deny tests passes while it blocks everything. Tests never go
+   in the plugin.
+6. **Mutation batch.** `CLAUDE.md`, "Before shipping a change: five checks", decides when. A new case
+   in an existing guard is an edit: break it by hand once and confirm a test fails. Rewriting a file
+   under `hooks/` is when `python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/<hook>.py` runs;
+   the batches sit beside the existing ones, named after the guard, outside `tests/`.
+7. **Document it.** Add a row to the guard table in section 8 and to the one in the plugin README
+   (`.claude/plugins/cla/README.md`), and update the leaf-hook counts in the sentence above the table. Shipped guard files stay free of project tokens
+   (`skills/_shared/scripts/check_no_project_tokens.py`) and import only the standard library.
 
 ## 12. Evidence behind CLAUDE.md's rules
 

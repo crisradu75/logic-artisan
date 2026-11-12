@@ -398,9 +398,9 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
     """Return (git_dir, git_common_dir) as realpaths, or None on failure.
 
     One `rev-parse` answering both questions, not two: it prints one line per
-    requested option in argument order. This runs on every Bash call and on
-    every Edit/Write via --heartbeat, so halving the process count here is a
-    real saving against the shared handler budget.
+    requested option in argument order. Its only caller is the Edit/Write guard
+    `block-worktree-path-escape.py`, which runs on every Edit/Write, so halving
+    the process count here is a real saving against the shared handler budget.
     """
     r = run_git(cwd, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
     if not r or r.returncode != 0:
@@ -481,10 +481,168 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 GIT_CMD = r"\b(?i:git)(?:\.(?i:exe|cmd|bat|com|ps1))?"
 
 
+def _blank_keeping_substitutions(text: str) -> str:
+    """`text` with every character replaced by `#`, EXCEPT the `$(...)` and
+    backtick substitutions the shell executes, which stay verbatim. Same length.
+    An escaped `$` or backtick is literal text and is blanked."""
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\":
+            out.append("##"[: len(text) - i])
+            i += 2
+            continue
+        if ch == "$" and text.startswith("$(", i):
+            depth, j = 0, i + 1
+            while j < len(text):
+                depth += (text[j] == "(") - (text[j] == ")")
+                if depth == 0:
+                    break
+                j += 1
+            end = min(j, len(text) - 1)  # unterminated: runs to the end
+        elif ch == "`":
+            j = i + 1
+            while j < len(text) and text[j] != "`":
+                j += 2 if text[j] == "\\" else 1
+            end = min(j, len(text) - 1)
+        else:
+            out.append("#")
+            i += 1
+            continue
+        out.append(text[i : end + 1])
+        i = end + 1
+    return "".join(out)[: len(text)]
+
+
+_HEREDOC_OP = re.compile(
+    r"(?<!<)<<(?!<)[ \t]*(?:'([A-Za-z0-9_]+)'|\"([A-Za-z0-9_]+)\"|\\([A-Za-z0-9_]+))"
+)
+# Any heredoc operator at all, used only for the operator-count cap.
+_ANY_HEREDOC = re.compile(r"<<(?!<)")
+# Caps. Past either, every body is left VISIBLE (a guard fails toward asking).
+_HEREDOC_MAX_OPS = 200
+_HEREDOC_MAX_LINE = 4096
+
+# Words that run, or hand text to, an interpreter, or wrap a command that does.
+# Matched on the basename of every word of the command, so `/bin/bash` and
+# `bash.exe` count.
+_INTERPRETERS = frozenset(
+    "bash sh zsh dash ksh csh tcsh fish pwsh powershell cmd node deno bun perl "
+    "ruby php lua ssh source eval xargs exec busybox su sudo env nohup command .".split()
+)
+_WORD_SPLIT = re.compile(r"[\s|;&()<>\"'`$={},]+")
+_SHELL_VAR = re.compile(r"\$\{?(?:SHELL|0)\b")
+
+# The ONLY heredoc that is blanked outright: the WHOLE command is one message
+# command and nothing else. It is matched in full, from the first character to
+# the last, so the shell cannot be reading it any other way: no comment, no
+# single quote, no backslash, no pipe, no redirect, no `$`, no backtick and no
+# second heredoc can appear anywhere outside the body, and the only words are
+# plain words or short double-quoted strings of safe characters.
+_W = r"[A-Za-z0-9_.,:=@+%~/-]+"
+_DQ = r"\"[A-Za-z0-9 ._,:/()#@%+=~-]*\""
+_ARG = rf"(?:{_W}|{_DQ})"
+_MESSAGE_COMMAND = re.compile(
+    rf"(?:(?:git (?:add|status)|cd)(?: {_ARG})* && )*"
+    r"(?:git (?:commit|tag|notes)|gh (?:pr (?:create|edit|comment|review|merge)"
+    r"|issue (?:create|edit|comment)|release create))"
+    rf"(?: {_ARG})* \"\$\(cat <<(?P<q>['\"])(?P<w>[A-Za-z0-9_]+)(?P=q)[ \t]*\r?\n"
+    r"(?P<body>(?:(?!(?P=w))[^\n]*\n)*)"
+    r"(?P=w)\r?\n\)\""
+    rf"(?: {_ARG})*"
+    rf"(?: && (?:git (?:status|push|add|log|diff|show|fetch|pull)"
+    rf"|gh pr (?:view|checks|create|edit|comment|ready)|cd)(?: {_ARG})*)*"
+    r"\s*"
+)
+
+
+def _runs_an_interpreter(text: str) -> bool:
+    if _SHELL_VAR.search(text):
+        return True
+    for word in _WORD_SPLIT.split(text):
+        base = word.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        for ext in (".exe", ".cmd", ".bat", ".com", ".ps1"):
+            if base.endswith(ext):
+                base = base[: -len(ext)]
+                break
+        if base in _INTERPRETERS or base.startswith("python"):
+            return True
+    return False
+
+
+def _blank_heredoc_bodies(cmd: str) -> str:
+    """Blank heredoc text that is data; leave every other body as it was.
+
+    Two things are blanked, both by whitelist, everything else stays VISIBLE.
+
+    1. The body of a message heredoc, only when the WHOLE command fully matches
+       `_MESSAGE_COMMAND` (one `git commit|tag|notes` / `gh pr|issue|release`
+       command whose message is `"$(cat <<'WORD' ... WORD newline )"`, with
+       nothing in the command the shell could read differently).
+    2. Markdown backtick spans in the body of the FIRST heredoc operator, which
+       main always blanked: only when the body has no quote character (main
+       paired quotes before backticks) and that operator has a plain quoted
+       delimiter, nothing before its line contains `<<`, `#`, a backtick, a
+       backslash or an unbalanced quote, the operator line has none of those
+       either, and no interpreter word appears anywhere in the command.
+
+    Newlines and length are kept. One linear pass; past `_HEREDOC_MAX_OPS`
+    operators nothing is blanked."""
+    if "<<" not in cmd:
+        return cmd
+    ops = list(_HEREDOC_OP.finditer(cmd))
+    if not ops or len(_ANY_HEREDOC.findall(cmd)) > _HEREDOC_MAX_OPS:
+        return cmd
+    out = list(cmd)
+    message = _MESSAGE_COMMAND.fullmatch(cmd)
+    if message is not None:
+        _blank_data(out, *message.span("body"))
+        return "".join(out)
+    first = ops[0]
+    if cmd.find("<<") != first.start():
+        return cmd  # an earlier `<<` the shell may read as the real operator
+    nl = cmd.find("\n", first.end())
+    if nl < 0 or nl - cmd.rfind("\n", 0, first.start()) > _HEREDOC_MAX_LINE:
+        return cmd
+    delim = first.group(1) or first.group(2) or first.group(3)
+    term = cmd.find("\n" + delim + "\n", nl)
+    if term < 0 and not cmd.endswith("\n" + delim):
+        return cmd  # no terminator line: left visible
+    body_end = term + 1 if term >= 0 else len(cmd) - len(delim)
+    for ch in ("#", "`", "\\"):
+        at = cmd.find(ch)
+        if at != -1 and at < nl:
+            return cmd
+    head = cmd[:nl]
+    if (head.count("'") - (2 if first.group(1) else 0)) % 2 or (
+        head.count('"') - (2 if first.group(2) else 0)
+    ) % 2:
+        return cmd  # an unbalanced quote: the operator may be inside a string
+    if _runs_an_interpreter(cmd[: nl + 1] + cmd[body_end:]):  # words in the body are data
+        return cmd
+    body = cmd[nl + 1 : body_end]
+    if "'" in body or '"' in body:
+        return cmd  # main paired quotes first; with none here raw pairing is the same
+    for span in re.finditer(r"`[^`]*`", body):
+        _blank_data(out, nl + 1 + span.start() + 1, nl + 1 + span.end() - 1)
+    return "".join(out)
+
+
+def _blank_data(out: list[str], a: int, b: int) -> None:
+    """Blank `out[a:b]` in place, keeping line breaks so line structure holds."""
+    for i in range(a, b):
+        if out[i] not in "\r\n":
+            out[i] = "#"
+
+
 def strip_quoted_spans(cmd: str) -> str:
-    """Replaces the contents of every quoted/backtick span with same-length,
+    """Replaces the contents of every quoted span with same-length,
     non-whitespace placeholder characters (the quote delimiters themselves are
-    left in place), so a matcher below doesn't trip on a `git commit` mentioned
+    left in place) EXCEPT command substitutions the shell executes: the body of
+    a `$(...)` or backtick span inside double quotes, and any unquoted backtick
+    span, stays visible (single-quoted text is never executed, so it is always
+    blanked). A matcher below doesn't trip on a `git commit` mentioned
     inside an echoed string or a commit message, AND so a global option's quoted
     value (`-C "/path with space"`) becomes a single whitespace-free token
     before `GIT_GLOBAL_OPTS` tries to match it — the value-consuming
@@ -502,11 +660,42 @@ def strip_quoted_spans(cmd: str) -> str:
 
     Scope, stated precisely so nobody assumes more than it does:
 
-    - NOT handled — heredoc bodies. Those are unquoted text, so a script
-      written via `cat <<'EOF' … git push origin main … EOF` still matches and
-      a block hook will fire on it. This is the most likely real-world false
-      positive of the git hooks; it is accepted, not solved.
-    - NOT handled — escaped or nested quotes (`\\'`, `"a 'b' c"` interactions).
+    - Heredoc bodies stay VISIBLE (as on main) except by whitelist
+      (`_blank_heredoc_bodies`). (1) The body of a message heredoc is blanked
+      only when the WHOLE command fully matches `_MESSAGE_COMMAND`: optional
+      `git add|status`/`cd` words and `&&`, then `git commit|tag|notes` or
+      `gh pr create|edit|comment|review|merge`, `gh issue create|edit|comment`,
+      `gh release create` (no global options), plain words or short
+      double-quoted strings of safe characters, then
+      `"$(cat <<'WORD'` newline body newline `WORD` newline `)"`, then optional
+      such words and `&& git status|push|add|log|diff|show|fetch|pull`. Because
+      it is a full match there is no comment, single quote, backslash, pipe,
+      redirect, `$`, backtick or second heredoc anywhere outside the body, so
+      the shell cannot be reading the operator any other way, and no
+      interpreter can be handed the text. (2) Markdown backtick spans in the
+      body of the FIRST heredoc operator stay blanked, as on main, only when the
+      body has no quote character (main paired quotes before backticks) and the
+      operator has a plain quoted delimiter, no earlier `<<`, `#`, backtick or
+      backslash appears up to its line, quotes before it balance, and no
+      interpreter word (`bash sh ssh source . eval xargs sudo env python*
+      $SHELL $0 …`, any path or `.exe` form) is outside the body. A bare
+      `$(cat <<…)` never qualifies: its output may be run. Everything else
+      (bare `cat <<'EOF'`, `tee`, `git commit -F -`, `--body-file -`, unquoted
+      or odd delimiters, `<<-`, a missing terminator, `<<<`) is visible. Past
+      200 operators or a 4096-char operator line nothing is blanked.
+    - Accepted: a flag now ends at `)` or a backtick (`ask-destructive-git`'s
+      `_END`), so prose such as `# undo with (git reset --hard)` in a comment, or
+      a PowerShell backtick escape, can ask; comments were always scanned.
+    - NOT handled — `bash -c '…'` / `sh -c` / `eval '…'` bodies: single-quoted,
+      so blanked, as on main.
+    - NOT handled — the paren counter ignores quotes and `case` patterns, and
+      the single-quote pass runs first, so an apostrophe in earlier prose can
+      pair with a later one.
+    - NOT handled — escaped or nested quotes (`\\'`, `"a 'b' c"` interactions),
+      including a double quote inside a `$(...)` that sits in double quotes.
+    - NOT handled — `<(...)` / `>(...)` process substitution inside double
+      quotes, which the shell does not execute there; unquoted ones were never
+      blanked.
     - INTENTIONALLY matches shell semantics for a mid-word apostrophe:
       `echo don't && git push origin main && echo won't` collapses the span
       between the two apostrophes, so the `git push` disappears from the
@@ -519,9 +708,15 @@ def strip_quoted_spans(cmd: str) -> str:
         span = match.group(0)
         return span[0] + "#" * (len(span) - 2) + span[-1]
 
-    stripped = re.sub(r"'[^']*'", _placeholder, cmd)
-    stripped = re.sub(r'"[^"]*"', _placeholder, stripped)
-    stripped = re.sub(r"`[^`]*`", _placeholder, stripped)
+    def _double_quoted(match: re.Match[str]) -> str:
+        span = match.group(0)
+        return span[0] + _blank_keeping_substitutions(span[1:-1]) + span[-1]
+
+    stripped = _blank_heredoc_bodies(cmd)
+    stripped = re.sub(r"'[^']*'", _placeholder, stripped)
+    stripped = re.sub(r'"[^"]*"', _double_quoted, stripped)
+    # No backtick pass: an unquoted backtick span is a command substitution the
+    # shell runs, and one inside single quotes is already blanked above.
     return stripped
 
 
@@ -573,103 +768,6 @@ GIT_GLOBAL_OPTS = (
     + GIT_SEP +
     r")*"
 )
-
-
-_BASE_BRANCH_CACHE: dict[str | None, str] = {}
-_BASE_BRANCH_FALLBACK = "master"
-_ORIGIN_HEAD_PREFIX = "refs/remotes/origin/"
-
-
-def default_base_branch(cwd: str | None = None) -> str:
-    """Resolve THIS repo's base branch instead of assuming one.
-
-    The harness previously hardcoded `master` throughout. That is not portable —
-    and it is not even correct for every repo that ships the harness: a repo
-    whose default is `main` has no `master` ref at all, so a hardcoded
-    `git rev-list master..HEAD` fails with `unknown revision` rather than
-    producing a wrong answer quietly.
-
-    Resolution order, most authoritative first:
-      1. `refs/remotes/origin/HEAD` — what the remote itself reports as default
-         — but only once its target is VERIFIED to exist. That ref is a
-         clone-time cache git never auto-refreshes, and `symbolic-ref` exits 0
-         on a dangling symref, so after an upstream `master`→`main` rename it
-         happily names a ref that is gone. Trusting it unverified reintroduced
-         exactly the failure described above: in a `main`-default repo it
-         returned `master`, and the caller's `git rev-list master..HEAD` then
-         died with `unknown revision`.
-      2. An existing local or remote `main`, then `master`. `main` is probed
-         first because a repo carrying BOTH is nearly always one that renamed
-         to `main` and kept `master` as a stale leftover.
-      3. `master`, preserving the harness's historical assumption for a repo
-         with no remote and no conventional branch yet — announced on stderr,
-         because this arm cannot tell "this repo genuinely uses master" apart
-         from "git is unusable and I guessed", and the sibling hooks all say so
-         when they degrade.
-
-    Cached per cwd: hook processes are short-lived, but several call sites may
-    ask within one run and this shells out to git.
-    """
-    if cwd in _BASE_BRANCH_CACHE:
-        return _BASE_BRANCH_CACHE[cwd]
-
-    def _git(args: list[str]) -> str | None:
-        try:
-            r = subprocess.run(
-                ["git", *(["-C", cwd] if cwd else []), *args],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=2,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return (r.stdout or "").strip() if r.returncode == 0 else None
-
-    resolved = None
-    head_ref = _git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
-    if head_ref and head_ref.startswith(_ORIGIN_HEAD_PREFIX):
-        # Strip the known prefix rather than `rsplit("/", 1)`: a default branch
-        # name containing its own slash (`release/main`) would otherwise lose
-        # its leading segment, and `rev-parse --verify` on the FULL `head_ref`
-        # (below) succeeds regardless — so the truncated name passed every
-        # check here and still resolved to a branch that doesn't exist.
-        candidate = head_ref[len(_ORIGIN_HEAD_PREFIX):] or None
-        # `HEAD` as the remainder means the symref points at itself or at
-        # something unusable — never a branch name.
-        if candidate and candidate != "HEAD" and _git(
-            ["rev-parse", "--verify", "--quiet", head_ref]
-        ):
-            resolved = candidate
-    if resolved is None:
-        # ONE `for-each-ref` for all four candidates, not four `rev-parse`
-        # probes. The probes were up to 4 subprocesses, which put this
-        # function's worst case at 6 spawns — and it is called while composing
-        # an ENFORCING hook's block message, so that cost lands inside the
-        # handler budget and was large enough to get the handler killed before
-        # the block was emitted. `for-each-ref` takes many patterns and prints
-        # only those that exist, answering the same question in one spawn.
-        listed = _git([
-            "for-each-ref", "--format=%(refname)",
-            "refs/heads/main", "refs/remotes/origin/main",
-            "refs/heads/master", "refs/remotes/origin/master",
-        ])
-        existing = set((listed or "").split())
-        # `main` first: a repo carrying BOTH is nearly always one that renamed
-        # to `main` and kept `master` as a stale leftover.
-        for candidate in ("main", "master"):
-            if {f"refs/heads/{candidate}", f"refs/remotes/origin/{candidate}"} & existing:
-                resolved = candidate
-                break
-
-    if resolved is None:
-        print(
-            f"[cla] warn: could not resolve this repo's base branch (no usable "
-            f"origin/HEAD, no main, no master) — falling back to "
-            f"'{_BASE_BRANCH_FALLBACK}'. A command built on it may fail with "
-            f"'unknown revision'.",
-            file=sys.stderr,
-        )
-        resolved = _BASE_BRANCH_FALLBACK
-    _BASE_BRANCH_CACHE[cwd] = resolved
-    return resolved
 
 
 def ensure_hooks_dir_importable() -> None:

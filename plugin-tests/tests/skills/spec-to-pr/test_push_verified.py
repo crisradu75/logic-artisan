@@ -19,8 +19,12 @@ _REFS = (
 )
 
 
+_SHARED_REFS = _REFS.parents[1] / "_shared" / "references"
+
+
 def _text(name: str) -> str:
-    return (_REFS / name).read_text(encoding="utf-8")
+    folder = _SHARED_REFS if name == "ship.md" else _REFS
+    return (folder / name).read_text(encoding="utf-8")
 
 
 def test_ship_pushes_in_background_and_compares_the_remote_head():

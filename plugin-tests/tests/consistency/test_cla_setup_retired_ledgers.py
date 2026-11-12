@@ -23,7 +23,7 @@ import pytest
 import log_run
 
 _REPO = Path(__file__).resolve().parents[3]
-_SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
+_SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "references" / "ledgers-and-run-notes.md"
 _BASH = shutil.which("bash")
 # A bash run is ~13 s alone on Windows; parallel workers multiply it, so 30 s flaked.
 _BASH_TIMEOUT = 120
@@ -36,7 +36,7 @@ RETIRED = ("codify-runs", "commit-provenance", "right-model-runs", "multi-pr-run
 def _script() -> str:
     text = _SKILL.read_text(encoding="utf-8")
     match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?retired ledger: [^`]*?)```", text)
-    assert match, "cla-setup/SKILL.md: no retired-ledger block found"
+    assert match, "cla-setup/references/ledgers-and-run-notes.md: no retired-ledger block found"
     return match.group(1)
 
 
@@ -60,14 +60,14 @@ def _run(root: Path) -> list[str]:
 _needs_bash = pytest.mark.skipif(_BASH is None, reason="bash is not installed")
 
 
-# requirement: repo-context / Retired ledgers on setup
+# requirement: cla-setup / Retired ledgers on setup
 def test_the_list_is_the_retired_ledgers_and_no_live_one() -> None:
     live = {name.removesuffix(".jsonl") for name in log_run.SHAPES}
     assert not live & set(_listed()), "cla-setup offers to delete a ledger log_run.py still writes"
     assert _listed() == RETIRED
 
 
-# requirement: repo-context / Retired ledgers on setup
+# requirement: cla-setup / Retired ledgers on setup
 @_needs_bash
 def test_only_the_retired_ledgers_present_are_listed_and_none_is_deleted(tmp_path: Path) -> None:
     retro = tmp_path / "cla.io" / "retro"
@@ -84,7 +84,7 @@ def test_only_the_retired_ledgers_present_are_listed_and_none_is_deleted(tmp_pat
     assert sorted(p.name for p in retro.iterdir()) == sorted(present)
 
 
-# requirement: repo-context / Retired ledgers on setup
+# requirement: cla-setup / Retired ledgers on setup
 @_needs_bash
 def test_nothing_is_listed_when_none_is_present(tmp_path: Path) -> None:
     assert _run(tmp_path) == []  # no cla.io/retro/ at all

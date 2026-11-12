@@ -2,9 +2,9 @@
 
 ## Purpose
 
-**Serves:** maintainers whose agents run commands and git pushes in a repo that installs the plugin.
+**Serves:** maintainers whose agents run commands in a repo that installs the plugin.
 
-The safety checks the plugin applies to an agent's tool calls and to git pushes in a repo that installs it.
+The safety checks the plugin applies to an agent's tool calls in a repo that installs it.
 
 ## Requirements
 
@@ -18,9 +18,9 @@ Loading the plugin SHALL turn on its guard hooks in every session, with no setti
 - **THEN** the guard hooks run on matching tool calls
 - **AND** no hook configuration warning is printed
 
-### Requirement: Unsafe commands are blocked
+### Requirement: A recursive delete through a link is blocked
 
-The guard hooks SHALL block, with the reason, a recursive force delete whose target is a symbolic link or junction, a `cd` inside a shell command, and a file write made from a linked worktree into the main clone or another worktree inside it unless `ALLOW_WORKTREE_PATH_ESCAPE=1` is set.
+The guard hooks SHALL block, with the reason, a recursive force delete whose target is a symbolic link or junction.
 
 #### Scenario: Deleting through a link
 
@@ -32,82 +32,25 @@ The guard hooks SHALL block, with the reason, a recursive force delete whose tar
 - **WHEN** an agent runs `rm -rf` on an ordinary directory
 - **THEN** the command runs
 
+### Requirement: A cd inside a shell command is blocked
+
+The guard hooks SHALL block, with the reason, a `cd` inside a shell command.
+
+#### Scenario: A command that changes directory
+
+- **WHEN** an agent runs a shell command that holds `cd`
+- **THEN** the command is blocked and the agent is told to use absolute paths
+
+### Requirement: A write from a linked worktree into the main clone is blocked
+
+The guard hooks SHALL block, with the reason, a file write made from a linked worktree into the main clone or another worktree inside it, unless `ALLOW_WORKTREE_PATH_ESCAPE=1` is set.
+
 #### Scenario: Writing back into the main clone
 
 - **WHEN** an agent working in a linked worktree writes a file at a path in the main clone
 - **THEN** the write is blocked and the agent is told why
 
-### Requirement: Destructive git commands ask first
+#### Scenario: A deliberate escape
 
-The guard hooks SHALL ask the user before a force-push, a hard reset, a forced branch delete, a pull request merge, or a checkout, restore or clean that would discard uncommitted work, and SHALL drop only the merge prompt when `ALLOW_PR_MERGE=1` is set and every one of these prompts when `ALLOW_DESTRUCTIVE_GIT=1` is set.
-
-#### Scenario: A force-push
-
-- **WHEN** an agent runs `git push --force`
-- **THEN** the user is asked before it runs
-
-#### Scenario: A checkout on a clean tree
-
-- **WHEN** an agent runs `git checkout <path>` with no uncommitted changes to lose
-- **THEN** no prompt is shown
-
-### Requirement: Risky actions warn
-
-The guard hooks SHALL warn, without blocking, when a write replaces a tracked file with a much shorter one, `gh pr merge --delete-branch` would delete a branch that other open pull requests are based on, a commit may pick up a stray scratch file in the repo root, a Python or shell comment carries a date, or a heredoc holds an escape the shell would change.
-
-#### Scenario: A file is rewritten much shorter
-
-- **WHEN** an agent writes a tracked file with far less content than it had
-- **THEN** the write goes through with a warning asking what was dropped
-
-#### Scenario: Merging the base of a stacked pull request
-
-- **WHEN** an agent runs `gh pr merge --delete-branch` on a pull request whose branch another open pull request is based on
-- **THEN** the merge goes ahead with a warning that the other pull request will be closed
-
-### Requirement: Direct pushes to main are refused
-
-The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set.
-
-#### Scenario: Pushing to main
-
-- **WHEN** a push from a clone with the hook installed would update the remote's `main`
-- **THEN** git refuses the push and suggests a branch and a pull request
-
-#### Scenario: An emergency override
-
-- **WHEN** the push is run with `ALLOW_PUSH_TO_MAIN=1`
-- **THEN** the push goes through
-
-### Requirement: Copilot CLI enforces session guards
-
-Copilot CLI sessions with CLA installed SHALL run applicable CLA guard checks around matching tool calls and apply their block, confirmation, and warning outcomes through Copilot's hook interface.
-
-#### Scenario: An unsafe tool call is blocked
-
-- **WHEN** a tool call matches a CLA blocking guard
-- **THEN** Copilot denies the call before it runs and gives the agent the guard's reason
-
-#### Scenario: A destructive action requires confirmation
-
-- **WHEN** a tool call matches a CLA confirmation guard in an interactive session
-- **THEN** Copilot requests user confirmation before the call runs
-
-#### Scenario: A guarded action produces a warning
-
-- **WHEN** a tool call matches a CLA warning guard
-- **THEN** the action proceeds and the warning is made available to the agent
-
-### Requirement: Copilot hook failures have an explicit policy
-
-Copilot CLI guard hooks SHALL deny a matched tool call when a guard fails to run, and documentation SHALL disclose that Copilot CLI hook timeouts fail open.
-
-#### Scenario: A guard hook exits with an error
-
-- **WHEN** a required guard cannot load or crashes while checking a tool call
-- **THEN** Copilot denies the call rather than treating the check as approval
-
-#### Scenario: A guard hook times out
-
-- **WHEN** Copilot CLI times out a pre-tool guard hook
-- **THEN** it continues with its normal permission flow and the documented limitation makes clear that the guard did not enforce the call
+- **WHEN** `ALLOW_WORKTREE_PATH_ESCAPE=1` is set
+- **THEN** the same write goes through

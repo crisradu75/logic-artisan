@@ -86,7 +86,7 @@ def _run(mod, file_path, cwd_payload=None, process_cwd=None, monkeypatch=None):
 # --------------------------------------------------------------------------- #
 
 
-# requirement: guard-hooks / Unsafe commands are blocked
+# requirement: guard-hooks / A write from a linked worktree into the main clone is blocked
 def test_blocks_an_escape_using_the_payload_cwd_not_the_process_cwd(
     worktree_pair, monkeypatch, capsys
 ):
@@ -180,7 +180,8 @@ def test_not_a_repo_at_all_fails_open(tmp_path, monkeypatch):
     assert rc == 0
 
 
-def test_override_env_var_allows_a_deliberate_escape(worktree_pair, monkeypatch):
+# requirement: guard-hooks / A write from a linked worktree into the main clone is blocked
+def test_override_env_var_allows_a_deliberate_escape(worktree_pair, monkeypatch, capsys):
     primary, linked = worktree_pair
     monkeypatch.setenv("ALLOW_WORKTREE_PATH_ESCAPE", "1")
     rc = _run(
@@ -188,6 +189,23 @@ def test_override_env_var_allows_a_deliberate_escape(worktree_pair, monkeypatch)
         monkeypatch=monkeypatch,
     )
     assert rc == 0
+    # The override is announced, not silent: a switch exported long ago must not
+    # disarm the guard without a word.
+    err = capsys.readouterr().err
+    assert "DISABLED by ALLOW_WORKTREE_PATH_ESCAPE=1" in err
+
+
+def test_override_env_var_stays_quiet_when_nothing_would_have_blocked(
+    worktree_pair, monkeypatch, capsys
+):
+    _primary, linked = worktree_pair
+    monkeypatch.setenv("ALLOW_WORKTREE_PATH_ESCAPE", "1")
+    rc = _run(
+        hook, linked / "seed.txt", cwd_payload=linked, process_cwd=linked,
+        monkeypatch=monkeypatch,
+    )
+    assert rc == 0
+    assert capsys.readouterr().err == ""
 
 
 def test_a_payload_without_a_file_path_is_ignored(monkeypatch):

@@ -146,8 +146,11 @@ def _is_inside_by_inode(path: str, root: str) -> bool:
 
 
 def main() -> int:
-    if os.environ.get("ALLOW_WORKTREE_PATH_ESCAPE") == "1":
-        return 0
+    # The override still runs the whole check: it only turns the block into an
+    # announced allow, and only when there was a block to turn (the same shape
+    # as ALLOW_DESTRUCTIVE_GIT in ask-destructive-git.py), so a switch exported
+    # weeks ago cannot disarm this guard without a word.
+    override = os.environ.get("ALLOW_WORKTREE_PATH_ESCAPE") == "1"
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
@@ -208,6 +211,16 @@ def main() -> int:
         # repo entirely. Different, legitimate pattern; not this bug.
         return 0
     if _is_inside(target, worktree_root):
+        return 0
+
+    if override:
+        print(
+            "[block-worktree-path-escape] note: this write would normally be "
+            f"blocked (it targets '{target}', outside worktree '{worktree_root}'), "
+            "but the check is DISABLED by ALLOW_WORKTREE_PATH_ESCAPE=1. Unset it "
+            "to re-enable. (hook: block-worktree-path-escape.py)",
+            file=sys.stderr,
+        )
         return 0
 
     print(

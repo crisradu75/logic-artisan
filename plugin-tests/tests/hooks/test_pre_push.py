@@ -54,7 +54,7 @@ def _line(remote_ref: str, local_sha: str = _SHA) -> str:
     return f"refs/heads/x {local_sha} {remote_ref} {_ZERO}\n"
 
 
-# requirement: guard-hooks / Direct pushes to main are refused
+# requirement: git-guards / Direct pushes to main are refused
 @pytest.mark.parametrize("branch", ["main", "master"])
 def test_refuses_a_push_to_the_default_branch(branch):
     r = _run(_line(f"refs/heads/{branch}"))
@@ -92,7 +92,7 @@ def test_allows_a_multi_ref_push_of_only_feature_branches():
     assert r.returncode == 0
 
 
-# requirement: guard-hooks / Direct pushes to main are refused
+# requirement: git-guards / Direct pushes to main are refused
 def test_the_documented_override_works():
     r = _run(_line("refs/heads/main"), {"ALLOW_PUSH_TO_MAIN": "1"})
     assert r.returncode == 0
@@ -117,7 +117,7 @@ def _git(cwd, *args):
     )
 
 
-# requirement: guard-hooks / Direct pushes to main are refused
+# requirement: git-guards / A push to the remote's own default branch is refused
 def test_refuses_a_push_to_the_remotes_own_default_branch(tmp_path):
     """A repo whose default branch is not main or master is guarded too: the hook reads the
     branch `refs/remotes/<remote>/HEAD` names, for the remote git passes as $1."""
@@ -137,7 +137,7 @@ def test_refuses_a_push_to_the_remotes_own_default_branch(tmp_path):
     assert run("refs/heads/main", other, other).returncode == 1
 
 
-# requirement: guard-hooks / Direct pushes to main are refused
+# requirement: git-guards / A push to the remote's own default branch is refused
 def test_a_push_to_a_remotes_url_gets_that_remotes_default_branch_check(tmp_path):
     url = "https://example.invalid/repo.git"
     _git(tmp_path, "init", "-q")

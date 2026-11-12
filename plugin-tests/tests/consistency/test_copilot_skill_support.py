@@ -16,14 +16,14 @@ _UNSUPPORTED_SKILLS = (
 )
 
 
-# requirement: plugin-distribution / Documenting Copilot CLI validation status
+# requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_claude_runtime_dependent_skills_are_marked_unsupported_in_copilot():
     for skill in _UNSUPPORTED_SKILLS:
         contents = (_PLUGIN / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
         assert "**Copilot CLI support: unsupported.**" in contents, skill
 
 
-# requirement: plugin-distribution / Documenting Copilot CLI validation status
+# requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_copilot_response_style_documents_runtime_specific_limits():
     contents = (_PLUGIN / "output-styles" / "COPILOT.md").read_text(encoding="utf-8")
     assert "AskUserQuestion" in contents
@@ -31,11 +31,14 @@ def test_copilot_response_style_documents_runtime_specific_limits():
     assert "nested `Skill(cla:...)`" in contents
 
 
-# requirement: plugin-distribution / Documenting Copilot CLI validation status
+# requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_copilot_cli_guide_documents_updates_troubleshooting_and_style_location():
-    readme = (_PLUGIN.parents[2] / "README.md").read_text(encoding="utf-8")
-    assert "copilot plugin marketplace update cris-logic-artisan" in readme
-    assert "copilot plugin update cla@cris-logic-artisan" in readme
-    assert "copilot instruction list" in readme
-    assert ".github/copilot-instructions.md" in readme
-    assert ".claude/plugins/cla/output-styles/COPILOT.md" in readme
+    root_readme = (_PLUGIN.parents[2] / "README.md").read_text(encoding="utf-8")
+    plugin_readme = (_PLUGIN / "README.md").read_text(encoding="utf-8")
+    assert ".claude/plugins/cla/README.md" in root_readme
+    assert "copilot plugin marketplace update cris-logic-artisan" in plugin_readme
+    assert "copilot plugin update cla@cris-logic-artisan" in plugin_readme
+    assert "copilot instruction list" in plugin_readme
+    assert ".github/copilot-instructions.md" in plugin_readme
+    assert "output-styles/COPILOT.md" in plugin_readme
+    assert "After updating the plugin, refresh any copied CLA guidance" in plugin_readme

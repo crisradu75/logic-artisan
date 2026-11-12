@@ -3,11 +3,11 @@
 ## 1. Copilot hook integration
 
 - [x] 1.1 Verify the Copilot plugin-hook root and platform launch contract, then add Copilot-specific pre-tool and post-tool wiring for every applicable CLA guard; wiring tests prove scripts resolve and Claude hook configuration is unchanged.
-- [x] 1.2 Add an adapter for Copilot hook payloads and native decision output; tests marked `requirement: guard-hooks / Copilot CLI enforces session guards` cover allow, deny with reason, interactive ask, and non-blocking warning outcomes.
+- [x] 1.2 Add an adapter for Copilot hook payloads and native decision output; tests marked `requirement: copilot-cli / Copilot CLI enforces session guards` cover allow, deny with reason, interactive ask, and non-blocking warning outcomes.
 
 ## 2. Failure handling and validation
 
-- [x] 2.1 Make malformed input, missing guard code, and dispatcher failures deny the affected call; tests marked `requirement: guard-hooks / Copilot hook failures have an explicit policy` prove failure cannot become approval.
+- [x] 2.1 Make malformed input, missing guard code, and dispatcher failures deny the affected call; tests marked `requirement: copilot-cli / Copilot hook failures have an explicit policy` prove failure cannot become approval.
 - [x] 2.2 Test the configured timeout budget and autopilot ask denial; document Copilot's fail-open timeout behavior and record the live timeout probe result; run live allow, block, confirmation, and warning probes without editing project files.
 - [x] 2.3 Test that missing Python and a missing interpreter probe make the launcher fail closed.
 

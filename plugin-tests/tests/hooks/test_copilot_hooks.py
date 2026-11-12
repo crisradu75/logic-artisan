@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import os
@@ -19,7 +20,7 @@ def _config() -> dict:
     return json.loads(_COPILOT_HOOKS.read_text(encoding="utf-8"))
 
 
-# requirement: guard-hooks / Copilot CLI enforces session guards
+# requirement: copilot-cli / Copilot CLI enforces session guards
 def test_copilot_plugin_wires_matching_pre_and_post_tool_hooks():
     config = _config()
     assert config["version"] == 1
@@ -73,7 +74,7 @@ def test_claude_hook_wiring_remains_separate():
                for hook in group["hooks"])
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def test_copilot_timeout_covers_the_dispatcher_budget():
     spec = importlib.util.spec_from_file_location(
         "copilot_wiring_dispatch_lib",
@@ -96,6 +97,7 @@ def _run_hook(
     payload: dict | str,
     cwd: Path,
     plugin_root: Path = _PLUGIN,
+    extra_env: dict | None = None,
 ) -> subprocess.CompletedProcess:
     env = {
         **os.environ,
@@ -107,6 +109,7 @@ def _run_hook(
         "ALLOW_GIT_IDENTITY_MISMATCH": "",
         "CLA_EXPECTED_GIT_EMAIL": "",
         "CLAUDE_PROJECT_DIR": str(cwd),
+        **(extra_env or {}),
     }
     return subprocess.run(
         [sys.executable, str(script)],
@@ -131,7 +134,7 @@ def _pre_event(tool_name: str, tool_input: dict, cwd: Path) -> dict:
     }
 
 
-# requirement: guard-hooks / Copilot CLI enforces session guards
+# requirement: copilot-cli / Copilot CLI enforces session guards
 def test_copilot_pretooluse_leaves_a_clean_call_to_normal_permission_flow(tmp_path):
     adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
     result = _run_hook(
@@ -236,7 +239,7 @@ def _copy_adapter_tree(tmp_path: Path) -> tuple[Path, Path]:
     return root, hooks / "copilot-pretooluse.py"
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def test_copilot_pretooluse_denies_malformed_input(tmp_path):
     adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
     result = _run_hook(adapter, "{", tmp_path)
@@ -377,7 +380,7 @@ def _denied(result, fragment: str) -> None:
     assert fragment in decision["permissionDecisionReason"], decision
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def test_copilot_bash_launcher_denies_when_python_is_unavailable(tmp_path):
     root = tmp_path / "plugin"
     hooks = root / "hooks"
@@ -409,7 +412,7 @@ def test_copilot_bash_launcher_denies_when_python_is_unavailable(tmp_path):
     assert "not a working Python" in result.stderr
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def test_copilot_bash_launcher_denies_when_the_interpreter_probe_is_missing(tmp_path):
     root = tmp_path / "plugin"
     hooks = root / "hooks"
@@ -431,7 +434,7 @@ def test_copilot_bash_launcher_denies_when_the_interpreter_probe_is_missing(tmp_
     assert "guard hooks are NOT running" in result.stderr
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def test_copilot_pretooluse_denies_when_the_plugin_root_is_missing(tmp_path):
     adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
     result = _run_no_root(adapter, _pre_event("Bash", {"command": "echo safe"}, tmp_path), tmp_path)
@@ -580,7 +583,7 @@ def test_the_adapter_denies_each_dispatcher_failure_ask_end_to_end(tmp_path):
     _denied(_run_hook(adapter, event, tmp_path, root), "could not run")
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def _post(tmp_path: Path, event: dict | str, root: Path | None = None, adapter: Path | None = None):
     if adapter is None:
         adapter, root = _PLUGIN / "hooks" / "copilot-posttooluse.py", _PLUGIN
@@ -661,9 +664,11 @@ def _launcher_commands(key: str) -> list[str]:
             for hook in group["hooks"]]
 
 
-def _run_launcher(argv: list[str], command: str, event: dict, cwd: Path, root: str | None):
+def _run_launcher(argv: list[str], command: str, event: dict, cwd: Path, root: str | None,
+                  extra_env: dict | None = None):
     env = {k: v for k, v in os.environ.items() if k not in _ROOT_VARS}
     env.update({"ALLOW_DESTRUCTIVE_GIT": "", "CLAUDE_PROJECT_DIR": str(cwd)})
+    env.update(extra_env or {})
     if root is not None:
         env["COPILOT_PLUGIN_ROOT"] = root
     return subprocess.run(
@@ -672,10 +677,38 @@ def _run_launcher(argv: list[str], command: str, event: dict, cwd: Path, root: s
     )
 
 
+@functools.cache
+def _find_bash() -> str | None:
+    """Git Bash first, else the first `bash` on PATH that can read the plugin by its `C:/`-style path.
+
+    On Windows `shutil.which("bash")` can resolve to WSL's `System32\\bash.exe`, which cannot read
+    `C:/` paths, so the launcher tests would fail or pass by which one wins on PATH."""
+    candidates: list[str] = []
+    git = shutil.which("git")
+    if git:
+        for parent in Path(git).resolve().parents:
+            for rel in (("usr", "bin", "bash.exe"), ("bin", "bash.exe")):
+                if parent.joinpath(*rel).is_file():
+                    candidates.append(str(parent.joinpath(*rel)))
+    found = shutil.which("bash")
+    if found:
+        candidates.append(found)
+    for candidate in candidates:
+        try:
+            probe = subprocess.run([candidate, "-c", f'test -r "{_PLUGIN.resolve().as_posix()}"'],
+                                   capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if probe.returncode == 0:
+            return candidate
+    return None
+
+
 def _shells() -> list[tuple[str, list[str], str]]:
     found = []
-    if shutil.which("bash"):
-        found.append(("bash", [shutil.which("bash"), "-c"], "bash"))
+    bash = _find_bash()
+    if bash:
+        found.append(("bash", [bash, "-c"], "bash"))
     ps = shutil.which("pwsh") or shutil.which("powershell")
     if ps:
         found.append(("powershell", [ps, "-NoProfile", "-NonInteractive", "-Command"], "powershell"))
@@ -728,3 +761,199 @@ def test_powershell_probe_finds_python_and_honours_the_override(tmp_path):
                            env=env, cwd=tmp_path, timeout=60)
     assert missing.stdout.split("|")[0] == ""
     assert "CLA_PYTHON=cla-no-such-python is not a working Python" in missing.stderr
+
+
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
+def test_bash_launcher_refuses_loudly_when_cla_python_is_unusable(tmp_path):
+    """Missing interpreter, bash probe: an unusable CLA_PYTHON must stop the
+    launcher non-zero with a message, not fall through to another interpreter
+    (which would run the guards) and not allow the call silently."""
+    bash = _find_bash()
+    if not bash:
+        import pytest
+        pytest.skip("no usable bash is available")
+    command = _config()["hooks"]["PreToolUse"][0]["hooks"][0]["bash"]
+    clean = _pre_event("Bash", {"command": "git status --short"}, tmp_path)
+    root = Path(_PLUGIN.resolve()).as_posix()
+    result = _run_launcher(
+        [bash, "-c"], command, clean, tmp_path, root,
+        extra_env={"CLA_PYTHON": "cla-no-such-python", "CLA_PROBE_NO_CACHE": "1"})
+    assert result.returncode != 0, result.stdout
+    assert "CLA_PYTHON=cla-no-such-python is not a working Python" in result.stderr
+    assert "guard hooks are NOT running" in result.stderr
+    assert result.stdout.strip() == ""
+
+
+# ---------------------------------------------------------------------------
+# Every Bash and Edit/Write guard, through the Copilot adapter: one call it must
+# leave alone and one it must stop or flag. Everything is built under tmp_path.
+# ---------------------------------------------------------------------------
+
+_ADAPTER = _PLUGIN / "hooks" / "copilot-pretooluse.py"
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+def _make_repo(path: Path) -> Path:
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    _git(path, "config", "user.email", "test@example.com")
+    _git(path, "config", "user.name", "Test")
+    (path / "README.md").write_text("hello\n", encoding="utf-8")
+    _git(path, "add", "README.md")
+    _git(path, "-c", "commit.gpgsign=false", "commit", "-qm", "baseline")
+    return path
+
+
+def _bash(tmp_path: Path, command: str, cwd: Path | None = None, extra_env: dict | None = None):
+    cwd = cwd or tmp_path
+    return _run_hook(_ADAPTER, _pre_event("Bash", {"command": command}, cwd), cwd,
+                     extra_env=extra_env)
+
+
+def _silent(result) -> None:
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "", result.stdout
+
+
+def _warned(result, fragment: str) -> None:
+    assert result.returncode == 0, result.stderr
+    decision = json.loads(result.stdout)
+    assert "permissionDecision" not in decision, decision
+    assert fragment in decision["additionalContext"], decision
+
+
+def _make_link(tmp_path: Path) -> Path:
+    """A symlink (or, on Windows without symlink rights, a junction) to a real directory; skips if neither works."""
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    try:
+        os.symlink(real, link, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        # Windows without symlink rights: an NTFS junction is the same hazard.
+        made = os.name == "nt" and subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(real)],
+            capture_output=True).returncode == 0
+        if not made:
+            import pytest
+            pytest.skip("cannot create a symlink or junction on this machine")
+    return link
+
+
+# requirement: copilot-cli / Copilot CLI enforces session guards
+def test_copilot_pretooluse_blocks_a_recursive_delete_of_a_symlink(tmp_path):
+    link = _make_link(tmp_path)
+    _denied(_bash(tmp_path, f"rm -rf {link.as_posix()}/"), "block-unsafe-recursive-delete.py")
+
+
+# requirement: copilot-cli / Copilot CLI enforces session guards
+def test_copilot_pretooluse_blocks_a_powershell_recursive_delete_of_a_symlink(tmp_path):
+    link = _make_link(tmp_path)
+    event = _pre_event("PowerShell", {"command": f"Remove-Item -Recurse -Force '{link}'"}, tmp_path)
+    _denied(_run_hook(_ADAPTER, event, tmp_path), "block-unsafe-recursive-delete.py")
+
+
+def test_copilot_pretooluse_allows_a_recursive_delete_of_a_real_directory(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    _silent(_bash(tmp_path, f"rm -rf {real.as_posix()}"))
+
+
+_FAKE_GH = '''\
+import shutil, subprocess
+_real_run, _real_which = subprocess.run, shutil.which
+def _which(name, *a, **k):
+    return "gh" if name == "gh" else _real_which(name, *a, **k)
+def _run(args, *a, **k):
+    if isinstance(args, list) and args and args[0] == "gh":
+        if args[1:3] == ["pr", "view"]:
+            out = "feature/base\\n"
+        else:
+            out = '[{"number": 9, "title": "child"}]'
+        return subprocess.CompletedProcess(args, 0, out, "")
+    return _real_run(args, *a, **k)
+shutil.which, subprocess.run = _which, _run
+'''
+
+
+def test_copilot_pretooluse_warns_when_a_merge_would_orphan_a_stacked_pr(tmp_path):
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "sitecustomize.py").write_text(_FAKE_GH, encoding="utf-8")
+    # A PR merge always draws the destructive-git confirmation; ALLOW_PR_MERGE
+    # lets the advisory warning be seen on its own.
+    env = {"PYTHONPATH": str(shim), "ALLOW_PR_MERGE": "1"}
+    result = _bash(tmp_path, "gh pr merge 7 --delete-branch", extra_env=env)
+    _warned(result, "warn-stacked-pr-merge")
+    assert "#9" in json.loads(result.stdout)["additionalContext"]
+
+
+def test_copilot_pretooluse_stays_quiet_when_the_branch_is_kept(tmp_path):
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "sitecustomize.py").write_text(_FAKE_GH, encoding="utf-8")
+    # Same fake gh with a child PR present; only the missing --delete-branch differs.
+    result = _bash(tmp_path, "gh pr merge 7 --merge",
+                   extra_env={"PYTHONPATH": str(shim), "ALLOW_PR_MERGE": "1"})
+    assert result.returncode == 0, result.stderr
+    # The only output is the merge-confirmation-disabled note from another guard.
+    assert "warn-stacked-pr-merge" not in result.stdout, result.stdout
+    # The adapter exits 0 even when it denies, so rule a decision out explicitly.
+    assert "permissionDecision" not in json.loads(result.stdout), result.stdout
+
+
+def test_copilot_pretooluse_warns_about_a_stray_scratch_file_before_git_add(tmp_path):
+    repo = _make_repo(tmp_path / "repo")
+    (repo / "AppData_dump.txt").write_text("junk\n", encoding="utf-8")
+    _warned(_bash(tmp_path, "git add .", cwd=repo), "AppData_dump.txt")
+
+
+def test_copilot_pretooluse_allows_git_add_without_a_stray_file(tmp_path):
+    repo = _make_repo(tmp_path / "repo")
+    (repo / "notes.md").write_text("real work\n", encoding="utf-8")
+    _silent(_bash(tmp_path, "git add .", cwd=repo))
+
+
+def test_copilot_pretooluse_warns_when_a_heredoc_would_eat_an_escape(tmp_path):
+    command = "python3 - <<'PY'\ns = \"anchor\\nnext\"\nprint(s)\nPY"
+    _warned(_bash(tmp_path, command), "warn-heredoc-escape-mangling")
+
+
+def test_copilot_pretooluse_allows_a_heredoc_without_escapes(tmp_path):
+    _silent(_bash(tmp_path, "python3 - <<'PY'\ns = \"anchor next\"\nprint(s)\nPY"))
+
+
+def _linked_worktree(tmp_path: Path) -> tuple[Path, Path]:
+    primary = _make_repo(tmp_path / "primary")
+    linked = tmp_path / "linked"
+    _git(primary, "worktree", "add", "-q", str(linked), "-b", "side")
+    return primary, linked
+
+
+def _edit(cwd: Path, target: Path, extra_env: dict | None = None):
+    return _run_hook(
+        _ADAPTER,
+        _pre_event("Edit", {"file_path": str(target), "new_string": "x = 1\n"}, cwd),
+        cwd, extra_env=extra_env)
+
+
+def test_copilot_pretooluse_denies_an_edit_that_escapes_the_linked_worktree(tmp_path):
+    primary, linked = _linked_worktree(tmp_path)
+    _denied(_edit(linked, primary / "README.md"), "block-worktree-path-escape.py")
+
+
+def test_copilot_pretooluse_allows_an_edit_inside_the_linked_worktree(tmp_path):
+    _, linked = _linked_worktree(tmp_path)
+    _silent(_edit(linked, linked / "README.md"))
+
+
+def test_copilot_pretooluse_allows_a_clean_edit_with_no_dates(tmp_path):
+    result = _run_hook(
+        _ADAPTER,
+        _pre_event("Edit", {"file_path": str(tmp_path / "source.py"),
+                            "new_string": "# fixed the parser\n"}, tmp_path),
+        tmp_path)
+    _silent(result)

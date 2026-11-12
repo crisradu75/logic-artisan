@@ -18,7 +18,7 @@ _ROUTING = _SKILLS / "_shared" / "references" / "model-routing.md"
 _ECONOMY = _SKILLS / "_shared" / "references" / "orchestration-economy.md"
 _ECONOMY_RULES_FILE = _SKILLS / "_shared" / "references" / "economy-rules-file.md"
 _REVISE = _SKILLS / "spec-to-pr" / "references" / "revise.md"
-_SHIP = _SKILLS / "spec-to-pr" / "references" / "ship.md"
+_SHIP = _SKILLS / "_shared" / "references" / "ship.md"
 _S2P = _SKILLS / "spec-to-pr" / "SKILL.md"
 _LITE_PR = _SKILLS / "lite-pr" / "SKILL.md"
 _HANDOFF = _SKILLS / "spec-to-pr" / "references" / "handoff.md"
@@ -70,7 +70,7 @@ def test_a_later_round_never_lowers_the_risk_level() -> None:
     assert "never uses a lower level than round 1" in _read(_REVISE)
     section = _read(_ROUTING).split(f"## {_SECTION}", 1)[1].split("\n## ", 1)[0]
     assert "at round 1's final level, never lower" in " ".join(section.split())
-    selection = _between(_read(_REVISE), "## Round 1 — agent selection + routing", "## Round 1 — Workflow fan-out")
+    selection = _between(_read(_REVISE), "## Round 1 — agent selection + routing", "## Round 1 — parallel fan-out")
     assert "rewrite the PR body's `Risk:` clause to the raised level" in selection
 
 
@@ -166,7 +166,7 @@ def test_a_missing_risk_line_means_high_risk() -> None:
     Revise and lite-pr cite it by name, so neither can fall back to the low-risk path."""
     section = _read(_ROUTING).split(f"## {_SECTION}", 1)[1].split("\n## ", 1)[0]
     assert _MISSING_LINE_SENTENCE in " ".join(section.split())
-    selection = _between(_read(_REVISE), "## Round 1 — agent selection + routing", "## Round 1 — Workflow fan-out")
+    selection = _between(_read(_REVISE), "## Round 1 — agent selection + routing", "## Round 1 — parallel fan-out")
     assert _MISSING_LINE_RULE in selection and "Handoff Issue" in selection
     assert _MISSING_LINE_RULE in _read(_LITE_PR)
 
@@ -190,7 +190,7 @@ def test_other_skills_cite_the_table_and_carry_no_row() -> None:
     citing = {
         "spec-to-pr/SKILL.md": _S2P,
         "spec-to-pr/references/revise.md": _REVISE,
-        "spec-to-pr/references/ship.md": _SHIP,
+        "_shared/references/ship.md": _SHIP,
         "lite-pr/SKILL.md": _LITE_PR,
         "multi-lite/SKILL.md": _CHAINS["multi-lite"],
         "multi-pr/SKILL.md": _CHAINS["multi-pr"],
@@ -211,7 +211,7 @@ def test_other_skills_cite_the_table_and_carry_no_row() -> None:
     }.items():
         assert not _TABLE_ROW.search(_read(path)), f"{name} carries a sizing-table row of its own"
     assert "plugin-dev:skill-reviewer" in _read(_LITE_PR), "lite-pr lost its skill-reviewer trigger"
-    selection = _between(_read(_REVISE), "## Round 1 — agent selection + routing", "## Round 1 — Workflow fan-out")
+    selection = _between(_read(_REVISE), "## Round 1 — agent selection + routing", "## Round 1 — parallel fan-out")
     assert _SECTION in selection, "revise.md round 1 does not dispatch per the sizing section"
     assert "Risk:" in selection, "revise.md round 1 does not read the PR-body Risk line"
 
@@ -225,7 +225,7 @@ def test_the_row_scanner_is_not_vacuous() -> None:
     assert _OLD_ROUND_2.search("Round 2 runs whenever round 1 committed fixes")
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 def test_the_orchestration_rules_live_once_and_all_three_chains_cite_them() -> None:
     assert _ECONOMY.is_file() and _ECONOMY_RULES_FILE.is_file()
     economy = _read(_ECONOMY)

@@ -20,7 +20,7 @@ _SITES = {
     "spec-to-pr Test": _SKILLS / "spec-to-pr" / "SKILL.md",
     "multi-pr change loop": _SKILLS / "multi-pr" / "references" / "change-loop.md",
     "chain-merge": _SKILLS / "_shared" / "references" / "chain-merge.md",
-    "cla-setup": _SKILLS / "cla-setup" / "SKILL.md",
+    "cla-setup": _SKILLS / "cla-setup" / "references" / "facts-file.md",
 }
 
 

@@ -51,7 +51,7 @@ def _copilot_agents() -> dict[str, str]:
             for p in sorted(_COPILOT.glob("*"))}
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_every_claude_agent_has_a_copilot_copy_and_no_copy_is_orphaned():
     claude, copilot = set(_claude_agents()), set(_copilot_agents())
     assert claude, "no Claude agents found; the test would pass on nothing"
@@ -68,7 +68,7 @@ def test_every_claude_agent_has_a_copilot_copy_and_no_copy_is_orphaned():
     )
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_each_copilot_copy_has_the_same_instructions_and_description_as_its_claude_agent():
     """Read independently of the generator, so a bug in `render` cannot hide a drift."""
     copilot = _copilot_agents()
@@ -83,7 +83,7 @@ def test_each_copilot_copy_has_the_same_instructions_and_description_as_its_clau
         assert p_fields["description"] == c_fields["description"], f"{name}: description differs"
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_each_copilot_copy_is_exactly_what_the_generator_produces():
     copilot = _copilot_agents()
     for filename, expected in sync.expected_copies().items():
@@ -94,7 +94,7 @@ def test_each_copilot_copy_is_exactly_what_the_generator_produces():
         )
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_a_copilot_copy_grants_only_the_read_only_tools_its_claude_agent_has():
     for name, text in _copilot_agents().items():
         fields, _ = _parts(text)
@@ -117,7 +117,7 @@ def test_a_copilot_copy_grants_only_the_read_only_tools_its_claude_agent_has():
         )
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Copilot helper-agent profiles inherit the session model
 def test_each_copilot_agent_inherits_the_session_model():
     for name, text in _claude_agents().items():
         alias = _parts(text)[0]["model"]
@@ -198,15 +198,26 @@ def test_the_generator_runs_when_the_copilot_directory_does_not_exist(monkeypatc
 
 
 def test_the_install_docs_distinguish_copilot_guard_support_and_limits():
-    """Document Copilot hook support and name the release that first carries it."""
+    """The plugin README is the one copy of the Copilot hook caveats; the other docs link to it."""
     repo = _PLUGIN_ROOT.parents[2]
-    for doc in ("README.md", "DEVELOPER-GUIDE.md", ".claude/plugins/cla/README.md"):
-        text = " ".join((repo / doc).read_text(encoding="utf-8").split())
-        assert "PreToolUse" in text and "PostToolUse" in text, f"{doc} must describe Copilot hook coverage"
-        assert "fail-open" in text, f"{doc} must disclose timeout behavior"
-        assert "timeout probe" in text, f"{doc} must report live timeout validation"
-        assert "pre-push" in text, f"{doc} must distinguish the Git push guard"
-        assert "first ships in `cla--v2.3.0`" in text, f"{doc} must say which release first carries the hooks"
+    doc = ".claude/plugins/cla/README.md"
+    text = " ".join((repo / doc).read_text(encoding="utf-8").split())
+    assert "PreToolUse" in text and "PostToolUse" in text, f"{doc} must describe Copilot hook coverage"
+    assert "fail-open" in text, f"{doc} must disclose timeout behavior"
+    assert "timeout probe confirmed" in text, f"{doc} must report live timeout validation"
+    assert "pre-push" in text, f"{doc} must distinguish the Git push guard"
+    assert "first ships in `cla--v2.3.0`" in text, f"{doc} must say which release first carries the hooks"
+    assert "After updating the plugin, refresh any copied CLA guidance" in text
+    assert "does not provide those Claude-specific interfaces or expand that placeholder" in text
+    # GitHub's slug for this heading is the anchor the other docs link to; the heading must be unique.
+    headings = [ln for ln in (repo / doc).read_text(encoding="utf-8").splitlines()
+                if ln.strip() == "### Copilot CLI hook caveats"]
+    assert len(headings) == 1, f"{doc} must hold the caveats heading exactly once, found {len(headings)}"
+    for other in ("README.md", "DEVELOPER-GUIDE.md"):
+        linked = (repo / other).read_text(encoding="utf-8")
+        assert "(.claude/plugins/cla/README.md#copilot-cli-hook-caveats)" in linked, (
+            f"{other} must link to the caveats in {doc}"
+        )
     # Whitespace-joined, since the prose wraps lines. The install guide names the plugin profiles
     # and documents model inheritance.
     readme = " ".join((repo / "README.md").read_text(encoding="utf-8").split())
@@ -215,16 +226,16 @@ def test_the_install_docs_distinguish_copilot_guard_support_and_limits():
     assert "timeoutSec: 1" in readme and "COPILOT_TIMEOUT_PROBE" in readme
 
 
-# requirement: plugin-distribution / Documenting Copilot CLI validation status
+# requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_the_install_guide_names_claude_only_skill_tool_instructions():
     repo = _PLUGIN_ROOT.parents[2]
-    readme = " ".join((repo / "README.md").read_text(encoding="utf-8").split())
+    readme = " ".join((repo / ".claude/plugins/cla/README.md").read_text(encoding="utf-8").split())
     assert "AskUserQuestion" in readme
     assert "CLAUDE_PLUGIN_ROOT" in readme
     assert "Agent" in readme
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_the_claude_install_does_not_load_the_copilot_copies():
     """Claude Code discovers agents in `agents/` only; the copies must never sit there, and the
     Claude manifest must not point at the Copilot directory."""

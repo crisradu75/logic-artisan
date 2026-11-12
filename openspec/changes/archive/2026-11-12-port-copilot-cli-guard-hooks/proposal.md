@@ -27,8 +27,7 @@ None.
 
 ### Modified Capabilities
 
-- `guard-hooks`: specify that applicable CLA guard behavior is available in Copilot CLI sessions as well as Claude Code sessions.
-- `plugin-distribution`: specify Copilot session-model inheritance and the Copilot CLI compatibility, instruction, and support boundaries.
+- `copilot-cli`: specify Copilot helper-agent model inheritance and the Copilot CLI compatibility, instruction, and support boundaries.
 
 ## Impact
 

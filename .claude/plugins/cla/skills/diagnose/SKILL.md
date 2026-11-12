@@ -164,7 +164,7 @@ A non-zero hit count is a halt, not a warning. A leaked debug log ships noise
 into production output and reads as deliberate to the next person.
 
 **The tag pattern now lives in two files, and a rename must touch both.** This
-skill is one; `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/ship.md` §2a
+skill is one; `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/ship.md` §2a
 is the other, where the same grep runs at the commit choke point so a tag leaked
 by an *interrupted* run is still caught. Changing the tag here without changing
 it there leaves the Ship scan searching for a string nothing writes — it passes,

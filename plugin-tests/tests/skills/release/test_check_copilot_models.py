@@ -28,14 +28,14 @@ def _seed(monkeypatch, tmp_path: Path, model: str = "haiku") -> tuple[Path, Path
     return claude, copilot
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Copilot helper-agent profiles are validated locally
 def test_release_check_accepts_session_model_inheritance(monkeypatch, tmp_path, capsys):
     _seed(monkeypatch, tmp_path)
     assert ccm.main() == ccm.EXIT_OK
     assert "inherit the session model" in capsys.readouterr().out
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Copilot helper-agent profiles are validated locally
 def test_release_check_rejects_an_explicit_profile_model(monkeypatch, tmp_path, capsys):
     _, copilot = _seed(monkeypatch, tmp_path)
     path = copilot / "a.agent.md"
@@ -50,6 +50,7 @@ def test_release_check_rejects_an_explicit_profile_model(monkeypatch, tmp_path, 
     assert "explicit model pins an account-specific" in capsys.readouterr().err
 
 
+# requirement: copilot-cli / Copilot helper-agent profiles are validated locally
 def test_release_check_rejects_a_stale_generated_copy(monkeypatch, tmp_path, capsys):
     _, copilot = _seed(monkeypatch, tmp_path)
     path = copilot / "a.agent.md"

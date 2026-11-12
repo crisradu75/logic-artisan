@@ -32,6 +32,7 @@ import pytest
 _REPO = Path(__file__).resolve().parents[3]
 _SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
 _SCRIPT = _SKILL.parent / "scripts" / "seed_openspec_rules.py"
+_ITEM_5 = _SKILL.parent / "references" / "openspec-rules.md"
 _CONFIG = _REPO / "openspec" / "config.yaml"
 
 
@@ -69,7 +70,7 @@ _SKILL_CALL = 'SEED="${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/seed_openspe
 def test_the_skill_runs_the_seed_script_by_path_and_holds_no_copy_of_the_rules():
     # One source for the rules: the script. A copy in the skill would drift from it,
     # and a command pasted into the Bash tool breaks past about 8 KB on Windows.
-    text = _SKILL.read_text(encoding="utf-8")
+    text = _SKILL.read_text(encoding="utf-8") + _ITEM_5.read_text(encoding="utf-8")
     assert _SCRIPT.is_file()
     assert _SKILL_CALL in text
     assert "RULES=" not in text and "RETIRED=" not in text
@@ -152,7 +153,7 @@ def _retired(fragment: str) -> str:
 _HEADER = "openspec/{}: exists (skipped), missing or outdated rules (+ add, - remove):"
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_the_seed_creates_a_missing_config(tmp_path: Path):
     (tmp_path / "openspec").mkdir()
     assert "openspec/config.yaml: created" in _run_seed(tmp_path)
@@ -160,7 +161,7 @@ def test_the_seed_creates_a_missing_config(tmp_path: Path):
     assert written == f"schema: spec-driven\n\n{_shipped_block()}\n"
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_config_with_every_rule_is_reported_current(tmp_path: Path):
     cfg = tmp_path / "openspec" / "config.yaml"
     cfg.parent.mkdir()
@@ -170,7 +171,7 @@ def test_a_config_with_every_rule_is_reported_current(tmp_path: Path):
     assert cfg.read_bytes() == _CONFIG.read_bytes()
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_an_outdated_rule_is_listed_and_the_file_left_alone(tmp_path: Path):
     items = _rule_items()
     tasks_rule = next(i for i in items if "requirement: <spec> / <heading>" in i)
@@ -196,7 +197,7 @@ def test_an_outdated_rule_is_listed_and_the_file_left_alone(tmp_path: Path):
     assert cfg.read_bytes() == original
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_an_earlier_wording_alone_is_listed_for_removal(tmp_path: Path):
     old_rule = _retired("Keep every scenario heading unique")
     cfg = tmp_path / "openspec" / "config.yaml"
@@ -205,7 +206,7 @@ def test_an_earlier_wording_alone_is_listed_for_removal(tmp_path: Path):
     assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- specs: " + old_rule]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_the_earlier_configurable_values_wording_is_listed_for_removal_and_the_new_one_added(tmp_path: Path):
     # A repo seeded before the reword holds the old line where the shipped line now sits:
     # the old line is listed to remove and the shipped line to add.
@@ -219,7 +220,7 @@ def test_the_earlier_configurable_values_wording_is_listed_for_removal_and_the_n
     ]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_the_earlier_manual_line_wording_is_listed_for_removal_and_the_new_one_added(tmp_path: Path):
     # A repo seeded before the `manual: <spec> / <heading>` reword holds the old tasks rule where the shipped one now sits.
     new_rule = next(i for i in _rule_items() if "`manual: <spec> / <heading>: <reason>`. Scenarios are examples" in i)
@@ -232,7 +233,7 @@ def test_the_earlier_manual_line_wording_is_listed_for_removal_and_the_new_one_a
     ]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 @pytest.mark.parametrize(
     "fragment, artifact",
     [("Keep it to one page. Point", "proposal"), ("Keep it to one page: for each", "design")],
@@ -245,7 +246,7 @@ def test_an_earlier_cap_wording_is_listed_for_removal(tmp_path: Path, fragment: 
     assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), f"- {artifact}: " + old_rule]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 @pytest.mark.parametrize("trailing", [" ", "\t", "  \r"])
 def test_an_earlier_wording_with_trailing_whitespace_is_still_listed(tmp_path: Path, trailing: str):
     old_rule = _retired("Keep it to one page. Point")
@@ -255,7 +256,7 @@ def test_an_earlier_wording_with_trailing_whitespace_is_still_listed(tmp_path: P
     assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- proposal: " + old_rule]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 @pytest.mark.parametrize("quote", ['"', "'"])
 @pytest.mark.parametrize("trailing", ["", " "])
 def test_a_quoted_copy_of_an_earlier_wording_is_still_listed(tmp_path: Path, quote: str, trailing: str):
@@ -269,7 +270,7 @@ def test_a_quoted_copy_of_an_earlier_wording_is_still_listed(tmp_path: Path, quo
     assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- proposal: " + old_rule]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 @pytest.mark.parametrize(
     "shape",
     [
@@ -297,7 +298,7 @@ def test_every_retired_wording_is_found_in_each_quoted_shape(tmp_path: Path, sha
     assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), *expected]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_the_rules_missing_are_listed_in_shipped_order_with_their_artifact(tmp_path: Path):
     cfg = tmp_path / "openspec" / "config.yaml"
     cfg.parent.mkdir()
@@ -312,7 +313,7 @@ def test_the_rules_missing_are_listed_in_shipped_order_with_their_artifact(tmp_p
     assert out == [_HEADER.format("config.yaml"), *expected]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_config_over_200_kb_is_compared_right(tmp_path: Path):
     """A large config is read whole and compared right (no size limit on the file)."""
     old_rule = _retired("Keep it to one page. Point")
@@ -324,7 +325,7 @@ def test_a_config_over_200_kb_is_compared_right(tmp_path: Path):
     assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- proposal: " + old_rule]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_backslash_in_a_config_rule_line_is_read_as_typed(tmp_path: Path):
     """A literal backslash in a rule line must not be read as an escape."""
     old_rule = _retired("Keep it to one page. Point")
@@ -335,7 +336,7 @@ def test_a_backslash_in_a_config_rule_line_is_read_as_typed(tmp_path: Path):
     assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- proposal: " + old_rule]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_an_unreadable_config_is_reported_and_never_read_as_rules_current(tmp_path: Path):
     # A directory named config.yaml exists but cannot be read as a file.
     (tmp_path / "openspec" / "config.yaml").mkdir(parents=True)
@@ -346,7 +347,7 @@ def test_an_unreadable_config_is_reported_and_never_read_as_rules_current(tmp_pa
     assert "openspec/config.yaml: exists (skipped), rules NOT compared: cannot read it" in text
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_without_an_openspec_directory_nothing_is_created_and_the_block_is_printed(tmp_path: Path):
     out = _run_seed(tmp_path)
     assert out.startswith("openspec/config.yaml: not written, no openspec/")
@@ -359,7 +360,7 @@ def test_the_seed_script_refuses_a_call_without_a_repo_root():
     assert out.returncode == 2 and out.stdout == b""
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     yml = tmp_path / "openspec" / "config.yml"
     yml.parent.mkdir()
@@ -372,7 +373,7 @@ def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     assert yml.read_text(encoding="utf-8") == "schema: spec-driven\n"
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_utf16_config_is_reported_unreadable_not_listed_as_missing_every_rule(tmp_path: Path):
     # A PowerShell redirect writes UTF-16; read as UTF-8 it matches no rule.
     cfg = tmp_path / "openspec" / "config.yaml"
@@ -386,7 +387,7 @@ def test_a_utf16_config_is_reported_unreadable_not_listed_as_missing_every_rule(
     assert cfg.read_bytes() == original
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_utf8_byte_order_mark_does_not_hide_a_current_config(tmp_path: Path):
     cfg = tmp_path / "openspec" / "config.yaml"
     cfg.parent.mkdir()
@@ -394,7 +395,7 @@ def test_a_utf8_byte_order_mark_does_not_hide_a_current_config(tmp_path: Path):
     assert "exists (skipped), rules current" in _run_seed(tmp_path)
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_write_that_fails_after_the_file_is_created_leaves_no_partial_config(tmp_path: Path, capfd, monkeypatch):
     import builtins
     import importlib.util
@@ -426,7 +427,7 @@ def test_a_write_that_fails_after_the_file_is_created_leaves_no_partial_config(t
     assert not (tmp_path / "openspec" / "config.yaml").exists()
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_an_existing_config_is_never_removed_when_the_create_is_refused(tmp_path: Path, monkeypatch):
     # A dangling link, or a file made between the check and the create, reaches the create as "already
     # there". Make the check say "absent" for a file that is present, and the create must refuse it.
@@ -449,9 +450,9 @@ _bash = shutil.which("bash")
 
 
 def _skill_item_5_block() -> str:
-    text = _SKILL.read_text(encoding="utf-8").replace("\r\n", "\n")
+    text = _ITEM_5.read_text(encoding="utf-8").replace("\r\n", "\n")
     match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?seed_openspec_rules[^`]*?)```", text)
-    assert match, "cla-setup/SKILL.md: no item 5 block found"
+    assert match, "cla-setup/references/openspec-rules.md: no item 5 block found"
     return match.group(1)
 
 
@@ -465,7 +466,7 @@ def _run_item_5(root: Path, plugin_root: str) -> subprocess.CompletedProcess:
 _needs_bash = pytest.mark.skipif(_bash is None or shutil.which("python3") is None, reason="bash and python3 are required")
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 @_needs_bash
 def test_the_skills_command_runs_the_script_and_says_so_when_the_plugin_root_is_unresolved(tmp_path: Path):
     (tmp_path / "openspec").mkdir()

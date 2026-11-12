@@ -608,7 +608,6 @@ def test_base_branch_announces_the_master_guess(tmp_repo: Path, monkeypatch, cap
 
 
 def test_base_branch_handles_a_slash_containing_default_branch(tmp_repo: Path, monkeypatch):
-    # Mirrors the identical fix in `_dispatch_lib.default_base_branch`:
     # `rsplit("/", 1)[-1]` would truncate `release/main` to `main`, and
     # `rev-parse --verify` on the FULL target succeeds regardless of what
     # candidate name was derived from it — so the truncated name passed every
@@ -624,9 +623,57 @@ def test_base_branch_handles_a_slash_containing_default_branch(tmp_repo: Path, m
     assert probe_state._base_branch() == "release/main"
 
 
+def _real_repo(path: Path, branch: str) -> Path:
+    """A real git repo (no mocks) with one commit on `branch`."""
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(path), *args], check=True,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    path.mkdir()
+    git("init", "-q", "-b", branch)
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+        "--allow-empty", "-m", "init")
+    return path
+
+
+@pytest.mark.parametrize("case", [
+    "origin_head_set", "origin_head_dangling", "only_master", "only_main",
+    "detached_head", "unborn_no_branches", "no_origin_other_branch",
+])
+def test_base_branch_against_a_real_repo(tmp_path: Path, monkeypatch, capsys, case: str):
+    """The same inputs the retired hooks-side copy was tested on, run through the
+    one resolver left, against real git rather than stubbed calls."""
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(repo), *args], check=True,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+    guess_expected = False
+    if case == "unborn_no_branches":
+        repo = tmp_path / "r"
+        repo.mkdir()
+        git("init", "-q", "-b", "trunk")
+        expected, guess_expected = "master", True
+    else:
+        repo = _real_repo(tmp_path / "r", {
+            "only_master": "master", "no_origin_other_branch": "dev",
+        }.get(case, "main"))
+        expected = {"only_master": "master", "no_origin_other_branch": "master"}.get(case, "main")
+        guess_expected = case == "no_origin_other_branch"
+        if case in ("origin_head_set", "origin_head_dangling"):
+            target = "trunk" if case == "origin_head_set" else "gone"
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
+            if case == "origin_head_set":
+                git("update-ref", "refs/remotes/origin/trunk", "HEAD")
+            git("symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{target}")
+            expected = "trunk" if case == "origin_head_set" else "main"
+        elif case == "detached_head":
+            git("checkout", "-q", "--detach")
+    monkeypatch.setattr(probe_state, "REPO_ROOT", repo)
+    assert probe_state._base_branch() == expected
+    assert ("could not resolve the base branch" in capsys.readouterr().err) is guess_expected
+
+
 def test_base_branch_is_silent_on_success(tmp_repo: Path, monkeypatch, capsys):
-    # Mirrors `_dispatch_lib`'s `test_a_successful_resolution_is_silent`: the
-    # stderr note belongs to the GUESS, not to every call.
+    # The stderr note belongs to the GUESS, not to every call.
     monkeypatch.setattr(probe_state, "_run", _stub_run({
         ("git", "rev-parse", "--verify", "--quiet", "refs/heads/main"):
             subprocess.CompletedProcess([], 0, "abc123\n", ""),
@@ -715,7 +762,7 @@ def test_the_configured_branch_is_used_when_it_exists(tmp_repo: Path):
 
 
 def test_a_branch_on_another_convention_is_found_and_announced(tmp_repo, capsys):
-    """The reported bug. `references/ship.md` permits shortening a change name,
+    """The reported bug. `_shared/references/ship.md` permits shortening a change name,
     and a convention varying its MIDDLE segment (`claude/fix/x`) cannot be
     expressed by any single prefix — so all three probes missed, `rev-parse
     --verify --quiet` exited 1 with empty stderr, and the orchestrator read

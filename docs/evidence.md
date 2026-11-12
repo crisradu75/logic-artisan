@@ -290,6 +290,39 @@ CLAUDE.md still carries: code that differs by platform is exercised only on the 
 and nothing gates a merge, so the local run before opening a PR is the only gate.
 `git log --oneline -- .github/workflows` shows both commits.
 
+### Which tests skip, and where: the inventory behind "a green run is evidence about your machine only"
+
+Recorded 2026-11-12, after a full run reported 8 skips with nobody able to say which. Not a
+gate and not a count to maintain: it shows what a skip count of 8 can consist of, so a different
+count on another machine can be read.
+
+**Method.** Skip sites found with a grep for `skipif`, `pytest.skip`, `importorskip`,
+`collect_ignore` and `pytest_collection_modifyitems` over `plugin-tests`. Skip reasons were read
+by running `python -m pytest plugin-tests/tests/<file> -q -rs -p no:cacheprovider`, serially, one
+file at a time, on Windows 11 under PowerShell/Git Bash. At the time of writing, 16 files were run and they
+hold 8 skips, the 8 below. The full suite was not run for this, so **the 8 is the main session's
+figure, not one measured here**: the 16 files add up to the same number, but the files not run (the
+three `consistency/test_cla_setup_*` files, `test_run_notes_stay_local.py`, the `conformance`
+project-facts, no-project-tokens and stdlib-imports files, and the `launcher` folder) were not
+run, so a further skip there is not ruled out, and the attribution is a match on count, not a proof.
+
+| Test(s) | Skips when | Windows | Linux / macOS |
+|---|---|---|---|
+| `test_pre_push_is_installed.py:88` | `sys.platform == "win32"`: checks POSIX permission bits | skips | runs |
+| `test_block_unsafe_recursive_delete.py:562`, the file-symlink case | the process may not create a file symlink (`WinError 1314`, no privilege) | skips unless run elevated or with Developer Mode | runs unless the symlink cannot be created |
+| `test_ask_destructive_git.py:1975` | `_INAPPLICABLE` table: a construct has no site in that command (no flag, no token after the flag, only `--`) | skips | skips: same on every platform |
+
+Other skip sites that did not fire on this machine, from the grep and the files that were run:
+the directory-alias cases (`tests/conftest.py:42-56`, fire only when neither a symlink nor a
+junction can be made), `bash`/PowerShell/`sh` absent (`test_pre_push.py`,
+`test_hooks_wiring.py`, `test_copilot_hooks.py`, the bash-needing `cla-setup` and `consistency` files),
+no Playwright or Chromium (`test_page_in_a_browser.py`), a case-sensitive file system
+(`test_block_worktree_path_escape.py:282,312`, so they skip on Linux), the Windows-only long-path
+test in `tests/skills/_shared/test_check_spec_proof.py:1380` (skips on Linux/macOS), the `test_cla_launcher.py:41`
+`cmd.exe` case (skips off Windows), and the two `conftest.py` files that skip a whole folder when
+the plugin is an installed copy rather than this repo's working tree. These are why the count differs between machines: expect a different one on
+Linux or macOS, and treat the figure above as Windows-only.
+
 ### Stdlib-only shipped scripts: why
 
 No incident either; the reason is the rule's own. A repo installs the plugin as a copied folder and
@@ -307,7 +340,7 @@ fixed in a separate change and is not recorded here. Each is a decision, not an 
 **Reviewers keep Bash and Edit.** The `pr-review-toolkit` reviewers are not ours, and they hold
 Bash and Edit. The diff-review rule in each prompt forbids git commands and file edits, and
 `model-routing.md:39-42` calls that rule "the only safeguard, an accepted risk".
-`spec-to-pr/references/subagent-brief.md:358-360` says a worker briefed a third time should move
+`_shared/references/subagent-brief.md:362-364` says a worker briefed a third time should move
 to `.claude/agents/` with a `tools:` allowlist. The same file states the risk at lines 119-125 ("an
 accepted risk; prose is the whole safeguard") and holds the rule itself at line 125. Issue #444
 records that the cost was already accepted in #426. Keeping it is fine because the dispatching phase hands each reviewer a diff file outside the working tree

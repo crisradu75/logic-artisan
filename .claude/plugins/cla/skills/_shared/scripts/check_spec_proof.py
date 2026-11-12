@@ -152,7 +152,26 @@ _PURPOSE_H = re.compile(r"^##\s+Purpose\s*$", re.I)
 # A path of a live spec (group 1) or of a delta in an active or archived change (group 2), relative to the repo root.
 _SPEC_PATH = re.compile(r"^openspec/(?:specs/([^/]+)|changes/(?:archive/)?[^/]+/specs/([^/]+))/")
 _H4 = re.compile(r"^####\s+(?!#)")
-_FENCE = re.compile(r"^\s*(```|~~~)")
+
+
+def _fence_after(line: str, fence: tuple[str, int] | None) -> tuple[str, int] | None:
+    """The code-fence state after `line`: None outside a fence, else (marker character, run length) of the open one.
+
+    Same marker rules as `_fence_step` (not its blockquote and list handling): a run of 3 or more backticks (info string without a backtick) or tildes opens
+    a fence; only a bare run of the SAME character at least as long closes it. A `~~~` line inside a ``` fence,
+    a shorter run, or a run with an info string (```` ```python ````) is content, not a closer."""
+    m = _FENCE_LINE.match(line)
+    if fence is None:
+        return (m.group(2)[0], len(m.group(2))) if _opens_fence(m) else None
+    closes = m and m.group(2)[0] == fence[0] and len(m.group(2)) >= fence[1] and not m.group(3).strip()
+    return None if closes else fence
+
+
+def _req_name(name: str) -> str:
+    """A requirement name as OpenSpec reads it (`normalizeRequirementName`): a closing run of `#` after a space
+    or tab is not part of the name, so `Foo ##` is `Foo` while `C#` keeps its `#`. A name that is only a
+    `#` run is empty. Scenario names are read the same way."""
+    return re.sub(r"(?:^|[ \t]+)#+[ \t]*$", "", name).strip()
 
 _MARKER = re.compile(
     r"^\s*(?:#|//|--|;|%|/\*+|\*|<!--)\s*(requirement|scenario):\s+([a-z0-9][a-z0-9-]*) / (.+?)\s*(?:\*/|-->)?\s*$"
@@ -321,11 +340,13 @@ def _blocks(text: str, delta: bool) -> list[tuple[str, list[str], list[tuple[str
     reqs: list[tuple[str, list[str], list[tuple[str, list[str]]]]] = []
     in_scope = False
     cur_req = cur_scn = None
-    fence = False
+    fence = None
     for line in text.splitlines():
-        if _FENCE.match(line):
-            fence = not fence
-        elif not fence:
+        was_fenced = fence is not None
+        fence = _fence_after(line, fence)
+        if was_fenced or fence is not None:
+            pass  # a fence line or a line inside one: content, never a heading
+        else:
             m = _H2.match(line)
             if m:
                 title = m.group(1).strip().upper()
@@ -335,7 +356,7 @@ def _blocks(text: str, delta: bool) -> list[tuple[str, list[str], list[tuple[str
             if in_scope:
                 m = _REQ.match(line)
                 if m:
-                    cur_req = (m.group(1), [], [])
+                    cur_req = (_req_name(m.group(1)), [], [])
                     reqs.append(cur_req)
                     cur_scn = None
                     continue
@@ -344,7 +365,7 @@ def _blocks(text: str, delta: bool) -> list[tuple[str, list[str], list[tuple[str
                     continue
                 m = _SCN.match(line)
                 if m and cur_req is not None:
-                    cur_scn = (m.group(1), [])
+                    cur_scn = (_req_name(m.group(1)), [])
                     cur_req[2].append(cur_scn)
                     cur_req[1].append(line)
                     continue
@@ -359,11 +380,10 @@ def _blocks(text: str, delta: bool) -> list[tuple[str, list[str], list[tuple[str
 
 def _unclosed_fence(text: str) -> bool:
     """True when a code fence opens and the file ends before it closes (`_blocks` skips everything after it)."""
-    fence = False
+    fence = None
     for line in text.splitlines():
-        if _FENCE.match(line):
-            fence = not fence
-    return fence
+        fence = _fence_after(line, fence)
+    return fence is not None
 
 
 _LIMIT_PATTERNS = {
@@ -448,7 +468,7 @@ def _removed_headings(text: str) -> set[str]:
         elif in_removed:
             r = _REQ.match(line)
             if r:
-                out.add(r.group(1))
+                out.add(_req_name(r.group(1)))
     return out
 
 
@@ -465,12 +485,11 @@ def _delta_ops(text: str) -> tuple[set[str], dict[str, str], set[str]]:
     removed: set[str] = set()
     renames: dict[str, str] = {}
     modified: set[str] = set()
-    section, fence, pending = "", False, None
+    section, fence, pending = "", None, None
     for line in text.splitlines():
-        if _FENCE.match(line):
-            fence = not fence
-            continue
-        if fence:
+        was_fenced = fence is not None
+        fence = _fence_after(line, fence)
+        if was_fenced or fence is not None:
             continue
         m = _H2.match(line)
         if m:
@@ -479,18 +498,18 @@ def _delta_ops(text: str) -> tuple[set[str], dict[str, str], set[str]]:
         if section.startswith("REMOVED"):
             r = _REQ.match(line) or _REMOVED_BULLET.match(line)
             if r:
-                removed.add(r.group(1))
+                removed.add(_req_name(r.group(1)))
         elif section.startswith("RENAMED"):
             r = _RENAME_LINE.match(line)
             if r and r.group(1) == "FROM":
-                pending = r.group(2)
+                pending = _req_name(r.group(2))
             elif r and pending is not None:
-                renames[pending] = r.group(2)
+                renames[pending] = _req_name(r.group(2))
                 pending = None
         elif section.startswith("MODIFIED"):
             r = _REQ.match(line)
             if r:
-                modified.add(r.group(1))
+                modified.add(_req_name(r.group(1)))
     return removed, renames, modified
 
 
@@ -542,11 +561,11 @@ def _shared_scenarios(files: list["SpecFile"]) -> list[str]:
 
 def _statement(body: list[str]) -> str:
     """A requirement's own sentence: its lines before the first `####` heading outside a fence."""
-    out, fence = [], False
+    out, fence = [], None
     for line in body:
-        if _FENCE.match(line):
-            fence = not fence
-        elif not fence and _H4.match(line):
+        was_fenced = fence is not None
+        fence = _fence_after(line, fence)
+        if not was_fenced and fence is None and _H4.match(line):
             break
         out.append(line)
     return _norm(out)
@@ -682,11 +701,11 @@ def _purpose_paragraphs(text: str) -> list[list[str]] | None:
     up to the next `##` heading. None if there is no Purpose."""
     paras: list[list[str]] = []
     cur: list[str] = []
-    found, fence = False, False
+    found, fence = False, None
     for line in text.splitlines():
-        if _FENCE.match(line):
-            fence = not fence
-        elif not fence:
+        was_fenced = fence is not None
+        fence = _fence_after(line, fence)
+        if not was_fenced and fence is None:
             if _PURPOSE_H.match(line):
                 found = True
                 continue

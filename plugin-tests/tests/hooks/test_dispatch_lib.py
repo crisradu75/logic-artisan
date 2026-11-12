@@ -204,24 +204,171 @@ def test_strip_quoted_spans_still_hides_a_git_command_mentioned_in_quoted_prose(
 # --------------------------------------------------------------------------- #
 
 
-def test_strip_quoted_spans_collapses_backtick_spans_too():
-    # Backticks are the third quoting form the helper handles; the other two
-    # had coverage and this one did not.
-    command = "echo `git commit -m x` && ls"
-    scanned = lib.strip_quoted_spans(command)
-    assert "git commit" not in scanned
-    assert len(scanned) == len(command)
+def test_strip_quoted_spans_keeps_executed_substitution_bodies_visible():
+    # A backtick span and a `$(...)` inside double quotes are RUN by the shell,
+    # so the guards must see them; the surrounding prose is still blanked.
+    for command in (
+        "echo `git commit -m x` && ls",
+        'echo "say $(git commit -m x) now" && ls',
+        'echo "say `git commit -m x` now" && ls',
+    ):
+        scanned = lib.strip_quoted_spans(command)
+        assert "git commit -m x" in scanned, command
+        assert len(scanned) == len(command)
+    assert "say" not in lib.strip_quoted_spans('echo "say $(git commit -m x) now"')
 
 
-def test_strip_quoted_spans_does_not_cover_heredoc_bodies():
-    # Pins a NAMED non-coverage, so nobody re-adds the (previously wrong)
-    # docstring claim that heredocs are handled. A heredoc body is unquoted
-    # text, so a git command inside one survives the scan and a caller WILL
-    # match it. This is the git hooks' most likely real-world false positive;
-    # it is accepted, and this test exists so it stays a known quantity.
-    command = "cat > x.sh <<'EOF'\ngit " + "push origin main\nEOF"
+def test_strip_quoted_spans_blanks_unexecuted_substitution_text():
+    for command in (
+        "echo '$(git commit -m x)' && ls",
+        "echo '`git commit -m x`' && ls",
+        'echo "\\$(git commit -m x)" && ls',
+        'echo "\\`git commit -m x\\`" && ls',
+    ):
+        scanned = lib.strip_quoted_spans(command)
+        assert "git commit" not in scanned, command
+        assert len(scanned) == len(command)
+
+
+M = "git commit -m \"$(cat <<'EOF'\n{body}\nEOF\n)\""
+
+
+def test_strip_quoted_spans_blanks_a_commit_message_heredoc_body():
+    command = M.format(body="fix: git push origin main `git reset --hard`")
     scanned = lib.strip_quoted_spans(command)
-    assert "push origin main" in scanned
+    assert "push origin main" not in scanned and "reset" not in scanned
+    assert len(scanned) == len(command) and scanned.count("\n") == command.count("\n")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git tag -a v1 -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "gh pr create --title t --body \"$(cat <<\"EOF\"\ngit reset --hard\nEOF\n)\"",
+        "gh issue comment 5 --body \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "gh pr create --title \"fix: x (y)\" --body \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git add . && git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && git status",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && git push origin feat",
+    ],
+)
+def test_strip_quoted_spans_blanks_each_message_verb_shape(command):
+    assert "git reset --hard" not in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_keeps_an_unquoted_heredoc_body_fully_visible():
+    command = "cat <<EOF\nprose git reset --hard $(git push -f) `git branch -D x`\nEOF"
+    assert lib.strip_quoted_spans(command) == command
+
+
+def test_strip_quoted_spans_keeps_line_structure_and_crlf_of_a_blanked_body():
+    command = "git commit -m \"$(cat <<'EOF'\r\nsecret one\r\nsecret two\r\nEOF\r\n)\"\r\n"
+    scanned = lib.strip_quoted_spans(command)
+    assert "secret" not in scanned
+    assert scanned.count("\r\n") == command.count("\r\n") and len(scanned) == len(command)
+    assert scanned.endswith("EOF\r\n)\"\r\n")
+
+
+def test_strip_quoted_spans_skips_an_operator_written_inside_a_blanked_body():
+    # `B`'s operator is inside A's body, so the backtick line after A is not B's
+    # body and must stay visible.
+    nested = "cat <<'A'\ncat <<'B'\nA\n`git reset --hard`\nB"
+    assert "git reset --hard" in lib.strip_quoted_spans(nested)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat > n.md <<'EOF'\ngit reset --hard\nEOF",                # bare heredocs: as on main
+        "git commit -F - <<'EOF'\ngit reset --hard\nEOF",
+        "cat <<'EOF' | bash\ngit reset --hard\nEOF",
+        "x=$(cat <<'EOF'\ngit reset --hard\nEOF\n)\nbash -c \"$x\"",  # bare substitution
+        "git commit -m \"$(cat <<EOF\ngit reset --hard\nEOF\n)\"",      # unquoted delimiter
+        "git commit -m \"$(cat <<'END-X'\ngit reset --hard\nEND-X\n)\"",
+        "git commit -m $(cat <<'EOF'\ngit reset --hard\nEOF\n)",        # no `\"` before `$(`
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && bash x.sh",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"; eval \"$x\"",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" | sh",
+        "git commit \\\n-m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",   # continued line
+        "echo \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",                # not a message verb
+        "$SHELL -c \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "$0 -c \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" -- $SHELL",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" -- ${SHELL}",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" -- $0",
+        "git status \\\ngit commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",  # joined lines
+        "git commit -m $(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",           # no `\"` before `$(`
+        "git log \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",              # no message verb
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" | tee log",  # a pipe
+        "git -c core.editor=bash commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git -c core.editor=/bin/bash commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git -c core.editor=bash.exe commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n )\"",       # not closed at once
+        "git commit -m \"$(cat <<'EOF'\nEOF)\"; git reset --hard; : \"\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\nEOFx)\"; git reset --hard; : \"\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\nEOF\t)\"; git reset --hard; : \"\nEOF\n)\"",
+        "cat > x.sh <<'EOF'\n echo ' ` '; git reset --hard; echo ' ` '\nEOF",   # quotes pair first
+        "git commit -m x # \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",   # a comment
+        "git commit -m 'a \"$(cat <<'EOF'\n'; git reset --hard\nEOF\n)\"",  # single quotes
+        "git commit -m \"a | b\" -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\nEOF\ngit reset --hard\nEOF\n)\"",   # ends at the FIRST EOF
+        "echo `cat <<'EOF'\n`git reset --hard`\nEOF",                       # backtick before the operator
+        "echo 'x\ncat > f <<'EOF'\n`git reset --hard`\nEOF",                # stray single quote
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && bash x.sh",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" ; ./run.sh",
+    ],
+)
+def test_strip_quoted_spans_defaults_to_visible_unless_a_message_heredoc(command):
+    assert "git reset --hard" in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_blanks_markdown_spans_after_balanced_earlier_quotes():
+    command = "git commit -q -m 'chore: x' && cat > p.md <<'EOF'\nuse `git reset --hard`\nEOF"
+    assert "git reset --hard" not in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_blanks_nothing_past_the_operator_and_line_caps():
+    def span(pad: int, ops: int) -> str:
+        return "cat" + " " * pad + " > f <<'EOF'\nuse `git reset --hard` " + "<< " * ops + "\nEOF"
+
+    assert "git reset --hard" not in lib.strip_quoted_spans(span(100, 100))
+    assert "git reset --hard" in lib.strip_quoted_spans(span(100, 201))   # too many operators
+    assert "git reset --hard" in lib.strip_quoted_spans(span(5000, 1))    # operator line too long
+
+
+def test_strip_quoted_spans_stays_fast_and_total_on_hostile_input():
+    import time
+
+    cases = [
+        "cat <<A\n" * 8000,                       # 64 KB of unterminated operators
+        "cat <<A\n" * 25000,                      # 200 KB
+        "printf '" + "x << y; " * 14000 + "'",    # 107 KB of `<<` on one line
+        "cat <<'A'\n" * 3000 + "A\n",
+        M.format(body="line\n" * 40000),
+    ]
+    for command in cases:
+        started = time.perf_counter()
+        scanned = lib.strip_quoted_spans(command)
+        assert time.perf_counter() - started < 2.0, len(command)
+        assert len(scanned) == len(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "bash <<'EOF'\ngit reset --hard\nEOF",   # a shell runs its stdin
+        "cat <<'EOF'\ngit reset --hard\n",        # no terminator line: leave it visible
+        "cat <<<x\ngit reset --hard\nx",          # here-string, not a heredoc
+        "bash <<<'EOF'\ngit reset --hard\nEOF",   # a quoted here-string is not one either
+    ],
+)
+def test_strip_quoted_spans_leaves_executed_heredoc_shapes_visible(command):
+    assert "reset --hard" in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_heredoc_in_substitution_ignores_apostrophes():
+    command = "x=\"$(cat <<'EOF'\ndon't\nEOF\n)\" && git reset --hard"
+    scanned = lib.strip_quoted_spans(command)
+    assert "git reset --hard" in scanned
 
 
 def test_strip_quoted_spans_matches_shell_semantics_for_a_midword_apostrophe():
@@ -275,153 +422,6 @@ def test_git_hooks_import_the_shared_pattern_instead_of_re_inlining_it(filename)
     assert not re.search(r"^_G\s*=\s*r?['\"]\(\?:", source, re.MULTILINE), (
         f"{filename} appears to re-inline a local _G pattern literal"
     )
-
-
-# --------------------------------------------------------------------------- #
-# default_base_branch -- the harness must not assume `master`
-# --------------------------------------------------------------------------- #
-
-
-class _FakeCompleted:
-    def __init__(self, stdout="", returncode=0):
-        self.stdout = stdout
-        self.returncode = returncode
-
-
-# The exact `for-each-ref` invocation `default_base_branch` uses to probe all
-# four candidate refs in ONE spawn (it previously issued up to four `rev-parse`
-# calls; that cost landed inside an enforcing hook's handler budget). Mocks key
-# on it so a change to the call shape shows up here rather than silently sending
-# every test down the fallback arm.
-_CANDIDATE_PROBE = (
-    "for-each-ref --format=%(refname) refs/heads/main refs/remotes/origin/main "
-    "refs/heads/master refs/remotes/origin/master"
-)
-
-
-def _fake_git(responses):
-    """Build a subprocess.run stand-in driven by an {args-suffix: result} map."""
-    def run(cmd, **kwargs):
-        key = " ".join(cmd[1:]) if cmd and cmd[0] == "git" else " ".join(cmd)
-        for suffix, result in responses.items():
-            if key.endswith(suffix):
-                return result
-        return _FakeCompleted(returncode=1)
-    return run
-
-
-@pytest.fixture(autouse=True)
-def _clear_base_branch_cache():
-    lib._BASE_BRANCH_CACHE.clear()
-    yield
-    lib._BASE_BRANCH_CACHE.clear()
-
-
-def test_default_base_branch_prefers_origin_head(monkeypatch):
-    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/trunk\n"),
-        # The symref is trusted only once its target verifies — see the
-        # dangling-symref test below for why.
-        "rev-parse --verify --quiet refs/remotes/origin/trunk": _FakeCompleted("abc123\n"),
-    }))
-    assert lib.default_base_branch() == "trunk"
-
-
-def test_default_base_branch_ignores_a_dangling_origin_head(monkeypatch):
-    # `refs/remotes/origin/HEAD` is a clone-time cache git never auto-refreshes,
-    # and `symbolic-ref` exits 0 even when its target is gone. After an upstream
-    # `master`→`main` rename it therefore names a ref that no longer exists —
-    # and trusting it unverified returned `master` in a `main`-default repo,
-    # after which the caller's `master..HEAD` died with `unknown revision`. That
-    # is precisely the failure this resolver exists to prevent.
-    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/master\n"),
-        # No stub for `rev-parse --verify --quiet refs/remotes/origin/master` →
-        # rc 1, i.e. the symref dangles. `main` is what actually exists.
-        _CANDIDATE_PROBE: _FakeCompleted("refs/heads/main\n"),
-    }))
-    assert lib.default_base_branch() == "main"
-
-
-def test_default_base_branch_handles_a_slash_containing_default_branch(monkeypatch):
-    # `rsplit("/", 1)[-1]` would truncate `release/main` to `main` — and
-    # `rev-parse --verify` on the FULL target still succeeds regardless of
-    # what candidate name was derived from it, so the truncated name passed
-    # every check here and resolved to a branch that doesn't exist.
-    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/release/main\n"),
-        "rev-parse --verify --quiet refs/remotes/origin/release/main": _FakeCompleted("abc123\n"),
-    }))
-    assert lib.default_base_branch() == "release/main"
-
-
-def test_default_base_branch_rejects_a_self_referential_origin_head(monkeypatch):
-    # A last segment of `HEAD` is never a branch name.
-    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/HEAD\n"),
-        _CANDIDATE_PROBE: _FakeCompleted("refs/heads/main\n"),
-    }))
-    assert lib.default_base_branch() == "main"
-
-
-def test_default_base_branch_falls_back_to_an_existing_main(monkeypatch):
-    # The live bug this fixes: in a `main`-default repo there is NO `master`
-    # ref, so a hardcoded `master..HEAD` range fails with `unknown revision`
-    # rather than merely returning a wrong answer.
-    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        _CANDIDATE_PROBE: _FakeCompleted("refs/heads/main\n"),
-    }))
-    assert lib.default_base_branch() == "main"
-
-
-def test_default_base_branch_still_finds_master_when_that_is_the_convention(monkeypatch):
-    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        _CANDIDATE_PROBE: _FakeCompleted("refs/remotes/origin/master\n"),
-    }))
-    assert lib.default_base_branch() == "master"
-
-
-def test_default_base_branch_falls_back_to_master_when_git_says_nothing(monkeypatch, capsys):
-    # No remote, no conventional branch — preserve the harness's historical
-    # assumption rather than inventing one, but SAY SO: this arm cannot tell
-    # "this repo genuinely uses master" from "git is unusable and I guessed",
-    # and every range built on the result then fails as `unknown revision`.
-    monkeypatch.setattr(lib.subprocess, "run", _fake_git({}))
-    assert lib.default_base_branch() == "master"
-    assert "warn" in capsys.readouterr().err.lower()
-
-
-def test_default_base_branch_survives_git_being_unavailable(monkeypatch, capsys):
-    def _raise(*args, **kwargs):
-        raise OSError("git not found")
-
-    monkeypatch.setattr(lib.subprocess, "run", _raise)
-    assert lib.default_base_branch() == "master"
-    assert "warn" in capsys.readouterr().err.lower()
-
-
-def test_a_successful_resolution_is_silent(monkeypatch, capsys):
-    # The note belongs to the guess, not to every call — a warn on the happy
-    # path would train people to ignore it.
-    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        _CANDIDATE_PROBE: _FakeCompleted("refs/heads/main\n"),
-    }))
-    assert lib.default_base_branch() == "main"
-    assert capsys.readouterr().err == ""
-
-
-def test_default_base_branch_caches_per_cwd(monkeypatch):
-    calls = []
-
-    def run(cmd, **kwargs):
-        calls.append(cmd)
-        return _FakeCompleted("refs/remotes/origin/main\n")
-
-    monkeypatch.setattr(lib.subprocess, "run", run)
-    assert lib.default_base_branch("/repo") == "main"
-    first = len(calls)
-    assert lib.default_base_branch("/repo") == "main"
-    assert len(calls) == first, "second call for the same cwd must be cached"
 
 
 # --------------------------------------------------------------------------- #

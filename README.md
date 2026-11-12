@@ -47,7 +47,7 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 
 ## Engineering highlights
 
-**19 skills · 9 guard hooks · 2,944 tests · 56 mutation batches · 12 live OpenSpec specs ·
+**19 skills · 9 guard hooks · 2,980 tests · 56 mutation batches · 17 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
@@ -78,10 +78,10 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
 
 <details>
-<summary>Where the numbers come from (counted 2026-11-04 on <code>main</code> at <code>d090293</code>)</summary>
+<summary>Where the numbers come from (counted 2026-11-12 on <code>main</code> at <code>1d81681</code>)</summary>
 
 ```bash
-ls .claude/plugins/cla/skills | grep -v '^_' | wc -l                         # skills
+git ls-files .claude/plugins/cla/skills | cut -d/ -f5 | grep -v '^_' | sort -u | wc -l   # skills (tracked only)
 ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn)-.*\.py$' | wc -l    # guard hooks
 pytest plugin-tests --collect-only -q | tail -1                            # tests
 find plugin-tests/mutants -name '*.py' | wc -l                             # mutation batches
@@ -145,20 +145,8 @@ copilot plugin marketplace add crisradu75/logic-artisan
 copilot plugin install cla@cris-logic-artisan
 ```
 
-**Updating:** run `copilot plugin marketplace update cris-logic-artisan`, then
-`copilot plugin update cla@cris-logic-artisan`.
-
-**Response style:** Copilot CLI does not load plugin output styles automatically. Copy the
-contents of `.claude/plugins/cla/output-styles/COPILOT.md` from the installed plugin into the
-consuming repository's `.github/copilot-instructions.md`. This is a repository-level instruction
-file, not an automatic plugin setting; plugin updates do not refresh it. After each plugin update,
-refresh the copied CLA guidance from the updated file, preserving any other repository-specific
-instructions. This does not change Claude Code's `CLA.md` output style.
-
-**Troubleshooting:** use `copilot --version` to confirm the CLI, `copilot plugin marketplace list`
-to check marketplace registration, and `copilot plugin list` to check installation. Run
-`copilot instruction list` from the consuming repository to confirm `.github/copilot-instructions.md`
-is discovered. Copilot CLI plugins do not cover the Copilot app or cloud agent.
+Update, troubleshooting and a Copilot-side writing-style stand-in are in the "GitHub Copilot CLI"
+subsection of the [plugin README](.claude/plugins/cla/README.md).
 
 Validated in that run:
 
@@ -186,23 +174,19 @@ copilot --no-auto-update --no-color --plugin-dir .claude/plugins/cla \
 **Guard-hook support (`cla--v2.3.0`):** the plugin has separate Copilot Agent Plugins 1.0
 `PreToolUse`/`PostToolUse` wiring for the CLA guards; Claude's hook configuration is unchanged.
 Live checks with Copilot CLI 1.0.105 covered an allowed command, a blocked `cd`, a destructive-git
-confirmation (denied by autopilot, which cannot prompt), and a warning. Copilot documents hook
-timeouts as fail-open. A live timeout probe used a temporary plugin with a `PreToolUse` hook set to
-`timeoutSec: 1` that wrote a start marker, slept 8 seconds, then wrote a completion marker. The
-command `copilot --no-auto-update --no-color --plugin-dir <temp>/plugin --allow-all-tools
---output-format json --silent -C <temp> -p 'Use Bash to run exactly: echo COPILOT_TIMEOUT_PROBE.
-Then report the output.'` exited 0: the start marker existed, the completion marker did not, and
-the command output was present. The 30-second production timeout is therefore fail-open and does
-not block a tool call. Edit/Write hook behavior is covered by adapter tests but was not live-tested,
-and Windows PowerShell wiring has not been tested. Direct pushes to `main` remain guarded separately
-by the Git `pre-push` hook, which must be installed once per clone.
+confirmation (denied by autopilot, which cannot prompt), and a warning. The
+[plugin README hook-caveats section](.claude/plugins/cla/README.md#copilot-cli-hook-caveats)
+centralizes support limits, including the fail-open timeout and unsupported workflows.
 
-The hook wiring first ships in `cla--v2.3.0`; the smoke check above predates it. Skills that depend
-on Claude-only delegation, skill chaining, model routing, or permission settings are marked
-unsupported in their instructions. Other skills may still name `AskUserQuestion` or
-`${CLAUDE_PLUGIN_ROOT}`; use the interactive-question and plugin-path rules in the copied
-instructions file rather than assuming Claude's runtime expansion.
-Copilot app and cloud agent support are out of scope. Follow-up work is tracked from issue #302.
+The timeout probe used a temporary plugin with a `PreToolUse` hook set to `timeoutSec: 1` that
+wrote a start marker, slept 8 seconds, then wrote a completion marker. The command
+`copilot --no-auto-update --no-color --plugin-dir <temp>/plugin --allow-all-tools --output-format
+json --silent -C <temp> -p 'Use Bash to run exactly: echo COPILOT_TIMEOUT_PROBE. Then report the
+output.'` exited 0: the start marker existed, the completion marker did not, and the command output
+was present. This confirms that a timed-out hook does not block the tool call. Edit/Write hook
+behavior is adapter-tested but was not live-tested; Windows PowerShell wiring is also untested.
+The hook wiring first ships in `cla--v2.3.0`; the smoke test above predates it. Follow-up work is
+tracked from issue #302.
 
 The Claude Code install above is unchanged by any of this.
 
