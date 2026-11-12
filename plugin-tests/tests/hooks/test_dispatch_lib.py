@@ -245,8 +245,10 @@ def test_strip_quoted_spans_blanks_a_commit_message_heredoc_body():
     [
         "git tag -a v1 -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
         "gh pr create --title t --body \"$(cat <<\"EOF\"\ngit reset --hard\nEOF\n)\"",
-        "gh issue comment 5 --body \"$(cat <<\EOF\ngit reset --hard\nEOF\n)\"",
+        "gh issue comment 5 --body \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "gh pr create --title \"fix: x (y)\" --body \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
         "git add . && git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && git status",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && git push origin feat",
     ],
 )
 def test_strip_quoted_spans_blanks_each_message_verb_shape(command):
@@ -259,11 +261,11 @@ def test_strip_quoted_spans_keeps_an_unquoted_heredoc_body_fully_visible():
 
 
 def test_strip_quoted_spans_keeps_line_structure_and_crlf_of_a_blanked_body():
-    command = "git commit -m \"$(cat <<'EOF'\r\nsecret one\r\nsecret two\r\nEOF\r\n)\"\r\ngit status"
+    command = "git commit -m \"$(cat <<'EOF'\r\nsecret one\r\nsecret two\r\nEOF\r\n)\"\r\n"
     scanned = lib.strip_quoted_spans(command)
     assert "secret" not in scanned
     assert scanned.count("\r\n") == command.count("\r\n") and len(scanned) == len(command)
-    assert scanned.endswith(")\"\r\ngit status")
+    assert scanned.endswith("EOF\r\n)\"\r\n")
 
 
 def test_strip_quoted_spans_skips_an_operator_written_inside_a_blanked_body():
@@ -301,6 +303,13 @@ def test_strip_quoted_spans_skips_an_operator_written_inside_a_blanked_body():
         "git -c core.editor=/bin/bash commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
         "git -c core.editor=bash.exe commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
         "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n )\"",       # not closed at once
+        "git commit -m x # \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",   # a comment
+        "git commit -m 'a \"$(cat <<'EOF'\n'; git reset --hard\nEOF\n)\"",  # single quotes
+        "git commit -m \"a | b\" -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\nEOF\ngit reset --hard\nEOF\n)\"",   # ends at the FIRST EOF
+        "echo `cat <<'EOF'\n`git reset --hard`\nEOF",                       # backtick before the operator
+        "echo 'x\ncat > f <<'EOF'\n`git reset --hard`\nEOF",                # stray single quote
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && bash x.sh",
         "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" ; ./run.sh",
     ],
 )
@@ -308,13 +317,18 @@ def test_strip_quoted_spans_defaults_to_visible_unless_a_message_heredoc(command
     assert "git reset --hard" in lib.strip_quoted_spans(command)
 
 
+def test_strip_quoted_spans_blanks_markdown_spans_after_balanced_earlier_quotes():
+    command = "git commit -q -m 'chore: x' && cat > p.md <<'EOF'\nuse `git reset --hard`\nEOF"
+    assert "git reset --hard" not in lib.strip_quoted_spans(command)
+
+
 def test_strip_quoted_spans_blanks_nothing_past_the_operator_and_line_caps():
-    base = M.format(body="secret")
-    assert "secret" not in lib.strip_quoted_spans(base)
-    assert "secret" not in lib.strip_quoted_spans(base + " && git status # " + "<< " * 100)
-    assert "secret" in lib.strip_quoted_spans(base + " && git status # " + "<< " * 201)
-    assert "secret" not in lib.strip_quoted_spans(" " * 100 + base)
-    assert "secret" in lib.strip_quoted_spans(" " * 5000 + base)   # operator line too long
+    def span(pad: int, ops: int) -> str:
+        return "cat" + " " * pad + " > f <<'EOF'\nuse `git reset --hard` " + "<< " * ops + "\nEOF"
+
+    assert "git reset --hard" not in lib.strip_quoted_spans(span(100, 100))
+    assert "git reset --hard" in lib.strip_quoted_spans(span(100, 201))   # too many operators
+    assert "git reset --hard" in lib.strip_quoted_spans(span(5000, 1))    # operator line too long
 
 
 def test_strip_quoted_spans_stays_fast_and_total_on_hostile_input():

@@ -75,49 +75,75 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the `git commit -m $(cat <<'EOF'` and bare `$(cat` ask-cases:
-        # a substitution NOT wrapped in double quotes has its output run.
+        # Killed by the `; git reset --hard` after the message: the WHOLE command
+        # must match, not just its start.
+        "the message command only has to match at the start of the command",
+        LIB,
+        "message = _MESSAGE_COMMAND.fullmatch(cmd)",
+        "message = _MESSAGE_COMMAND.match(cmd)",
+        TARGETS,
+    ),
+    (
+        # Killed by the `git commit -m $(cat <<'EOF' ... )"` visible case: a
+        # substitution NOT wrapped in double quotes has its output run.
         "the message shape no longer requires a double quote before $(",
         LIB,
-        r'''_MESSAGE_OPEN = re.compile(r"\"\$\(\s*cat\s*$")''',
-        r'''_MESSAGE_OPEN = re.compile(r"\$\(\s*cat\s*$")''',
+        r'''rf"(?: {_ARG})* \"\$\(cat <<''',
+        r'''rf"(?: {_ARG})* \$\(cat <<''',
         TARGETS,
     ),
     (
         # Killed by the `echo "$(cat <<'EOF'` visible case.
         "echo counts as a message verb",
         LIB,
-        r'''r"^\s*(?:git(?:\s+-[cC]\s+\S+)*\s+(?:commit|tag|notes)"''',
-        r'''r"^\s*(?:echo|git(?:\s+-[cC]\s+\S+)*\s+(?:commit|tag|notes)"''',
+        'r"(?:git (?:commit|tag|notes)|gh (?:pr',
+        'r"(?:echo|git (?:commit|tag|notes)|gh (?:pr',
         TARGETS,
     ),
     (
-        # Killed by the `git log "$(cat <<'EOF'` visible case: a git command that
-        # is not a message consumer.
-        "a command with no message verb in it still qualifies",
+        # Killed by the `-m "a | b"` visible case: a double-quoted word may not
+        # carry shell syntax.
+        "a double-quoted word may carry a pipe",
         LIB,
-        "    return consumer_seen",
-        "    return True",
+        r'''_DQ = r"\"[A-Za-z0-9 ._,:/()#@%+=~-]*\""''',
+        r'''_DQ = r"\"[A-Za-z0-9 ._,:/()#@%+=~|-]*\""''',
         TARGETS,
     ),
     (
-        # Killed by the `| tee` visible case (no interpreter word, only a pipe).
-        "a pipe anywhere in the command no longer keeps the body visible",
+        # Killed by the `git commit -m x # "$(cat` visible case (a comment).
+        "a bare word may be a comment marker",
         LIB,
-        'if "|" in outside or _runs_an_interpreter(outside):',
-        "if _runs_an_interpreter(outside):",
+        '_W = r"[A-Za-z0-9_.,:=@+%~/-]+"',
+        '_W = r"[A-Za-z0-9_.,:=@+%~/#-]+"',
         TARGETS,
     ),
     (
-        # Killed by the `git -c core.editor=bash commit` visible case.
-        "an interpreter word elsewhere in the command no longer keeps the body visible",
+        # Killed by the single-quote visible case (`git commit -m 'a "$(cat`).
+        "a bare word may open a single quote",
         LIB,
-        'if "|" in outside or _runs_an_interpreter(outside):',
-        'if "|" in outside:',
+        '_W = r"[A-Za-z0-9_.,:=@+%~/-]+"',
+        "_W = r\"[A-Za-z0-9_.,:=@+%~/'-]+\"",
         TARGETS,
     ),
     (
-        # Killed by the `$SHELL`/`$0` ask-cases.
+        # Killed by the early-terminator case: the shell ends the heredoc at the
+        # FIRST line equal to the word.
+        "a body line equal to the delimiter no longer ends the body",
+        LIB,
+        r'''r"(?P<body>(?:(?!(?P=w)\r?\n)[^\n]*\n)*)"''',
+        r'''r"(?P<body>(?:[^\n]*\n)*?)"''',
+        TARGETS,
+    ),
+    (
+        # Killed by the `&& bash x.sh` visible case.
+        "bash is allowed as a trailing command",
+        LIB,
+        'rf"(?: && (?:git (?:status|push|add|log|diff|show|fetch|pull)"',
+        'rf"(?: && (?:bash|git (?:status|push|add|log|diff|show|fetch|pull)"',
+        TARGETS,
+    ),
+    (
+        # Killed by the `$SHELL`/`$0` cases through `_runs_an_interpreter`.
         "$SHELL and $0 no longer count as interpreters",
         LIB,
         "    if _SHELL_VAR.search(text):",
@@ -125,7 +151,15 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the `git -c core.editor=/bin/bash commit` visible case.
+        # Killed by the `sh <<'EOF'` + backtick ask-case.
+        "an interpreter word no longer keeps Markdown-span blanking off",
+        LIB,
+        "    if _runs_an_interpreter(cmd[: nl + 1] + cmd[body_end:]):",
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        # Killed by the path-form interpreter case below.
         "an interpreter given by path is no longer recognised",
         LIB,
         'base = word.replace("\\\\", "/").rsplit("/", 1)[-1].lower()',
@@ -133,7 +167,7 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the `core.editor=bash.exe` visible case.
+        # Killed by the `.exe` case below.
         "an interpreter with an .exe suffix is no longer recognised",
         LIB,
         "            if base.endswith(ext):",
@@ -141,52 +175,36 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the continued-line (`git commit \` newline `-m "$(cat`) case.
-        "a backslash-continued earlier line no longer keeps the body visible",
+        # Killed by the unquoted-first-heredoc ask-case: an earlier `<<` may make
+        # the quoted one a fake.
+        "an earlier heredoc operator no longer disqualifies the later one",
         LIB,
-        'if any(line.rstrip("\\r").endswith("\\\\") for line in cmd[: starts[k]].split("\\n")):',
-        "if False:",
+        '    if cmd.find("<<") != first.start():',
+        "    if False:",
         TARGETS,
     ),
     (
-        # Killed by the `; ./run.sh` visible case.
-        "any segment after a separator is allowed",
+        # Killed by `ls # cat <<'EOF'` + a backtick command line.
+        "a comment marker before the operator no longer keeps the body visible",
         LIB,
-        "        elif _SAFE_SEGMENT_VERB.match(seg):",
-        "        elif True:",
+        'for ch in ("#", "`", "\\\\"):',
+        'for ch in ("`", "\\\\"):',
         TARGETS,
     ),
     (
-        # Killed by the `)` with a leading space visible case.
-        "the substitution no longer has to close straight after the body",
+        # Killed by "echo `cat <<'EOF'" + a backtick command line.
+        "a backtick before the operator no longer keeps the body visible",
         LIB,
-        "    if term_end < 0 or not cmd.startswith(')\"', term_end + 1):",
-        "    if term_end < 0:",
+        'for ch in ("#", "`", "\\\\"):',
+        'for ch in ("#", "\\\\"):',
         TARGETS,
     ),
     (
-        # Killed by the `<<'END-X'` visible case.
-        "any quoted word, hyphens included, counts as a plain delimiter",
+        # Killed by the stray single quote before the operator case.
+        "a stray single quote before the operator no longer keeps the body visible",
         LIB,
-        "<<(?!<)[ \\t]*(?:'([A-Za-z0-9_]+)'",
-        "<<(?!<)[ \\t]*(?:'([^'\\n]+)'",
-        TARGETS,
-    ),
-    (
-        # Killed by `bash <<<'EOF'` + a backtick line: with the lookbehind gone
-        # the second `<<` is read as an operator and blanks the backtick line.
-        "the lookbehind that keeps `<<<` from being a heredoc operator is gone",
-        LIB,
-        '    r"(?<!<)<<(?!<)[ \\t]*',
-        '    r"<<(?!<)[ \\t]*',
-        TARGETS,
-    ),
-    (
-        # Killed by the nested-operator test (the backtick line after A).
-        "an operator inside an earlier body is no longer skipped",
-        LIB,
-        "        if k <= skip_to:",
-        "        if False:",
+        "    if (head.count(\"'\") - (2 if first.group(1) else 0)) % 2 or (",
+        "    if False or (",
         TARGETS,
     ),
     (
@@ -201,20 +219,12 @@ MUTANTS = [
         # Killed by the same test (5000-char operator line).
         "the operator-line length cap is gone",
         LIB,
-        "ends[k] - starts[k] > _HEREDOC_MAX_LINE",
-        "ends[k] - starts[k] > 10**9",
+        "> _HEREDOC_MAX_LINE:",
+        "> 10**9:",
         TARGETS,
     ),
     (
         # Killed by test_strip_quoted_spans_keeps_line_structure_and_crlf_of_a_blanked_body.
-        "a CRLF terminator line is no longer found",
-        LIB,
-        'cmd[starts[k] : ends[k]].rstrip("\\r")',
-        "cmd[starts[k] : ends[k]]",
-        TARGETS,
-    ),
-    (
-        # Killed by the same test: blanking must keep the line breaks.
         "blanking a heredoc body also blanks its line breaks",
         LIB,
         '        if out[i] not in "\\r\\n":',
@@ -222,12 +232,12 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the "$body" silent case: Markdown spans in a visible quoted
-        # body stay blanked, as before.
-        "backtick spans in a not-message quoted body are no longer blanked",
+        # Killed by the "$body" silent case: Markdown spans in a plain-quoted
+        # body stay blanked, as on main.
+        "backtick spans in a plain-quoted body are no longer blanked",
         LIB,
-        "            ticks.append(piece)",
-        "            pass",
+        "        _blank_data(out, nl + 1 + span.start() + 1, nl + 1 + span.end() - 1)",
+        "        pass",
         TARGETS,
     ),
     (
