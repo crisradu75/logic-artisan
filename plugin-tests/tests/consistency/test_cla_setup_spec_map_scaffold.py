@@ -16,7 +16,7 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[3]
 _PLUGIN = _REPO / ".claude" / "plugins" / "cla"
-_SKILL = _PLUGIN / "skills" / "cla-setup" / "SKILL.md"
+_SCAFFOLD_REF = _PLUGIN / "skills" / "cla-setup" / "references" / "spec-map-scaffold.md"
 _SCRIPT = _PLUGIN / "skills" / "_shared" / "scripts" / "check_spec_proof.py"
 _spec = importlib.util.spec_from_file_location("check_spec_proof_scaffold", _SCRIPT)
 csp = importlib.util.module_from_spec(_spec)
@@ -25,9 +25,9 @@ _spec.loader.exec_module(csp)
 
 
 def _section() -> str:
-    text = _SKILL.read_text(encoding="utf-8")
-    m = re.search(r"### The spec map scaffold\n(.*?)\n### 8\. ", text, re.S)
-    assert m, "cla-setup/SKILL.md: no 'The spec map scaffold' section"
+    text = _SCAFFOLD_REF.read_text(encoding="utf-8")
+    m = re.search(r"### The spec map scaffold\n(.*)", text, re.S)
+    assert m, "cla-setup/references/spec-map-scaffold.md: no 'The spec map scaffold' section"
     return m.group(1)
 
 

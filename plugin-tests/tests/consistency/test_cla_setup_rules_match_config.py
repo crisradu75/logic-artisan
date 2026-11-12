@@ -32,6 +32,7 @@ import pytest
 _REPO = Path(__file__).resolve().parents[3]
 _SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
 _SCRIPT = _SKILL.parent / "scripts" / "seed_openspec_rules.py"
+_ITEM_5 = _SKILL.parent / "references" / "openspec-rules.md"
 _CONFIG = _REPO / "openspec" / "config.yaml"
 
 
@@ -69,7 +70,7 @@ _SKILL_CALL = 'SEED="${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/seed_openspe
 def test_the_skill_runs_the_seed_script_by_path_and_holds_no_copy_of_the_rules():
     # One source for the rules: the script. A copy in the skill would drift from it,
     # and a command pasted into the Bash tool breaks past about 8 KB on Windows.
-    text = _SKILL.read_text(encoding="utf-8")
+    text = _SKILL.read_text(encoding="utf-8") + _ITEM_5.read_text(encoding="utf-8")
     assert _SCRIPT.is_file()
     assert _SKILL_CALL in text
     assert "RULES=" not in text and "RETIRED=" not in text
@@ -449,9 +450,9 @@ _bash = shutil.which("bash")
 
 
 def _skill_item_5_block() -> str:
-    text = _SKILL.read_text(encoding="utf-8").replace("\r\n", "\n")
+    text = _ITEM_5.read_text(encoding="utf-8").replace("\r\n", "\n")
     match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?seed_openspec_rules[^`]*?)```", text)
-    assert match, "cla-setup/SKILL.md: no item 5 block found"
+    assert match, "cla-setup/references/openspec-rules.md: no item 5 block found"
     return match.group(1)
 
 

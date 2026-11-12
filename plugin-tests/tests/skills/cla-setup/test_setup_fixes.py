@@ -31,8 +31,13 @@ def _text() -> str:
     return _SKILL.read_text(encoding="utf-8").replace("\r\n", "\n")
 
 
-def _section(start: str, end: str) -> str:
-    text = _text()
+def _ref(name: str) -> str:
+    return (_PLUGIN / "skills" / "cla-setup" / "references" / name).read_text(encoding="utf-8").replace("\r\n", "\n")
+
+
+def _section(start: str, end: str, ref: str | None = None) -> str:
+    """A slice of SKILL.md, or of the named references/ file when the step's detail moved there."""
+    text = _text() if ref is None else _ref(ref)
     a = text.index(start)
     return text[a : text.index(end, a)]
 
@@ -40,7 +45,7 @@ def _section(start: str, end: str) -> str:
 # requirement: cla-setup / Repo facts and overlay rules on setup
 def test_item_13_asks_the_granularity_question_and_item_10_drafts_the_line():
     item_13 = _section("### 13. Confirm, write, check", "**Then run the staleness checker")
-    item_10 = _section("### 10. Draft the changes", "### 11.")
+    item_10 = _section("### 10. Draft the changes", "### 11.", "overlay-reconcile.md")
     for part in (item_13, item_10):
         assert "Test proof granularity" in part and "`## Test proof`" in part
     assert "recommended" in item_13 and "`requirement`" in item_13
@@ -49,7 +54,7 @@ def test_item_13_asks_the_granularity_question_and_item_10_drafts_the_line():
 
 # requirement: cla-setup / Setup asks the test-proof question once
 def test_the_question_is_asked_once_and_only_when_there_is_no_line():
-    text = " ".join(_text().split())
+    text = " ".join(_ref("facts-file.md").split())
     item_13 = " ".join(_section("### 13. Confirm, write, check", "**Then run the staleness checker").split())
     assert "when `openspec/` exists and the facts file has no `## Test proof` line: ask once" in item_13
     assert "Ask the user once, with the default recommended" in text
@@ -93,7 +98,7 @@ def test_the_pinned_idioms_in_the_contract_echo_their_outcome():
 
 # requirement: cla-setup / Repo facts and overlay rules on setup
 def test_the_spec_map_scaffold_passes_the_checker_as_written(tmp_path: Path):
-    scaffold = re.search(r"````markdown\n(.*?)````", _text(), re.DOTALL).group(1)
+    scaffold = re.search(r"````markdown\n(.*?)````", _ref("spec-map-scaffold.md"), re.DOTALL).group(1)
     # The placeholders carry no link, so only the bullet under "Specs not yet placed" is one.
     assert scaffold.count("](") == 1 and "(#" not in scaffold
     spec = tmp_path / "openspec" / "specs" / "alpha" / "spec.md"

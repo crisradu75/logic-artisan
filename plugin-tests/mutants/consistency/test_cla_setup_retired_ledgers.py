@@ -10,7 +10,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 DEV = Path(__file__).resolve().parents[2]
-SKILL = REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
+SKILL = REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "references" / "ledgers-and-run-notes.md"
 GUARD = DEV / "tests" / "consistency" / "test_cla_setup_retired_ledgers.py"
 
 TARGETS = [GUARD]
