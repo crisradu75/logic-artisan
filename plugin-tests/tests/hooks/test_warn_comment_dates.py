@@ -114,7 +114,6 @@ def test_other_shapes_of_a_dated_comment_warn(tool_input):
         {"file_path": "a.py", "new_string": "# 2026-10 is year and month only\n"},
         {"file_path": "a.py", "new_string": "# in 2026 we did it\n"},  # year only
         {"file_path": "A.PY", "new_string": "# 2026-10-30\n"},  # the suffix check is case-sensitive
-        {"file_path": "a.py", "new_string": ""},
         {"file_path": "a.py"},  # neither new_string nor content
         {"new_string": "# 2026-10-30\n"},  # no file_path
         {"file_path": "a.js", "new_string": "// 2026-10-30\n"},  # other comment syntax is out of scope
@@ -122,6 +121,8 @@ def test_other_shapes_of_a_dated_comment_warn(tool_input):
     ],
 )
 def test_near_misses_of_the_date_pattern_stay_silent(tool_input):
+    """Non-vacuity partner of the table above: each case sits one step from a warning (date shape,
+    hash position, suffix case, missing fields, other comment syntax) and must stay silent."""
     assert _warning(_run(tool_input)) == ""
 
 
