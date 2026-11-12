@@ -5,7 +5,7 @@ Detail for items 9 to 12 of `SKILL.md`. Moved verbatim from `SKILL.md`; the writ
 - `cla.io/project-facts.md`, if present (a **reconcile**, not a from-scratch write).
 - Every `cla.io/overlays/*.md` except the `*.local.md` files (glob generically — never a hardcoded
   skill list). Sort each line into one of five kinds:
-  - **fact** — a command, path, port, install step or env file (anything the list above covers),
+  - **fact** — a command, path, port, install step or env file (anything the section list in `references/facts-file.md` covers),
     unless only a rule in this overlay uses it;
   - **rule** — what this one skill must do here, with any path or command only that rule uses;
   - **incident** — a dated story. Pull out every rule it states for this repo ("Rule here: …",

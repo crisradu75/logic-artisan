@@ -130,7 +130,8 @@ Seeds or compares the OpenSpec `rules:` block through `scripts/seed_openspec_rul
 lines the script lists; `openspec/` absent → create nothing. A non-zero exit, or output with no
 `openspec/...:` status line, means the config was not checked: say so, never call the rules current.
 **Read `references/openspec-rules.md` first** for the cases, the version check, the script call and the
-quoting rule.
+quoting rule. If item 13 records a `scenario` test-proof choice, re-run the item 5 script after the
+facts file is written.
 
 ### 6. Retired ledgers — `cla.io/retro/`
 
@@ -202,7 +203,8 @@ skip silently. Detail in `references/overlay-reconcile.md`.
 
 ### 12. Propose new `project-tokens.local.md` entries
 
-Draft additions for new distinctive repo-specific tokens only. Detail in
+Draft additions for new distinctive compound repo-specific tokens only, never generic words; grep the
+plugin tree for each candidate first. Detail in
 `references/overlay-reconcile.md`.
 
 ### 13. Confirm, write, check
