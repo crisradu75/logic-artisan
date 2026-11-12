@@ -1,6 +1,6 @@
 ---
 name: multi-lite
-description: "Chains multiple /cla:lite-pr runs extracted from a decision-shaped markdown doc: pulls out every lite-pr-sized candidate, sequences them dependency-first (falling back to document order), confirms the plan once up front, then runs /cla:lite-pr on each in order — under the confirmed merge policy either merging every clean PR as the chain goes (recommended) or merging only a PR its dependents need, and quarantining a failed candidate plus its downstream subtree while continuing with the rest. Designed for long, unattended small-change runs off a single decisions/feedback doc. Triggers on /cla:multi-lite or natural language like 'extract all lite-pr candidates from this decision file and run them in sequence', 'chain these small changes end to end', 'lite-pr everything in this doc'."
+description: "Chain several /cla:lite-pr runs extracted from a decisions doc: one plan confirmation up front, then each candidate in dependency order, merging per the confirmed policy and quarantining a failed one with its dependents. For long unattended runs. Triggers: /cla:multi-lite, 'run all the lite-pr candidates in this decision file', 'chain these small changes end to end', 'lite-pr everything in this doc'."
 argument-hint: "[decision-shaped-doc-path | (empty = most recent under cla.io/decisions/)]"
 # Opens and merges pull requests unattended, so it must never self-trigger on a
 # description match — only an explicit `/cla:multi-lite` starts it. Safe to set:

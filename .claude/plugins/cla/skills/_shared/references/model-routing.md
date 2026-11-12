@@ -115,11 +115,10 @@ nothing compiles it: no typechecker, no test that executes the prose, and a wron
 reaches every consuming repo on the next release. For that diff `plugin-dev:skill-reviewer`
 occupies the position `code-reviewer` holds for a Python diff. A prose-dominant diff is high risk.
 
-**The counting recipe lives where dispatch is decided**, not here — see the *prose-dominant diff* row in
-`${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/revise.md`, which carries the
-`git diff --numstat` recipe that makes it mechanically decidable. This section is
-the rationale only; the recipe is in that one row, per this file's own no-forking rule.
-The definition (files that steer an agent, wherever they live) is the same in both places.
+Decide it mechanically: `git diff --numstat origin/<pr-base>...HEAD`, summing the changed lines of
+the files that steer an agent against everything else. The definition (files that steer an agent,
+wherever they live) is the one in "Review sizing by risk" above. Keep this recipe in step with the
+prose-dominant row of `spec-to-pr` Revise.
 
 All six Revise agents are dispatched by their full registered `subagent_type`:
 `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter`,
