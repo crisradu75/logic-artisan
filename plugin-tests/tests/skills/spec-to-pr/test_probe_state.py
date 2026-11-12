@@ -627,7 +627,7 @@ def _real_repo(path: Path, branch: str) -> Path:
     """A real git repo (no mocks) with one commit on `branch`."""
     def git(*args: str) -> None:
         subprocess.run(["git", "-C", str(path), *args], check=True,
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     path.mkdir()
     git("init", "-q", "-b", branch)
     git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
@@ -644,7 +644,7 @@ def test_base_branch_against_a_real_repo(tmp_path: Path, monkeypatch, capsys, ca
     one resolver left, against real git rather than stubbed calls."""
     def git(*args: str) -> None:
         subprocess.run(["git", "-C", str(repo), *args], check=True,
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
 
     guess_expected = False
     if case == "unborn_no_branches":
