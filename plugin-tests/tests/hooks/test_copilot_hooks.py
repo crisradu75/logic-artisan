@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import os
@@ -622,6 +623,7 @@ def _run_launcher(argv: list[str], command: str, event: dict, cwd: Path, root: s
     )
 
 
+@functools.cache
 def _find_bash() -> str | None:
     """Git Bash first, else the first `bash` on PATH that can read the plugin by its `C:/`-style path.
 
