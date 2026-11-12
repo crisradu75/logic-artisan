@@ -4,7 +4,7 @@ Handoff pipes one JSON object per run to `lib/log_run.py`, which appends it to
 `cla.io/retro/spec-to-pr-runs.jsonl`; `/cla:spec-to-pr-retro` reads it through
 `spec_to_pr_aggregate.py`. Build the record from the example below. `log_run.py` checks it against
 `SHAPES` in that file and refuses an off-shape record, naming every field that is off; the retry
-rule is in `spec-to-pr` Handoff (§5). This file says what
+rule is in `spec-to-pr` Handoff, step 5 (append the per-run record). This file says what
 each field MEANS; where the two disagree, the code is right.
 
 ## Invocation

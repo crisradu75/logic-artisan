@@ -117,7 +117,8 @@ occupies the position `code-reviewer` holds for a Python diff. A prose-dominant 
 
 Decide it mechanically: `git diff --numstat origin/<pr-base>...HEAD`, summing the changed lines of
 the files that steer an agent against everything else. The definition (files that steer an agent,
-wherever they live) is the one in "Review sizing by risk" above.
+wherever they live) is the one in "Review sizing by risk" above. Keep this recipe in step with the
+prose-dominant row of `spec-to-pr` Revise.
 
 All six Revise agents are dispatched by their full registered `subagent_type`:
 `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter`,
