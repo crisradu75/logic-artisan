@@ -47,7 +47,7 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 
 ## Engineering highlights
 
-**19 skills · 9 guard hooks · 2,944 tests · 56 mutation batches · 12 live OpenSpec specs ·
+**19 skills · 9 guard hooks · 2,980 tests · 56 mutation batches · 17 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
@@ -78,10 +78,10 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
 
 <details>
-<summary>Where the numbers come from (counted 2026-11-04 on <code>main</code> at <code>d090293</code>)</summary>
+<summary>Where the numbers come from (counted 2026-11-12 on <code>main</code> at <code>1d81681</code>)</summary>
 
 ```bash
-ls .claude/plugins/cla/skills | grep -v '^_' | wc -l                         # skills
+git ls-files .claude/plugins/cla/skills | cut -d/ -f5 | grep -v '^_' | sort -u | wc -l   # skills (tracked only)
 ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn)-.*\.py$' | wc -l    # guard hooks
 pytest plugin-tests --collect-only -q | tail -1                            # tests
 find plugin-tests/mutants -name '*.py' | wc -l                             # mutation batches
@@ -155,19 +155,13 @@ Validated in that run:
   invoked. This was a smoke check, not an end-to-end test of every skill or agent workflow.
 - Copilot did not honor the agents' declared model and fell back to `auto`.
 
-**Guard-hook support (`cla--v2.3.0`):** the plugin has separate Copilot Agent Plugins 1.0
-`PreToolUse`/`PostToolUse` wiring for the CLA guards; Claude's hook configuration is unchanged.
-Live checks with Copilot CLI 1.0.105 covered an allowed command, a blocked `cd`, a destructive-git
-confirmation (denied by autopilot, which cannot prompt), and a warning. Copilot documents hook
-timeouts as fail-open, but the live timeout probe was inconclusive. Edit/Write hook behavior is
-covered by adapter tests but was not live-tested, and Windows PowerShell wiring has not been tested.
-The timeout is 30 seconds; a timeout does not block the tool call. Direct pushes to `main` remain
-guarded separately by the Git `pre-push` hook, which must be installed once per clone.
+**Guard hooks on Copilot CLI (since `cla--v2.3.0`):** what was live-tested, and the caveats
+(fail-open timeout, untested paths), are stated once, in the
+[plugin README](.claude/plugins/cla/README.md#copilot-cli-hook-caveats).
 
-The hook wiring first ships in `cla--v2.3.0`; the smoke check above predates it. Skill text that
-names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is not ported, so not
-every skill workflow is Copilot-compatible. Copilot app and cloud agent support are out of scope.
-Follow-up work is tracked from issue #302.
+Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is not
+ported, so not every skill workflow is Copilot-compatible. Copilot app and cloud agent support are
+out of scope. Follow-up work is tracked from issue #302.
 
 The Claude Code install above is unchanged by any of this.
 

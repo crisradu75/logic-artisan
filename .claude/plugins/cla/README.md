@@ -307,7 +307,10 @@ to install.
   plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, smoke-tested with CLI 1.0.105
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers)
   com.github.copilot/agents/   the same two agents for GitHub Copilot CLI, generated from agents/
-  hooks/                       guard hooks + hooks.json wiring, and git/pre-push
+  com.github.copilot/hooks/    the Copilot CLI wiring for the guard hooks (hooks.json)
+  hooks/                       guard hooks + hooks.json wiring; copilot-pretooluse.py and
+                               copilot-posttooluse.py (Copilot CLI adapters over the same dispatchers);
+                               probe-python.sh and probe-python.ps1 (interpreter probes); git/pre-push
   lib/                         log_run.py — writes the one run ledger, spec-to-pr-runs.jsonl
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/<name>/               (references/ scripts/ present as each skill needs)
@@ -315,6 +318,8 @@ to install.
     references/                supporting refs (portable — overlays live in your cla.io/)
     scripts/                   deterministic helpers (stdlib Python)
 ```
+
+### Copilot CLI hook caveats
 
 The Copilot CLI marketplace install, one skill and both helper agents were smoke-tested against
 `cla--v2.2.3` with Copilot CLI 1.0.105. The agents fell back to `auto` because their declared

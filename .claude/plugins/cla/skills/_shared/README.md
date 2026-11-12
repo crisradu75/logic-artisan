@@ -40,14 +40,18 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `subagent-brief.md` | the five-slot brief every dispatched agent gets; `spec-to-pr`, `lite-pr` and `model-routing.md` all point at it |
 | `precheck.md` | the working-tree precheck (in-progress git op, then classify every dirty path); `spec-to-pr` runs it at start and `chain-merge.md` sends `multi-lite` and `multi-pr` to its Step 2 |
 | `review-sweeps.md` | the doc-staleness sweeps and "Applying a round's fixes" (the rejected-alternatives check); `spec-to-pr` reads it in Review and `multi-spec`'s `review-gate.md` points at its fix-round rule |
+| `retiring-specs.md` | how to retire internal specs by folding their outcomes into product specs; `multi-spec` (authoring brief), `review-change` (checklist) and `spec-to-pr` (archive) all point at it |
 | `terminology-format.md` | the entry format for `cla.io/terminology.md`: `shape-decision` writes entries, `cla-setup` reconciles them |
 
 ## `scripts/`
 
-Two scripts live here. `git_state.py` is here on the same rule: it returns a single deterministic
+Three scripts live here. `git_state.py` is here on the same rule: it returns a single deterministic
 exit code for "an in-progress rebase / cherry-pick / merge exists", and five skills check it at every
 commit boundary. `check_no_project_tokens.py` belongs to no single skill because it checks the whole
-plugin tree. Both are stdlib-only and import nothing local.
+plugin tree. `check_spec_proof.py` reports requirements that no test or `manual:` line proves; it is
+here because a consuming repo has no test gate over the plugin, so it is a program a repo runs, and
+`spec-to-pr`, `cla-setup`, `multi-spec` and `review-change` all read or run it. All three are
+stdlib-only and import nothing local.
 
 Their tests do **not** sit beside them. The plugin ships only what a consuming repo can use, so every
 test lives outside the published tree, in the canonical source repo's own development tree —
