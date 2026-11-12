@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import os
@@ -622,10 +623,38 @@ def _run_launcher(argv: list[str], command: str, event: dict, cwd: Path, root: s
     )
 
 
+@functools.cache
+def _find_bash() -> str | None:
+    """Git Bash first, else the first `bash` on PATH that can read the plugin by its `C:/`-style path.
+
+    On Windows `shutil.which("bash")` can resolve to WSL's `System32\\bash.exe`, which cannot read
+    `C:/` paths, so the launcher tests would fail or pass by which one wins on PATH."""
+    candidates: list[str] = []
+    git = shutil.which("git")
+    if git:
+        for parent in Path(git).resolve().parents:
+            for rel in (("usr", "bin", "bash.exe"), ("bin", "bash.exe")):
+                if parent.joinpath(*rel).is_file():
+                    candidates.append(str(parent.joinpath(*rel)))
+    found = shutil.which("bash")
+    if found:
+        candidates.append(found)
+    for candidate in candidates:
+        try:
+            probe = subprocess.run([candidate, "-c", f'test -r "{_PLUGIN.resolve().as_posix()}"'],
+                                   capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if probe.returncode == 0:
+            return candidate
+    return None
+
+
 def _shells() -> list[tuple[str, list[str], str]]:
     found = []
-    if shutil.which("bash"):
-        found.append(("bash", [shutil.which("bash"), "-c"], "bash"))
+    bash = _find_bash()
+    if bash:
+        found.append(("bash", [bash, "-c"], "bash"))
     ps = shutil.which("pwsh") or shutil.which("powershell")
     if ps:
         found.append(("powershell", [ps, "-NoProfile", "-NonInteractive", "-Command"], "powershell"))
@@ -685,10 +714,10 @@ def test_bash_launcher_refuses_loudly_when_cla_python_is_unusable(tmp_path):
     """Missing interpreter, bash probe: an unusable CLA_PYTHON must stop the
     launcher non-zero with a message, not fall through to another interpreter
     (which would run the guards) and not allow the call silently."""
-    bash = shutil.which("bash")
+    bash = _find_bash()
     if not bash:
         import pytest
-        pytest.skip("bash is not available")
+        pytest.skip("no usable bash is available")
     command = _config()["hooks"]["PreToolUse"][0]["hooks"][0]["bash"]
     clean = _pre_event("Bash", {"command": "git status --short"}, tmp_path)
     root = Path(_PLUGIN.resolve()).as_posix()
@@ -742,8 +771,8 @@ def _warned(result, fragment: str) -> None:
     assert fragment in decision["additionalContext"], decision
 
 
-# requirement: copilot-cli / Copilot CLI enforces session guards
-def test_copilot_pretooluse_blocks_a_recursive_delete_of_a_symlink(tmp_path):
+def _make_link(tmp_path: Path) -> Path:
+    """A symlink (or, on Windows without symlink rights, a junction) to a real directory; skips if neither works."""
     real = tmp_path / "real"
     real.mkdir()
     link = tmp_path / "link"
@@ -757,7 +786,20 @@ def test_copilot_pretooluse_blocks_a_recursive_delete_of_a_symlink(tmp_path):
         if not made:
             import pytest
             pytest.skip("cannot create a symlink or junction on this machine")
+    return link
+
+
+# requirement: copilot-cli / Copilot CLI enforces session guards
+def test_copilot_pretooluse_blocks_a_recursive_delete_of_a_symlink(tmp_path):
+    link = _make_link(tmp_path)
     _denied(_bash(tmp_path, f"rm -rf {link.as_posix()}/"), "block-unsafe-recursive-delete.py")
+
+
+# requirement: copilot-cli / Copilot CLI enforces session guards
+def test_copilot_pretooluse_blocks_a_powershell_recursive_delete_of_a_symlink(tmp_path):
+    link = _make_link(tmp_path)
+    event = _pre_event("PowerShell", {"command": f"Remove-Item -Recurse -Force '{link}'"}, tmp_path)
+    _denied(_run_hook(_ADAPTER, event, tmp_path), "block-unsafe-recursive-delete.py")
 
 
 def test_copilot_pretooluse_allows_a_recursive_delete_of_a_real_directory(tmp_path):

@@ -1986,6 +1986,18 @@ def test_a_mismatched_fence_marker_does_not_close_a_fence(opener, inner, closer)
     assert csp._delta_ops(delta)[0] == {"Gone"}
 
 
+@pytest.mark.parametrize("indent", ["", "   ", "    ", "        "])
+@pytest.mark.parametrize("eol", ["\n", "\r\n"])
+def test_a_fence_indented_any_amount_counts_as_a_fence(indent, eol):
+    # Pins the documented intent (`_fence_step`): a fence inside a list item sits 4 or more spaces in and still
+    # renders as a fence, so indentation is not capped at 3. An indented closer closes it too.
+    lines = ["## Requirements", "", "### Requirement: Real", "", "SHALL.", "", f"{indent}```",
+             "### Requirement: Fenced", f"{indent}```", "", "### Requirement: After", "", "SHALL."]
+    text = eol.join(lines) + eol
+    assert _req_names(text) == ["Real", "After"]
+    assert csp._unclosed_fence(text) is False
+
+
 def test_a_fence_still_open_after_a_mismatched_marker_is_unclosed():
     assert csp._unclosed_fence("```\n~~~\nx\n") is True
     assert csp._unclosed_fence("````\n```\nx\n") is True
@@ -2010,6 +2022,16 @@ def test_a_closing_hash_run_is_not_part_of_a_requirement_name():
     removed, renames, modified = csp._delta_ops(delta)
     assert removed == {"Gone", "Also gone"} and renames == {"Old": "New"} and modified == {"Mod"}
     assert csp._removed_headings(delta) == {"Gone"}
+
+
+def test_a_hash_only_requirement_name_is_empty_and_a_scenario_name_drops_a_closing_hash_run():
+    text = (
+        "## Requirements\n\n### Requirement: ##\n\nSHALL.\n\n### Requirement: Real\n\nSHALL.\n\n"
+        "#### Scenario: Case ##\n\n#### Scenario: C#\n"
+    )
+    blocks = csp._blocks(text, False)
+    assert [h for h, _, _ in blocks] == ["", "Real"]
+    assert [s for s, _ in blocks[1][2]] == ["Case", "C#"]
 
 
 def test_a_requirement_with_a_closing_hash_run_is_proven_by_its_bare_name(repo, capsys):
