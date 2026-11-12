@@ -1,6 +1,6 @@
 ---
 name: multi-pr
-description: "Chains multiple OpenSpec changes end-to-end: determines implementation order, runs /cla:spec-to-pr on each change in sequence, enforces that every Critical/Important review finding is actually fixed (never left as a deferred TODO) before moving on, merges each PR a later change needs merged — only on the exact head its review and full test gate covered — and finishes with a full repo cleanup pass. Designed for long, unattended multi-change runs. Triggers on /cla:multi-pr or natural language like 'drive all my openspec changes to PRs', 'chain these changes end to end', 'work through every open change and merge as you go', 'run spec-to-pr on everything'."
+description: "Chain several OpenSpec changes to PRs: order them, run /cla:spec-to-pr on each in turn, require every Critical/Important review finding fixed before moving on, merge a PR only when a later change needs it, then clean up the repo. For long unattended runs. Triggers: /cla:multi-pr, 'drive all my openspec changes to PRs', 'work through every open change', 'run spec-to-pr on everything'."
 argument-hint: "[change-name-1 change-name-2 ... | (empty = auto-discover every open change)]"
 # Merges pull requests, so it must never self-trigger on a description match —
 # only an explicit `/cla:multi-pr` starts it. Safe to set: nothing invokes this
