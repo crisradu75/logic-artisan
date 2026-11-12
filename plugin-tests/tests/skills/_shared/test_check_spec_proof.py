@@ -2012,6 +2012,16 @@ def test_a_closing_hash_run_is_not_part_of_a_requirement_name():
     assert csp._removed_headings(delta) == {"Gone"}
 
 
+def test_a_hash_only_requirement_name_is_empty_and_a_scenario_name_drops_a_closing_hash_run():
+    text = (
+        "## Requirements\n\n### Requirement: ##\n\nSHALL.\n\n### Requirement: Real\n\nSHALL.\n\n"
+        "#### Scenario: Case ##\n\n#### Scenario: C#\n"
+    )
+    blocks = csp._blocks(text, False)
+    assert [h for h, _, _ in blocks] == ["", "Real"]
+    assert [s for s, _ in blocks[1][2]] == ["Case", "C#"]
+
+
 def test_a_requirement_with_a_closing_hash_run_is_proven_by_its_bare_name(repo, capsys):
     _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Hashed ##", "SHALL.\n\n" + _scn("Hashed case"))))
     _write(repo, "tests/test_h.py", _marker("requirement", "alpha", "Hashed"))

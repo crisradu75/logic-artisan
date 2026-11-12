@@ -169,8 +169,9 @@ def _fence_after(line: str, fence: tuple[str, int] | None) -> tuple[str, int] | 
 
 def _req_name(name: str) -> str:
     """A requirement name as OpenSpec reads it (`normalizeRequirementName`): a closing run of `#` after a space
-    or tab is not part of the name, so `Foo ##` is `Foo` while `C#` keeps its `#`."""
-    return re.sub(r"[ \t]+#+[ \t]*$", "", name).strip()
+    or tab is not part of the name, so `Foo ##` is `Foo` while `C#` keeps its `#`. A name that is only a
+    `#` run is empty. Scenario names are read the same way."""
+    return re.sub(r"(?:^|[ \t]+)#+[ \t]*$", "", name).strip()
 
 _MARKER = re.compile(
     r"^\s*(?:#|//|--|;|%|/\*+|\*|<!--)\s*(requirement|scenario):\s+([a-z0-9][a-z0-9-]*) / (.+?)\s*(?:\*/|-->)?\s*$"
@@ -364,7 +365,7 @@ def _blocks(text: str, delta: bool) -> list[tuple[str, list[str], list[tuple[str
                     continue
                 m = _SCN.match(line)
                 if m and cur_req is not None:
-                    cur_scn = (m.group(1), [])
+                    cur_scn = (_req_name(m.group(1)), [])
                     cur_req[2].append(cur_scn)
                     cur_req[1].append(line)
                     continue
