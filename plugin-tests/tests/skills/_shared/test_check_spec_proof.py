@@ -1986,6 +1986,18 @@ def test_a_mismatched_fence_marker_does_not_close_a_fence(opener, inner, closer)
     assert csp._delta_ops(delta)[0] == {"Gone"}
 
 
+@pytest.mark.parametrize("indent", ["", "   ", "    ", "        "])
+@pytest.mark.parametrize("eol", ["\n", "\r\n"])
+def test_a_fence_indented_any_amount_counts_as_a_fence(indent, eol):
+    # Pins the documented intent (`_fence_step`): a fence inside a list item sits 4 or more spaces in and still
+    # renders as a fence, so indentation is not capped at 3. An indented closer closes it too.
+    lines = ["## Requirements", "", "### Requirement: Real", "", "SHALL.", "", f"{indent}```",
+             "### Requirement: Fenced", f"{indent}```", "", "### Requirement: After", "", "SHALL."]
+    text = eol.join(lines) + eol
+    assert _req_names(text) == ["Real", "After"]
+    assert csp._unclosed_fence(text) is False
+
+
 def test_a_fence_still_open_after_a_mismatched_marker_is_unclosed():
     assert csp._unclosed_fence("```\n~~~\nx\n") is True
     assert csp._unclosed_fence("````\n```\nx\n") is True
