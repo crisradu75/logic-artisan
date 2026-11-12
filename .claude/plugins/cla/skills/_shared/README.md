@@ -39,6 +39,7 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `ship.md` | the Ship procedure (branch preflight, hygiene scans, `Measured-by:` trailers, staging, PR); `spec-to-pr` runs it and `diagnose` cites its §2a |
 | `subagent-brief.md` | the five-slot brief every dispatched agent gets; `spec-to-pr`, `lite-pr` and `model-routing.md` all point at it |
 | `precheck.md` | the working-tree precheck (in-progress git op, then classify every dirty path); `spec-to-pr` runs it at start and `chain-merge.md` sends `multi-lite` and `multi-pr` to its Step 2 |
+| `review-sweeps.md` | the doc-staleness sweeps and "Applying a round's fixes" (the rejected-alternatives check); `spec-to-pr` reads it in Review and `multi-spec`'s `review-gate.md` points at its fix-round rule |
 | `terminology-format.md` | the entry format for `cla.io/terminology.md`: `shape-decision` writes entries, `cla-setup` reconciles them |
 
 ## `scripts/`

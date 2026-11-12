@@ -1,6 +1,6 @@
 # Review — sweeps and applying a round's fixes
 
-Read from the Review stub in `SKILL.md`: the doc-staleness sweeps run in every Review pass whose proposal retires something; "Applying a round's fixes" is read before the first fix of a FIX FIRST / RETHINK round. Review behaviour itself lives in `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` (agent prompts: `dispatch.md` beside it); edit it there, never here or in the orchestrator.
+Read from the Review stub in `spec-to-pr`'s `SKILL.md` and from `multi-spec`'s `references/review-gate.md`: the doc-staleness sweeps run in every Review pass whose proposal retires something; "Applying a round's fixes" is read before the first fix of a FIX FIRST / RETHINK round. Review behaviour itself lives in `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` (agent prompts: `dispatch.md` beside it); edit it there, never here or in the orchestrator.
 
 ## Doc-staleness sweeps
 
