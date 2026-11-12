@@ -664,3 +664,48 @@ def test_the_edit_write_dispatcher_leaves_advisory_errors_as_context(monkeypatch
     )
     assert rc == 0
     assert "permissionDecision" not in nested
+
+
+# --------------------------------------------------------------------------- #
+# Command substitution inside double quotes / backticks EXECUTES, so the guards
+# must see its body; single-quoted text and plain prose must stay hidden.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "command, reason_word",
+    [
+        ('echo "$(git reset --hard HEAD~1)"', "reset --hard"),
+        ("echo `git push --force origin feat`", "force-push"),
+        ('echo "`git push --force origin feat`"', "force-push"),
+        ('echo "x $(echo y; git push --force origin feat) z"', "force-push"),
+        ('git commit -m "$(git reset --hard HEAD~1)"', "reset --hard"),
+    ],
+)
+def test_bash_dispatch_asks_on_a_destructive_command_inside_a_substitution(
+    tmp_path, command, reason_word
+):
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": command}, "cwd": str(tmp_path)})
+    assert r.returncode == 0
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert reason_word in nested["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "reset --hard docs"',
+        "echo 'literal $(git reset --hard HEAD~1) text'",
+        "echo '`git push --force origin feat`'",
+        'echo "escaped \\$(git reset --hard HEAD~1) text"',
+        'echo "git push --force origin feat"',
+        # text AFTER a closed substitution is still prose
+        'echo "$(date) then git reset --hard HEAD~1"',
+        'echo "`date` then git push --force origin feat"',
+    ],
+)
+def test_bash_dispatch_stays_silent_when_the_shell_would_not_run_the_text(tmp_path, command):
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": command}, "cwd": str(tmp_path)})
+    assert r.returncode == 0
+    assert "permissionDecision" not in r.stdout

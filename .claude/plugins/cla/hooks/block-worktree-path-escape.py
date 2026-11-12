@@ -146,8 +146,11 @@ def _is_inside_by_inode(path: str, root: str) -> bool:
 
 
 def main() -> int:
-    if os.environ.get("ALLOW_WORKTREE_PATH_ESCAPE") == "1":
-        return 0
+    # The override still runs the whole check: it only turns the block into an
+    # announced allow, and only when there was a block to turn (the same shape
+    # as ALLOW_DESTRUCTIVE_GIT in ask-destructive-git.py), so a switch exported
+    # weeks ago cannot disarm this guard without a word.
+    override = os.environ.get("ALLOW_WORKTREE_PATH_ESCAPE") == "1"
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
@@ -181,7 +184,7 @@ def main() -> int:
         # tuned out and takes the real one with it. So ask whether this is a
         # work tree at all, and only speak up when it is. One extra subprocess,
         # on the already-failed path only.
-        if _is_work_tree(cwd):
+        if not override and _is_work_tree(cwd):
             _warn(f"could not resolve git dirs for {cwd!r}; not checking this write")
         return 0
     git_dir, git_common_dir = clone_paths
@@ -195,7 +198,8 @@ def main() -> int:
         # git_common_dir), so failing to resolve its root is a degraded git, not
         # a benign shape. Silence here is the difference between "checked and
         # allowed" and "never checked".
-        _warn(f"in a worktree but could not resolve its root from {cwd!r}; not checking")
+        if not override:
+            _warn(f"in a worktree but could not resolve its root from {cwd!r}; not checking")
         return 0
     primary_clone_root = os.path.dirname(git_common_dir)
 
@@ -208,6 +212,16 @@ def main() -> int:
         # repo entirely. Different, legitimate pattern; not this bug.
         return 0
     if _is_inside(target, worktree_root):
+        return 0
+
+    if override:
+        print(
+            "[block-worktree-path-escape] note: this write would normally be "
+            f"blocked (it targets '{target}', outside worktree '{worktree_root}'), "
+            "but the check is DISABLED by ALLOW_WORKTREE_PATH_ESCAPE=1. Unset it "
+            "to re-enable. (hook: block-worktree-path-escape.py)",
+            file=sys.stderr,
+        )
         return 0
 
     print(

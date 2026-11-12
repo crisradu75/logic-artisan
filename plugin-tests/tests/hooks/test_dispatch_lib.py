@@ -204,13 +204,30 @@ def test_strip_quoted_spans_still_hides_a_git_command_mentioned_in_quoted_prose(
 # --------------------------------------------------------------------------- #
 
 
-def test_strip_quoted_spans_collapses_backtick_spans_too():
-    # Backticks are the third quoting form the helper handles; the other two
-    # had coverage and this one did not.
-    command = "echo `git commit -m x` && ls"
-    scanned = lib.strip_quoted_spans(command)
-    assert "git commit" not in scanned
-    assert len(scanned) == len(command)
+def test_strip_quoted_spans_keeps_executed_substitution_bodies_visible():
+    # A backtick span and a `$(...)` inside double quotes are RUN by the shell,
+    # so the guards must see them; the surrounding prose is still blanked.
+    for command in (
+        "echo `git commit -m x` && ls",
+        'echo "say $(git commit -m x) now" && ls',
+        'echo "say `git commit -m x` now" && ls',
+    ):
+        scanned = lib.strip_quoted_spans(command)
+        assert "git commit -m x" in scanned, command
+        assert len(scanned) == len(command)
+    assert "say" not in lib.strip_quoted_spans('echo "say $(git commit -m x) now"')
+
+
+def test_strip_quoted_spans_blanks_unexecuted_substitution_text():
+    for command in (
+        "echo '$(git commit -m x)' && ls",
+        "echo '`git commit -m x`' && ls",
+        'echo "\\$(git commit -m x)" && ls',
+        'echo "\\`git commit -m x\\`" && ls',
+    ):
+        scanned = lib.strip_quoted_spans(command)
+        assert "git commit" not in scanned, command
+        assert len(scanned) == len(command)
 
 
 def test_strip_quoted_spans_does_not_cover_heredoc_bodies():

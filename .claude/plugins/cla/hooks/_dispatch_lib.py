@@ -398,9 +398,9 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
     """Return (git_dir, git_common_dir) as realpaths, or None on failure.
 
     One `rev-parse` answering both questions, not two: it prints one line per
-    requested option in argument order. This runs on every Bash call and on
-    every Edit/Write via --heartbeat, so halving the process count here is a
-    real saving against the shared handler budget.
+    requested option in argument order. Its only caller is the Edit/Write guard
+    `block-worktree-path-escape.py`, which runs on every Edit/Write, so halving
+    the process count here is a real saving against the shared handler budget.
     """
     r = run_git(cwd, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
     if not r or r.returncode != 0:
@@ -482,9 +482,12 @@ GIT_CMD = r"\b(?i:git)(?:\.(?i:exe|cmd|bat|com|ps1))?"
 
 
 def strip_quoted_spans(cmd: str) -> str:
-    """Replaces the contents of every quoted/backtick span with same-length,
+    """Replaces the contents of every quoted span with same-length,
     non-whitespace placeholder characters (the quote delimiters themselves are
-    left in place), so a matcher below doesn't trip on a `git commit` mentioned
+    left in place) EXCEPT command substitutions the shell executes: the body of
+    a `$(...)` or backtick span inside double quotes, and any unquoted backtick
+    span, stays visible (single-quoted text is never executed, so it is always
+    blanked). A matcher below doesn't trip on a `git commit` mentioned
     inside an echoed string or a commit message, AND so a global option's quoted
     value (`-C "/path with space"`) becomes a single whitespace-free token
     before `GIT_GLOBAL_OPTS` tries to match it — the value-consuming
@@ -506,7 +509,11 @@ def strip_quoted_spans(cmd: str) -> str:
       written via `cat <<'EOF' … git push origin main … EOF` still matches and
       a block hook will fire on it. This is the most likely real-world false
       positive of the git hooks; it is accepted, not solved.
-    - NOT handled — escaped or nested quotes (`\\'`, `"a 'b' c"` interactions).
+    - NOT handled — escaped or nested quotes (`\\'`, `"a 'b' c"` interactions),
+      including a double quote inside a `$(...)` that sits in double quotes.
+    - NOT handled — `<(...)` / `>(...)` process substitution inside double
+      quotes, which the shell does not execute there; unquoted ones were never
+      blanked.
     - INTENTIONALLY matches shell semantics for a mid-word apostrophe:
       `echo don't && git push origin main && echo won't` collapses the span
       between the two apostrophes, so the `git push` disappears from the
@@ -519,9 +526,44 @@ def strip_quoted_spans(cmd: str) -> str:
         span = match.group(0)
         return span[0] + "#" * (len(span) - 2) + span[-1]
 
+    def _double_quoted(match: re.Match[str]) -> str:
+        # Inside double quotes the shell still EXECUTES `$(...)` and backtick
+        # substitutions, so their bodies stay visible; all other text is blanked.
+        span = match.group(0)
+        inner = span[1:-1]
+        out: list[str] = []
+        i = 0
+        while i < len(inner):
+            ch = inner[i]
+            if ch == "\\":  # an escaped `$` or backtick is literal text
+                out.append("##"[: len(inner) - i])
+                i += 2
+                continue
+            if ch == "$" and inner.startswith("$(", i):
+                depth, j = 0, i + 1
+                while j < len(inner):
+                    depth += (inner[j] == "(") - (inner[j] == ")")
+                    if depth == 0:
+                        break
+                    j += 1
+                end = min(j, len(inner) - 1)  # unterminated: runs to span end
+            elif ch == "`":
+                j = i + 1
+                while j < len(inner) and inner[j] != "`":
+                    j += 2 if inner[j] == "\\" else 1
+                end = min(j, len(inner) - 1)
+            else:
+                out.append("#")
+                i += 1
+                continue
+            out.append(inner[i : end + 1])
+            i = end + 1
+        return span[0] + "".join(out)[: len(inner)] + span[-1]
+
     stripped = re.sub(r"'[^']*'", _placeholder, cmd)
-    stripped = re.sub(r'"[^"]*"', _placeholder, stripped)
-    stripped = re.sub(r"`[^`]*`", _placeholder, stripped)
+    stripped = re.sub(r'"[^"]*"', _double_quoted, stripped)
+    # No backtick pass: an unquoted backtick span is a command substitution the
+    # shell runs, and one inside single quotes is already blanked above.
     return stripped
 
 
