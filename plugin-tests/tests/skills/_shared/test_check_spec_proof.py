@@ -568,7 +568,7 @@ def test_prose_that_mentions_the_phrase_mid_line_is_not_the_fact(repo, capsys):
 def test_this_repos_facts_line_and_cla_setup_agree_with_the_checker():
     mode, source = csp.read_granularity(_REPO)
     assert mode == "requirement" and source == f"{FACTS}:{_line_of(_REPO / FACTS)}"
-    setup = (_REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md").read_text(encoding="utf-8")
+    setup = (_REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "references" / "facts-file.md").read_text(encoding="utf-8")
     assert "`- Test proof granularity: requirement`" in setup and "`- Test proof granularity: scenario`" in setup
 
 

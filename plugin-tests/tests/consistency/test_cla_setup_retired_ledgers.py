@@ -23,7 +23,7 @@ import pytest
 import log_run
 
 _REPO = Path(__file__).resolve().parents[3]
-_SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
+_SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "references" / "ledgers-and-run-notes.md"
 _BASH = shutil.which("bash")
 # A bash run is ~13 s alone on Windows; parallel workers multiply it, so 30 s flaked.
 _BASH_TIMEOUT = 120
@@ -36,7 +36,7 @@ RETIRED = ("codify-runs", "commit-provenance", "right-model-runs", "multi-pr-run
 def _script() -> str:
     text = _SKILL.read_text(encoding="utf-8")
     match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?retired ledger: [^`]*?)```", text)
-    assert match, "cla-setup/SKILL.md: no retired-ledger block found"
+    assert match, "cla-setup/references/ledgers-and-run-notes.md: no retired-ledger block found"
     return match.group(1)
 
 

@@ -22,6 +22,9 @@ import pytest
 _REPO = Path(__file__).resolve().parents[3]
 _SKILLS = _REPO / ".claude" / "plugins" / "cla" / "skills"
 _SKILL = _SKILLS / "cla-setup" / "SKILL.md"
+_SETUP_REFS = _SKILLS / "cla-setup" / "references"
+# Part 1 items 5, 6, 7 and 7a keep their blocks in these files, in this order.
+_PART_1_REFS = ("openspec-rules.md", "ledgers-and-run-notes.md", "economy-rules-block.md")
 _REFS = _SKILLS / "_shared" / "references"
 _ROUTING = _REFS / "model-routing.md"
 _ECONOMY = _REFS / "orchestration-economy.md"
@@ -70,12 +73,12 @@ _needs_tools = pytest.mark.skipif(
 
 
 def _skill_text() -> str:
-    return _SKILL.read_text(encoding="utf-8")
+    return (_SETUP_REFS / "economy-rules-block.md").read_text(encoding="utf-8")
 
 
 def _block() -> str:
     match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?cla-economy\.md[^`]*?)```", _skill_text())
-    assert match, "cla-setup/SKILL.md: no economy-rules-file block found"
+    assert match, "cla-setup/references/economy-rules-block.md: no economy-rules-file block found"
     return match.group(1)
 
 
@@ -144,8 +147,8 @@ def test_an_edited_copy_is_replaced_and_the_next_run_is_unchanged(tmp_path: Path
 
 
 def _part_1_blocks() -> list[str]:
-    text = _skill_text()
-    part_1 = text.split("## Part 1 — Structure", 1)[1].split("## Part 2 — Facts", 1)[0]
+    part_1 = _SKILL.read_text(encoding="utf-8").split("## Part 1 — Structure", 1)[1].split("## Part 2 — Facts", 1)[0]
+    part_1 += "".join("\n" + (_SETUP_REFS / name).read_text(encoding="utf-8") for name in _PART_1_REFS)
     return re.findall(r"```bash\n(.*?)```", part_1, re.S)
 
 

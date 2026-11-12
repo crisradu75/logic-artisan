@@ -26,7 +26,7 @@ _SKILLS = _REPO / ".claude" / "plugins" / "cla" / "skills"
 _HANDOFF = _SKILLS / "spec-to-pr" / "references" / "handoff.md"
 _LITE = _SKILLS / "multi-lite"
 _PR = _SKILLS / "multi-pr"
-_CLA_SETUP = _SKILLS / "cla-setup" / "SKILL.md"
+_CLA_SETUP = _SKILLS / "cla-setup" / "references" / "ledgers-and-run-notes.md"
 _LINE = "cla.io/retro/*-run-notes-*.md"
 _BASH = shutil.which("bash")
 # A bash run is ~13 s alone on Windows; parallel workers multiply it, so 30 s flaked.
@@ -118,7 +118,7 @@ def _git_env() -> dict[str, str]:
 
 def _block(marker: str) -> str:
     match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?" + re.escape(marker) + r"[^`]*?)```", _read(_CLA_SETUP))
-    assert match, f"cla-setup/SKILL.md: no block holding {marker!r}"
+    assert match, f"cla-setup/references/ledgers-and-run-notes.md: no block holding {marker!r}"
     return match.group(1)
 
 
@@ -271,7 +271,7 @@ def test_cla_setup_leaves_a_deliberate_un_ignore_alone(tmp_path: Path) -> None:
     out = _run(root)
     assert out.startswith("un-ignored (left as is): .gitignore:2:!cla.io/retro/multi-lite-run-notes-*.md"), out
     assert (root / ".gitignore").read_bytes() == before.encode()
-    item_7 = _between(_read(_CLA_SETUP), "### 7. Ignore", "## Part 2")
+    item_7 = _between(_read(_CLA_SETUP), "### 7. Ignore", None)
     assert "the chains will not start until that `!` line" in item_7
 
 
@@ -308,7 +308,7 @@ def test_cla_setup_lists_tracked_notes_and_changes_nothing_without_a_yes(tmp_pat
     status = _git(root, "status", "--porcelain")
     assert _listed(root) == tracked
     assert _git(root, "status", "--porcelain") == status  # the "no" path: nothing moved
-    item_7 = _between(_read(_CLA_SETUP), "### 7. Ignore", "## Part 2")
+    item_7 = _between(_read(_CLA_SETUP), "### 7. Ignore", None)
     assert "Only on an explicit yes" in item_7
     assert "loses its working copies on its next pull (history keeps them)" in item_7
 
@@ -318,7 +318,7 @@ def test_cla_setup_lists_tracked_notes_and_changes_nothing_without_a_yes(tmp_pat
 def test_cla_setup_untracks_exactly_the_listed_notes_on_a_yes(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     tracked = _seed_tracked_notes(root)
-    item_7 = _between(_read(_CLA_SETUP), "### 7. Ignore", "## Part 2")
+    item_7 = _between(_read(_CLA_SETUP), "### 7. Ignore", None)
     match = re.search(r"`(git -C \"\$ROOT\" rm [^`]*?)<each listed path>`", item_7)
     assert match, "item 7 names no untrack command"
     out = _bash(match.group(1) + " ".join(_listed(root)), root)

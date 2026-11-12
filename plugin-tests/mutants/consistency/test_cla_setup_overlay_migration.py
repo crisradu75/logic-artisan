@@ -15,7 +15,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 DEV = Path(__file__).resolve().parents[2]
 SKILLS = REPO / ".claude" / "plugins" / "cla" / "skills"
-CLA_SETUP = SKILLS / "cla-setup" / "SKILL.md"
+FACTS_REF = SKILLS / "cla-setup" / "references" / "facts-file.md"
+RECONCILE_REF = SKILLS / "cla-setup" / "references" / "overlay-reconcile.md"
 SHAPE = SKILLS / "shape-decision" / "SKILL.md"
 GUARD = DEV / "tests" / "consistency" / "test_cla_setup_overlay_migration.py"
 
@@ -24,28 +25,28 @@ TARGETS = [GUARD]
 MUTANTS = [
     (
         "a dated incident moves to the lessons log whole, its rules included",
-        CLA_SETUP,
+        FACTS_REF,
         "- **A dated incident's story goes to `cla.io/lessons-learned/`, and any rule it states stays in the\n  overlay** as one or two lines",
         "- **A dated incident goes to `cla.io/lessons-learned/`**",
         TARGETS,
     ),
     (
         "item 9 stops pulling rules out of incidents",
-        CLA_SETUP,
+        RECONCILE_REF,
         'Pull out every rule it states for this repo ("Rule here: …",',
         'Move it whole ("Rule here: …",',
         TARGETS,
     ),
     (
         "an unsure line is moved rather than kept",
-        CLA_SETUP,
+        RECONCILE_REF,
         "When unsure whether a line is a rule, call it one",
         "When unsure whether a line is a rule, move it",
         TARGETS,
     ),
     (
         "any path is a fact again, even one only a rule uses",
-        CLA_SETUP,
+        RECONCILE_REF,
         "    unless only a rule in this overlay uses it;",
         "    wherever it appears;",
         TARGETS,
@@ -66,14 +67,14 @@ MUTANTS = [
     ),
     (
         "the old sync-context pointer stops counting as scaffolding",
-        CLA_SETUP,
+        RECONCILE_REF,
         "  - **scaffolding** — headings, HTML comments, and the old pointer that sent readers to the\n    retired `sync-context` skill for repo-wide facts.",
         "  - **scaffolding** — headings and HTML comments only.",
         TARGETS,
     ),
     (
         "cla-setup restates the terminology entry format",
-        CLA_SETUP,
+        FACTS_REF,
         "What it holds and its entry format are in",
         "Entry format: `**Term**: …` then `_Avoid_: rejected-alias-1`. What it holds and its entry format are in",
         TARGETS,

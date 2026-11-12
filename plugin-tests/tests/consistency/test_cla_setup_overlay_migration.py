@@ -22,7 +22,10 @@ _TERMS = _SKILLS / "_shared" / "references" / "terminology-format.md"
 
 
 def _flat(path: Path) -> str:
-    return " ".join(path.read_text(encoding="utf-8").split())
+    text = path.read_text(encoding="utf-8")
+    if path == _CLA_SETUP:  # the skill's step detail lives in its references/ folder
+        text += "".join(p.read_text(encoding="utf-8") for p in sorted((path.parent / "references").glob("*.md")))
+    return " ".join(text.split())
 
 
 # requirement: cla-setup / Repo facts and overlay rules on setup

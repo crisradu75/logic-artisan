@@ -28,7 +28,7 @@ LITE_LOOP = SKILLS / "multi-lite" / "references" / "candidate-loop.md"
 PR_CLEANUP = SKILLS / "multi-pr" / "references" / "cleanup.md"
 PR_SKILL = SKILLS / "multi-pr" / "SKILL.md"
 PR_LOOP = SKILLS / "multi-pr" / "references" / "change-loop.md"
-CLA_SETUP = SKILLS / "cla-setup" / "SKILL.md"
+CLA_SETUP = SKILLS / "cla-setup" / "references" / "ledgers-and-run-notes.md"
 GITIGNORE = REPO / ".gitignore"
 GUARD = DEV / "tests" / "consistency" / "test_run_notes_stay_local.py"
 
