@@ -548,7 +548,7 @@ _MESSAGE_COMMAND = re.compile(
     r"(?:git (?:commit|tag|notes)|gh (?:pr (?:create|edit|comment|review|merge)"
     r"|issue (?:create|edit|comment)|release create))"
     rf"(?: {_ARG})* \"\$\(cat <<(?P<q>['\"])(?P<w>[A-Za-z0-9_]+)(?P=q)[ \t]*\r?\n"
-    r"(?P<body>(?:(?!(?P=w)\r?\n)[^\n]*\n)*)"
+    r"(?P<body>(?:(?!(?P=w))[^\n]*\n)*)"
     r"(?P=w)\r?\n\)\""
     rf"(?: {_ARG})*"
     rf"(?: && (?:git (?:status|push|add|log|diff|show|fetch|pull)"
@@ -581,7 +581,8 @@ def _blank_heredoc_bodies(cmd: str) -> str:
        command whose message is `"$(cat <<'WORD' ... WORD newline )"`, with
        nothing in the command the shell could read differently).
     2. Markdown backtick spans in the body of the FIRST heredoc operator, which
-       main always blanked: only when that operator has a plain quoted
+       main always blanked: only when the body has no quote character (main
+       paired quotes before backticks) and that operator has a plain quoted
        delimiter, nothing before its line contains `<<`, `#`, a backtick, a
        backslash or an unbalanced quote, the operator line has none of those
        either, and no interpreter word appears anywhere in the command.
@@ -620,7 +621,10 @@ def _blank_heredoc_bodies(cmd: str) -> str:
         return cmd  # an unbalanced quote: the operator may be inside a string
     if _runs_an_interpreter(cmd[: nl + 1] + cmd[body_end:]):  # words in the body are data
         return cmd
-    for span in re.finditer(r"`[^`]*`", cmd[nl + 1 : body_end]):
+    body = cmd[nl + 1 : body_end]
+    if "'" in body or '"' in body:
+        return cmd  # main paired quotes first; with none here raw pairing is the same
+    for span in re.finditer(r"`[^`]*`", body):
         _blank_data(out, nl + 1 + span.start() + 1, nl + 1 + span.end() - 1)
     return "".join(out)
 
@@ -669,8 +673,9 @@ def strip_quoted_spans(cmd: str) -> str:
       redirect, `$`, backtick or second heredoc anywhere outside the body, so
       the shell cannot be reading the operator any other way, and no
       interpreter can be handed the text. (2) Markdown backtick spans in the
-      body of the FIRST heredoc operator stay blanked, as on main, only when it
-      has a plain quoted delimiter, no earlier `<<`, `#`, backtick or
+      body of the FIRST heredoc operator stay blanked, as on main, only when the
+      body has no quote character (main paired quotes before backticks) and the
+      operator has a plain quoted delimiter, no earlier `<<`, `#`, backtick or
       backslash appears up to its line, quotes before it balance, and no
       interpreter word (`bash sh ssh source . eval xargs sudo env python*
       $SHELL $0 …`, any path or `.exe` form) is outside the body. A bare

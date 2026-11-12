@@ -760,6 +760,14 @@ def test_the_edit_write_dispatcher_leaves_advisory_errors_as_context(monkeypatch
         ("git commit -F - <<X\ngit commit -m \"$(cat <<'EOF'\nX\n: \\\"\ngit reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
         ("git commit -F - <<<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
         ("git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\" ; git reset --hard HEAD~1", "reset --hard"),
+        # inside $( ), bash also ends a heredoc at a line that only STARTS with the word
+        ("git commit --allow-empty -m \"$(cat <<'EOF'\nEOF)\"; git reset --hard HEAD~1; : \"\nEOF\n)\"", "reset --hard"),
+        ("git commit --allow-empty -m \"$(cat <<'EOF'\nEOF )\"; git reset --hard HEAD~1; : \"\nEOF\n)\"", "reset --hard"),
+        ("git commit --allow-empty -m \"$(cat <<'EOF'\nEOF\t)\"; git reset --hard HEAD~1; : \"\nEOF\n)\"", "reset --hard"),
+        ("git commit --allow-empty -m \"$(cat <<'EOF'\nEOFx)\"; git reset --hard HEAD~1; : \"\nEOF\n)\"", "reset --hard"),
+        # a backtick inside a quote must not pair across real commands
+        ("cat > x.sh <<'EOF'\n echo ' ` '; git reset --hard HEAD~1; echo ' ` '\nEOF\nchmod +x x.sh && ./x.sh", "reset --hard"),
+        ("cat > Makefile <<'EOF'\nall:\n\t@echo ' ` '; git reset --hard HEAD~1; echo ' ` '\nEOF\nmake", "reset --hard"),
         # backtick spans are not blanked when the heredoc is not plainly data
         ("# `cat <<'EOF'\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
         ("bash <<'EOF' # `\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),

@@ -303,6 +303,10 @@ def test_strip_quoted_spans_skips_an_operator_written_inside_a_blanked_body():
         "git -c core.editor=/bin/bash commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
         "git -c core.editor=bash.exe commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
         "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n )\"",       # not closed at once
+        "git commit -m \"$(cat <<'EOF'\nEOF)\"; git reset --hard; : \"\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\nEOFx)\"; git reset --hard; : \"\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\nEOF\t)\"; git reset --hard; : \"\nEOF\n)\"",
+        "cat > x.sh <<'EOF'\n echo ' ` '; git reset --hard; echo ' ` '\nEOF",   # quotes pair first
         "git commit -m x # \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",   # a comment
         "git commit -m 'a \"$(cat <<'EOF'\n'; git reset --hard\nEOF\n)\"",  # single quotes
         "git commit -m \"a | b\" -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",

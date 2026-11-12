@@ -130,8 +130,25 @@ MUTANTS = [
         # FIRST line equal to the word.
         "a body line equal to the delimiter no longer ends the body",
         LIB,
-        r'''r"(?P<body>(?:(?!(?P=w)\r?\n)[^\n]*\n)*)"''',
+        r'''r"(?P<body>(?:(?!(?P=w))[^\n]*\n)*)"''',
         r'''r"(?P<body>(?:[^\n]*\n)*?)"''',
+        TARGETS,
+    ),
+    (
+        # Killed by the `EOF)` / `EOFx)` cases: inside $( ) bash ends the heredoc at
+        # a line that only STARTS with the word.
+        "only a line exactly equal to the delimiter ends the body",
+        LIB,
+        r'''r"(?P<body>(?:(?!(?P=w))[^\n]*\n)*)"''',
+        r'''r"(?P<body>(?:(?!(?P=w)\r?\n)[^\n]*\n)*)"''',
+        TARGETS,
+    ),
+    (
+        # Killed by the quoted-backtick case (`echo ' ` '; git reset --hard; ...`).
+        "backticks are paired in a body that contains quotes",
+        LIB,
+        """    if "'" in body or '"' in body:""",
+        "    if False:",
         TARGETS,
     ),
     (
