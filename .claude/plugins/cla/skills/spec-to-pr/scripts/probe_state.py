@@ -174,9 +174,8 @@ def _base_branch() -> str:
 
     A repo whose default is `main` has no `master` ref at all, so the hardcoded
     `master..<branch>` ranges below used to fail outright with `unknown
-    revision` — not merely return a wrong count. Mirrors the hooks'
-    `_dispatch_lib.default_base_branch()`; kept as a local copy because each
-    skill is its own isolated pytest scope and cannot import from `hooks/`.
+    revision` — not merely return a wrong count. This is the one resolver of its
+    kind in the plugin: the hooks' copy had no caller and was removed.
 
     `refs/remotes/origin/HEAD` is verified before it is trusted: it is a
     clone-time cache git never auto-refreshes, and `symbolic-ref` exits 0 even
