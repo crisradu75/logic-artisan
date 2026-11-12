@@ -121,7 +121,7 @@ out the forbidden verbs. For a diff review, the `pr-review-toolkit` reviewers (`
 `silent-failure-hunter`, `comment-analyzer`) hold Bash and Edit, and the toolkit's `code-reviewer`
 defaults to running `git diff` itself, so the brief is the only thing holding them back (an accepted
 risk; prose is the whole safeguard). Each is given a diff file instead and this sentence, verbatim,
-in its prompt (the diff-review rule; `lite-pr` Review and `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/revise.md` carry the same sentence):
+in its prompt (the diff-review rule; `lite-pr` Review and `spec-to-pr` Revise carry the same sentence):
 
 > Review only the change in the diff file at `<absolute path>`; run no git command (not `git diff`, and never `git checkout`, `git switch`, `git stash`, `git reset`, `git clean`, `git commit` or `git branch`) and edit, write or delete no file. Give `line` as the line number in the changed file after the change (the number after the `+` in the hunk header, counted forward through the hunk), never a line counted inside the diff file.
 
@@ -377,7 +377,7 @@ Slots 1, 3 and 5 have no frontmatter equivalent and stay in the brief permanentl
 
 **Verify the output; do not trust the report.** An agent that reports success has
 reported its own opinion of its work. Whatever the brief's "done when" said, the
-orchestrator still runs its own check — see `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/revise.md`'s no-capitulation and
-no-sycophancy rules (`INT-CAP` / `INT-SYC`), and the Implement post-check that recounts
+orchestrator still runs its own check — see the no-capitulation and
+no-sycophancy rules (`INT-CAP` / `INT-SYC`) in `spec-to-pr` Revise, and the Implement post-check that recounts
 task boxes regardless of what the delegate claimed. The terminal contract catches a
 hallucinated completion one phase earlier; it does not replace the check.
