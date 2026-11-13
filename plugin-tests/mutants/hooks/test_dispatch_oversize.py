@@ -66,8 +66,8 @@ MUTANTS = [
         # Killed by the malformed-stdin case.
         "malformed stdin crashes the size check instead of reaching the guards",
         DISPATCH,
-        "    except ValueError:",
-        "    except KeyError:",
+        "    except (ValueError, RecursionError):",
+        "    except (KeyError, RecursionError):",
         TARGETS,
     ),
     (

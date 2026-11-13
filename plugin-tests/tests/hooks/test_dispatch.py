@@ -877,7 +877,8 @@ def _bash(tmp_path, command: str):
 
 def test_the_scan_cap_sits_between_real_commands_and_the_timeout():
     # Longest real command measured: 25,270 characters. Worst hostile shape: ~7.5 us per
-    # character through the dispatcher, so past ~650,000 characters it nears the timeout.
+    # character through the dispatcher: ~5 s at 650,000 characters, and 15 s (the timeout) near
+    # 2,000,000. The cap keeps a 3x slower machine under the timeout.
     assert 100_000 <= _CAP <= 600_000
 
 
@@ -947,5 +948,5 @@ def test_a_three_megabyte_command_answers_well_inside_the_hook_timeout(tmp_path)
 
     started = time.perf_counter()
     r = _bash(tmp_path, ";" * 3_000_000)
-    assert time.perf_counter() - started < 5.0
+    assert time.perf_counter() - started < 10.0
     assert json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"

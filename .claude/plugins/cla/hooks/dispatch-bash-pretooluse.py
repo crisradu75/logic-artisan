@@ -148,7 +148,7 @@ def _oversize_ask(stdin_text: str) -> str | None:
     """
     try:
         payload = json.loads(stdin_text)
-    except ValueError:
+    except (ValueError, RecursionError):  # deeply nested input: leave it to the guards
         return None
     tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
