@@ -365,6 +365,9 @@ def _candidate_paths(tokens: list[str], start: int) -> list[str]:
 # allowing: never less strict than tokenizing it would have been.
 _MAX_SEGMENT_CHARS = 64 * 1024
 _SEGMENT_WORK_BUDGET = 4 * _MAX_SEGMENT_CHARS ** 2
+# A segment this short costs well under a millisecond, so past the budget it is
+# still tokenized: a few big payloads must not block every later small `rm -rf`.
+_ALWAYS_TOKENIZED_CHARS = 4096
 
 _RM_WORD = re.compile(r"(?<![^\s/])(?:" + "|".join(sorted(_RM_ALIASES)) + r")(?!\S)", re.IGNORECASE)
 _DASH_WORD_WITH_R = re.compile(r"(?<!\S)--?[A-Za-z]*[rR]")
@@ -404,7 +407,9 @@ def _extract_target_paths(command: str, unexamined: list[str] | None = None) -> 
     work = 0
     for segment in _SEGMENT_SPLIT.split(_strip_non_command_text(command)):
         work += len(segment) ** 2
-        if len(segment) > _MAX_SEGMENT_CHARS or work > _SEGMENT_WORK_BUDGET:
+        if len(segment) > _MAX_SEGMENT_CHARS or (
+            work > _SEGMENT_WORK_BUDGET and len(segment) > _ALWAYS_TOKENIZED_CHARS
+        ):
             if unexamined is not None and _could_be_recursive_delete(segment):
                 unexamined.append(segment)
             continue

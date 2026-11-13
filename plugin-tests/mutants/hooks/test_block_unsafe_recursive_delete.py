@@ -416,16 +416,24 @@ MUTANTS.append((
 MUTANTS.append((
     "the per-segment size cap is dropped, so a 70 KB `rm -rf` word is tokenized and allowed",
     HOOK,
-    "        if len(segment) > _MAX_SEGMENT_CHARS or work > _SEGMENT_WORK_BUDGET:",
-    "        if work > _SEGMENT_WORK_BUDGET:",
+    "        if len(segment) > _MAX_SEGMENT_CHARS or (",
+    "        if False or (",
     TARGETS,
 ))
 
 MUTANTS.append((
     "the squared-length budget is dropped, so many segments just under the cap add up",
     HOOK,
-    "        if len(segment) > _MAX_SEGMENT_CHARS or work > _SEGMENT_WORK_BUDGET:",
-    "        if len(segment) > _MAX_SEGMENT_CHARS:",
+    "            work > _SEGMENT_WORK_BUDGET and len(segment) > _ALWAYS_TOKENIZED_CHARS",
+    "            False and len(segment) > _ALWAYS_TOKENIZED_CHARS",
+    TARGETS,
+))
+
+MUTANTS.append((
+    "past the budget a short segment is no longer tokenized, so a small rm -rf is blocked",
+    HOOK,
+    "            work > _SEGMENT_WORK_BUDGET and len(segment) > _ALWAYS_TOKENIZED_CHARS",
+    "            work > _SEGMENT_WORK_BUDGET",
     TARGETS,
 ))
 

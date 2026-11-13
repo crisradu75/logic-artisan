@@ -957,6 +957,14 @@ def test_the_squared_length_budget_stops_many_long_segments_adding_up():
     assert len(unexamined) == 2
 
 
+def test_a_short_delete_after_the_budget_is_spent_is_still_examined():
+    segment = "rm -rf " + "a" * 60000
+    unexamined: list[str] = []
+    targets = hook._extract_target_paths(";".join([segment] * 6) + "; rm -rf small", unexamined)
+    assert "small" in targets
+    assert len(unexamined) == 2
+
+
 @pytest.mark.parametrize("command", [
     "echo " + "a" * 400000,
     "a" * 400000,
