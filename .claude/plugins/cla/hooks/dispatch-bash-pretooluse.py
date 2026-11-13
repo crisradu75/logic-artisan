@@ -25,7 +25,8 @@ Each sibling hook file is untouched and still independently runnable/importable
 exactly as before (loaded here via the same importlib technique the test suite
 uses) — this file only orchestrates them; it holds no hook logic of its own.
 
-Order and semantics preserved exactly:
+Order and semantics preserved exactly, except one new behaviour: an oversize command
+asks before any guard runs.
   - A command longer than `MAX_SCANNED_COMMAND_CHARS` runs NO guard: the dispatcher
     answers with one `ask` naming its size and the cap, before the first hook.
   - Any hook returning 2 blocks: its stderr message is shown, prefixed with any
@@ -83,9 +84,11 @@ except Exception as _exc:  # noqa: BLE001 -- any load failure must fail closed
 else:
     _LIB_ERROR = None
 
-# Longest command, in CHARACTERS of the decoded string (what the guards' regexes
-# scan, so the cost driver; bytes would over-count non-ASCII), that the guards
-# scan. Claude Code kills a hook at the 15 s `timeout` in hooks.json and a killed
+# Longest command, counted in the characters Python decodes from stdin (what the
+# guards' regexes scan, so the cost driver), that the guards scan. On Windows piped
+# stdin can decode as cp1252 (hooks.json passes no `-X utf8`), so raw UTF-8 non-ASCII
+# text can count as more than its own character count; that errs toward asking.
+# Claude Code kills a hook at the 15 s `timeout` in hooks.json and a killed
 # hook lets the command through. Guard cost grows linearly with size: the slowest
 # hostile shape measured (a `;` chain) took 3.85 s at 500,000 characters and about
 # 7.5 s at 1,000,000 on Windows/Git Bash, so 500,000 keeps a 3x slower or loaded

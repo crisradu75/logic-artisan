@@ -43,7 +43,7 @@ The guard hooks SHALL block, with the reason, a `cd` inside a shell command.
 
 ### Requirement: A command too large to scan asks first
 
-The Bash and PowerShell dispatcher SHALL ask the user, naming the command's size and the limit, before a command longer than 500,000 characters, and SHALL run no guard on it, so a scan that outlasts the hook timeout cannot let it through unchecked.
+The Bash and PowerShell dispatcher SHALL ask the user, naming the command's size and the limit, instead of running any guard on a command longer than 500,000 characters, so a scan that outlasts the hook timeout cannot let it through unchecked.
 
 #### Scenario: A command over the limit
 

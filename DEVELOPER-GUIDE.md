@@ -276,7 +276,8 @@ Write: **9 leaf hooks**, in three severities.
 | | `warn-wholesale-rewrite` | a Write that replaces a tracked file with a much shorter one (it asks you to name what you dropped) |
 
 The Bash/PowerShell dispatcher also asks, without running any guard, when a command is over 500,000
-characters (`MAX_SCANNED_COMMAND_CHARS`): guard cost grows with size, and a hook killed at the 15 s
+characters as Python decodes them from stdin, which on Windows can exceed the text's own character
+count (`MAX_SCANNED_COMMAND_CHARS`): guard cost grows with size, and a hook killed at the 15 s
 timeout lets the call through.
 
 `ask-destructive-git` matters more than it looks. The launcher runs `--permission-mode auto`, which
