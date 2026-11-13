@@ -44,6 +44,11 @@ The guard hooks SHALL warn, without blocking, when a write adds a Python or shel
 - **WHEN** an agent writes a Python or shell file with a comment that holds a date
 - **THEN** the write goes through with a warning quoting the comment
 
+#### Scenario: A comment line millions of characters long
+
+- **WHEN** an agent writes a Python file with a single comment line of millions of `#` characters
+- **THEN** the check finishes within seconds, before the hook's time limit, and the write goes through
+
 ### Requirement: A heredoc holding an escape the shell would change warns
 
 The guard hooks SHALL warn, without blocking, when a shell command's heredoc holds a backslash escape that the shell would change before the program reads it.
