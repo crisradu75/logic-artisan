@@ -26,7 +26,8 @@ _DISPATCHERS = {
 # adapter turns it into a deny. This is wording-matched because the dispatchers
 # emit no structured flag and are a Claude contract this change does not edit;
 # `test_copilot_hooks.py` fails if a dispatcher's failure wording drifts from
-# these phrases.
+# these phrases. The one deliberate exception is the Bash dispatcher's oversize-command
+# ask: that call is unchecked too, and it stays an ask.
 FAILURE_MARKERS = ("could not run", "did not run")
 
 
