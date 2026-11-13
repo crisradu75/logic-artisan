@@ -36,6 +36,7 @@ disrupt the workflow.
 
 from __future__ import annotations
 
+import bisect
 import json
 import re
 import sys
@@ -136,16 +137,26 @@ def _heredoc_bodies(cmd: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     consumed = 0  # index of the next line not yet claimed as some body
 
+    # Which lines could terminate which delimiter, indexed once. Searching the
+    # rest of the command per opener made an unterminated run of N openers
+    # cost N^2 line comparisons (13 s on 25000 `cat <<A` lines); a bisect into
+    # the sorted line numbers finds the same first matching line. Built on the
+    # first opener, so a command with none pays nothing.
+    exact: dict[str, list[int]] | None = None
+    stripped: dict[str, list[int]] | None = None
+
     for i, line in enumerate(lines):
         for m in _HEREDOC_OPEN.finditer(line):
             dash, delim = m.group(1), m.group(3)
             start = max(i + 1, consumed)
-            end = None
-            for j in range(start, len(lines)):
-                candidate = lines[j].strip() if dash else lines[j]
-                if candidate == delim:
-                    end = j
-                    break
+            if exact is None or stripped is None:
+                exact, stripped = {}, {}
+                for j, text in enumerate(lines):
+                    exact.setdefault(text, []).append(j)
+                    stripped.setdefault(text.strip(), []).append(j)
+            found = (stripped if dash else exact).get(delim, [])
+            k = bisect.bisect_left(found, start)
+            end = found[k] if k < len(found) else None
             if end is None:
                 continue  # unterminated — not a heredoc we can trust
             out.append((delim, "\n".join(lines[start:end])))

@@ -107,6 +107,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import bisect
 import errno
 import json
 import os
@@ -118,7 +119,18 @@ from pathlib import Path
 
 # A heredoc body (`<<'EOF' ... EOF`, the convention this repo's own
 # commit-message commands use) -- see `_strip_non_command_text` below.
-_HEREDOC_BODY = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?\r?\n.*?\r?\n\s*\1\b", re.DOTALL)
+#
+# Matched in two halves so the terminator search is not redone per operator:
+# `_HEREDOC_OPEN` is the operator line up to its newline, and a terminator is a
+# line break, optional whitespace, then the delimiter as a whole word (found
+# through `_HEREDOC_TERMINATOR_WORD`). The one-regex form
+# `<<-?\s*['"]?(\w+)['"]?\r?\n.*?\r?\n\s*\1\b` rescanned the whole rest of the
+# command for every operator that had no terminator: quadratic, 40 s on 25000
+# `cat <<A` lines against the dispatcher's 15 s timeout.
+_HEREDOC_OPEN = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?\r?\n")
+# `(?<!\s)` starts each whitespace run at its first character; without it a long
+# run not followed by a word is rescanned from every offset inside it.
+_HEREDOC_TERMINATOR_WORD = re.compile(r"(?<!\s)(\s*)(\w+)")
 
 _SEGMENT_SPLIT = re.compile(r"&&|\|\||[;|\n]")
 
@@ -137,7 +149,45 @@ def _strip_non_command_text(command: str) -> str:
     ONE atomic token, so a real destructive command inside quotes is still
     correctly detected. Blind quote-stripping would defeat exactly that case.
     """
-    return _HEREDOC_BODY.sub("HEREDOC", command)
+    # Exactly what `re.sub(<operator> .*? \r?\n\s*<delimiter>\b, "HEREDOC")`
+    # did: the leftmost operator whose terminator exists is replaced through the
+    # end of that terminator, scanning resumes after it, and an operator with no
+    # terminator is skipped (scanning resumes one character later). The
+    # terminator for an operator is the first run of whitespace holding a "\n"
+    # at or after the end of the operator's own newline and ending in the
+    # delimiter as a whole word. Each word is indexed once, so every operator
+    # costs a bisect, not a rescan. No cap: the result is identical on every
+    # input, however large.
+    words: dict[str, tuple[list[int], list[int]]] | None = None
+    parts: list[str] = []
+    pos = 0
+    search_from = 0
+    while True:
+        opener = _HEREDOC_OPEN.search(command, search_from)
+        if opener is None:
+            break
+        if words is None:
+            words = {}
+            for m in _HEREDOC_TERMINATOR_WORD.finditer(command):
+                newline = m.group(1).rfind("\n")
+                if newline >= 0:
+                    newlines, ends = words.setdefault(m.group(2), ([], []))
+                    newlines.append(m.start() + newline)
+                    ends.append(m.end())
+        entry = words.get(opener.group(1))
+        end = None
+        if entry is not None:
+            at = bisect.bisect_left(entry[0], opener.end())
+            if at < len(entry[0]):
+                end = entry[1][at]
+        if end is None:
+            search_from = opener.start() + 1
+            continue
+        parts.append(command[pos:opener.start()])
+        parts.append("HEREDOC")
+        pos = search_from = end
+    parts.append(command[pos:])
+    return "".join(parts)
 
 
 # The PowerShell spellings stay. `hooks/hooks.json` wires a PowerShell matcher

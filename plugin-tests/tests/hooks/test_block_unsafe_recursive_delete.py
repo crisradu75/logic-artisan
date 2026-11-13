@@ -857,3 +857,58 @@ def test_malformed_stdin_does_not_block(tmp_path):
         input="not json", capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(tmp_path),
     )
     assert r.returncode == 0
+
+
+# --------------------------------------------------------------------------- #
+# Heredoc-body blanking: same result as the single regex it replaced, linear time
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("command, expected", [
+    ("cat <<'EOF'\nrm -rf x\nEOF\nls", "cat HEREDOC\nls"),
+    # An unterminated operator is skipped; a later terminated one still blanks.
+    ("cat <<A\nx\ncat <<B\nrm -rf /\nB", "cat <<A\nx\ncat HEREDOC"),
+    # A terminator needs a line break of its own: `<<A\nA` is not a heredoc.
+    ("<<A\nA", "<<A\nA"),
+    ("<<A\n\nA", "HEREDOC"),
+    # ...and the delimiter must open a line: `x A` is not a terminator.
+    ("<<A\nx A\nq", "<<A\nx A\nq"),
+    # The delimiter must end at a word boundary: `AB` does not terminate `A`.
+    ("<<A\nx\nAB\nA\nz", "HEREDOC\nz"),
+    ("<<A\nx\nA)\nz", "HEREDOC)\nz"),
+    ("<<A\n\n\n  A tail", "HEREDOC tail"),
+    ("a <<A\nx\n<<B\ny\nA\nB\nB", "a HEREDOC\nB\nB"),
+    ("<<A\r\nx\r\nA\r\nq", "HEREDOC\r\nq"),
+    ("<<-A\nx\n\tA\nq", "HEREDOC\nq"),
+    ("echo $((1 << n))\nx\nn", "echo $((1 << n))\nx\nn"),
+])
+def test_heredoc_body_blanking_keeps_its_single_pattern_behaviour(command, expected):
+    assert hook._strip_non_command_text(command) == expected
+
+
+def test_heredoc_body_blanking_and_the_hook_stay_fast_on_hostile_input(tmp_path):
+    import time
+
+    # The hook timeout is 15 s and a killed hook lets the command through, so a
+    # slow input is a bypass. Measured on main (Windows, Git Bash): 40-50 s.
+    for command in (
+        "cat <<A\n" * 25000,                                   # 200 KB, unterminated
+        ("cat <<A\n" * 60000)[:400000],                        # 400 KB
+        "".join(f"cat <<A{i}\n" for i in range(25000)),        # distinct delimiters
+        "cat <<A\nx\nA\n" * 30000,                             # all terminated
+        "<<A\n" + " " * 100000 + ";",                          # long whitespace run, no word
+        "<<A\n" + "\n" * 100000 + ";",
+    ):
+        started = time.perf_counter()
+        hook._strip_non_command_text(command)
+        assert time.perf_counter() - started < 2.0, len(command)
+
+    started = time.perf_counter()
+    r = _run({"tool_input": {"command": "cat <<A\n" * 25000}}, cwd=tmp_path)
+    assert time.perf_counter() - started < 8.0
+    assert r.returncode == 0
+
+
+def test_a_delete_after_a_wall_of_unterminated_heredocs_is_still_seen():
+    # No cap: a long run of operators must not hide what follows it.
+    command = "cat <<A\n" * 5000 + "rm -rf target"
+    assert hook._extract_target_paths(command) == ["target"]
