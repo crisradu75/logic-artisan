@@ -930,7 +930,7 @@ def test_a_command_at_or_below_the_cap_is_still_scanned(tmp_path):
 def test_input_without_a_command_string_goes_to_the_guards_unchanged(tmp_path, stdin_text):
     # The size check reads only `tool_input.command`; anything else is not its business.
     r = subprocess.run([sys.executable, str(_BASH_DISPATCH)], input=stdin_text, capture_output=True,
-                       text=True, encoding="utf-8", cwd=str(tmp_path))
+                       text=True, encoding="utf-8", errors="replace", cwd=str(tmp_path))
     assert (r.returncode, r.stdout.strip()) == (0, "")
 
 
