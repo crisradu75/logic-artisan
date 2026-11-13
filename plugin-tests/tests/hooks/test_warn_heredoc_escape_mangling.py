@@ -191,3 +191,47 @@ def test_a_long_even_run_is_left_alone():
     cmd = "python - <<'PY'\n" + body + "\nPY"
     assert body.count("\\") == 6, "this test must exercise a run of 6"
     assert offending_heredocs(cmd) == []
+
+
+# --------------------------------------------------------------------------- #
+# Terminator lookup: same result as scanning the lines, linear time
+# --------------------------------------------------------------------------- #
+
+
+def test_the_first_terminator_after_the_claimed_lines_wins():
+    # `<<A` is claimed by the first `A`, and `<<B` by the first `B` past it,
+    # not by the `B` that sits inside the first body.
+    cmd = "cat <<A <<B\nx = 'a\\nb'\nB\nA\ny = 'c\\td'\nB\nz"
+    assert offending_heredocs(cmd) == [("A", ["\\n"]), ("B", ["\\t"])]
+
+
+def test_a_terminator_on_the_first_unclaimed_line_ends_the_body_there():
+    # An empty body: the `A` on the very next line terminates, so the escape
+    # below it belongs to no heredoc.
+    assert offending_heredocs("cat <<A\nA\nx = 'a\\nb'\nA") == []
+
+
+def test_a_dash_operator_strips_the_terminator_line_but_a_plain_one_does_not():
+    assert offending_heredocs("cat <<-A\nx = 'a\\nb'\n\tA") == [("A", ["\\n"])]
+    assert offending_heredocs("cat <<A\nx = 'a\\nb'\n\tA") == []
+
+
+def test_the_hook_stays_fast_on_hostile_input():
+    import time
+
+    # The hook timeout is 15 s and a killed hook lets the command through.
+    # Measured on main (Windows, Git Bash): 13 s on the first case.
+    for cmd in (
+        "cat <<A\n" * 25000,
+        ("cat <<A\n" * 60000)[:400000],
+        "".join(f"cat <<A{i}\n" for i in range(25000)),
+        "cat <<-A\n\n" * 30000,
+    ):
+        started = time.perf_counter()
+        assert offending_heredocs(cmd) == []
+        assert time.perf_counter() - started < 2.0, len(cmd)
+
+    started = time.perf_counter()
+    r = _run("cat <<A\n" * 25000)
+    assert time.perf_counter() - started < 8.0
+    assert r.returncode == 0

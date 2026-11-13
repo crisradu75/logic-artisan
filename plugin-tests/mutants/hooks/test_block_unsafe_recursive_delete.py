@@ -96,8 +96,51 @@ MUTANTS = [
         # test_allows_a_commit_message_mentioning_rm_rf_as_prose.
         "heredoc-body stripping is skipped, so prose is scanned as a real command",
         HOOK,
-        'return _HEREDOC_BODY.sub("HEREDOC", command)',
-        "return command",
+        '    return "".join(parts)',
+        "    return command",
+        TARGETS,
+    ),
+    (
+        # The terminator must sit at or after the end of the operator's own
+        # newline. Off by one the other way lets `<<A\nA` (no body line break of
+        # its own) count as a heredoc; the old pattern's `.*?\r?\n` forbade it.
+        "heredoc terminator may be the operator's own line break",
+        HOOK,
+        "bisect.bisect_left(entry[0], opener.end())",
+        "bisect.bisect_left(entry[0], opener.end() - 1)",
+        TARGETS,
+    ),
+    (
+        # ...and the other way: `<<A\n\nA` is a heredoc with an empty body.
+        "heredoc with an empty body is no longer blanked",
+        HOOK,
+        "bisect.bisect_left(entry[0], opener.end())",
+        "bisect.bisect_left(entry[0], opener.end() + 1)",
+        TARGETS,
+    ),
+    (
+        # The LAST newline of the whitespace run is the one that must clear the
+        # operator; the first is usually the operator's own.
+        "terminator newline is read as the first of the whitespace run",
+        HOOK,
+        'newline = m.group(1).rfind("\\n")',
+        'newline = m.group(1).find("\\n")',
+        TARGETS,
+    ),
+    (
+        # A word with no line break before it is not a terminator.
+        "a delimiter word not at the start of a line counts as a terminator",
+        HOOK,
+        "                if newline >= 0:",
+        "                if newline >= -1:",
+        TARGETS,
+    ),
+    (
+        # Scanning resumes AFTER the blanked heredoc, not inside its body.
+        "operators inside a blanked heredoc body are blanked again",
+        HOOK,
+        "        pos = search_from = end",
+        "        pos = end\n        search_from = opener.end()",
         TARGETS,
     ),
 ]
