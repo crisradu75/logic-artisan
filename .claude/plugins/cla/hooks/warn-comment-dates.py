@@ -14,6 +14,19 @@ import sys
 import json
 import re
 
+_DATE = re.compile(r'\b\d{4}-\d{2}-\d{2}\b')
+
+
+def _has_dated_comment(line: str) -> bool:
+    """True when a date follows a `#` on the line.
+
+    The first `#` is enough: a date after any later `#` is also after the first.
+    Searching only the text after it keeps this linear; the one-pattern form
+    `#.*\\b<date>\\b` retries from every `#` and is quadratic on a line of hashes.
+    """
+    i = line.find('#')
+    return i >= 0 and _DATE.search(line, i + 1) is not None
+
 
 def main() -> int:
     try:
@@ -29,8 +42,7 @@ def main() -> int:
     # Edit supplies `new_string`; Write supplies `content`.
     added = tool_input.get('new_string') or tool_input.get('content') or ''
 
-    date_in_comment = re.compile(r'#.*\b\d{4}-\d{2}-\d{2}\b')
-    hits = [line.strip() for line in added.splitlines() if date_in_comment.search(line)]
+    hits = [line.strip() for line in added.splitlines() if _has_dated_comment(line)]
 
     if hits:
         msg = (

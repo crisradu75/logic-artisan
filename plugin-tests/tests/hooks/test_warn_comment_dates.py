@@ -7,14 +7,19 @@ that a `.md` file passes. This file pins its own allow/deny table.
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import random
+import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
 HOOK_PATH = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks" / "warn-comment-dates.py"
+DISPATCHER_PATH = HOOK_PATH.with_name("dispatch-edit-write-pretooluse.py")
 
 
 def _run(tool_input: dict) -> subprocess.CompletedProcess:
@@ -146,3 +151,53 @@ def test_dated_lines_are_joined_with_a_pipe_and_clean_lines_skipped():
 def test_an_edit_with_both_fields_reads_new_string_not_content():
     warning = _warning(_run({"file_path": "a.py", "new_string": "# new 2026-10-30\n", "content": "# other 2025-01-01\n"}))
     assert "2026-10-30" in warning and "2025-01-01" not in warning
+
+
+# The pattern the hook used before it was made linear, kept here as the reference for the
+# differential test below.
+_OLD_PATTERN = re.compile(r'#.*\b\d{4}-\d{2}-\d{2}\b')
+
+
+def _load_hook():
+    spec = importlib.util.spec_from_file_location("warn_comment_dates_under_test", HOOK_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_linear_check_agrees_with_the_old_pattern_on_generated_lines():
+    hook = _load_hook()
+    rng = random.Random(20261114)
+    pieces = ["#", "#", " ", "2026", "-", "10", "30", "2026-10-30", "a", "x1", "1", "0", "--", "\t", "é", "٣"]
+    lines = ["#2026-10-30", "x#2026-10-30", "##2026-10-30", "a2026-10-30#", "# 12026-10-30", "# 2026-10-301", ""]
+    lines += ["".join(rng.choice(pieces) for _ in range(rng.randint(0, 14))) for _ in range(600)]
+    differing = [ln for ln in lines if bool(_OLD_PATTERN.search(ln)) != hook._has_dated_comment(ln)]
+    assert differing == []
+    assert any(_OLD_PATTERN.search(ln) for ln in lines) and not all(_OLD_PATTERN.search(ln) for ln in lines), (
+        "the generated lines must contain both hits and misses")
+
+
+def _through_the_dispatcher(content: str) -> tuple[float, subprocess.CompletedProcess]:
+    payload = json.dumps({"tool_input": {"file_path": "a.py", "content": content}})
+    start = time.monotonic()
+    result = subprocess.run(
+        [sys.executable, str(DISPATCHER_PATH)], input=payload,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+    )
+    return time.monotonic() - start, result
+
+
+# requirement: guard-warnings / A dated comment warns
+@pytest.mark.parametrize("unit", ["#", "# "], ids=["hashes", "hash-space"])
+def test_a_very_long_comment_line_is_scanned_in_linear_time(unit):
+    """The old pattern took 22 s on 40,000 hashes, past the dispatcher's 15 s hook timeout, which
+    lets the edit through unwarned. The bound is generous; the old pattern misses it by far."""
+    elapsed, result = _through_the_dispatcher(unit * (3_000_000 // len(unit)))
+    assert result.returncode == 0 and result.stdout.strip() == ""
+    assert elapsed < 5, f"{elapsed:.1f}s"
+
+
+def test_a_long_comment_line_still_warns_when_it_ends_in_a_date():
+    elapsed, result = _through_the_dispatcher("#" * 1_000_000 + " 2026-10-30\n")
+    assert "YYYY-MM-DD date" in result.stdout
+    assert elapsed < 5, f"{elapsed:.1f}s"
