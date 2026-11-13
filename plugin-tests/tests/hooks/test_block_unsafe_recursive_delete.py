@@ -912,3 +912,80 @@ def test_a_delete_after_a_wall_of_unterminated_heredocs_is_still_seen():
     # No cap: a long run of operators must not hide what follows it.
     command = "cat <<A\n" * 5000 + "rm -rf target"
     assert hook._extract_target_paths(command) == ["target"]
+
+
+# --------------------------------------------------------------------------- #
+# Tokenizing: shlex is quadratic in a token's length, so a segment is bounded
+# --------------------------------------------------------------------------- #
+
+def test_a_segment_at_the_cap_is_tokenized_exactly_as_shlex_does():
+    word = "a" * 60000
+    unexamined: list[str] = []
+    assert hook._extract_target_paths(f"rm -rf {word}", unexamined) == [word]
+    assert unexamined == []
+
+
+@pytest.mark.parametrize("command", [
+    "rm -rf " + "a" * 70000,
+    "rm " + "-" + "r" * 70000,
+    "Remove-Item -Path " + "a" * 70000 + " -Recurse -Force",
+    'r""m -rf ' + "a" * 70000,                    # posix shlex joins this into `rm`
+    "r\\m -rf " + "a" * 70000,
+    "C:\\bin\\rm -R " + "a" * 70000,
+    "rm 'x'-rf " + "a" * 70000,                   # posix=False ends a token at the closing quote
+    "C:\\bin\\\\r\"\"m -\"r\"f " + "a" * 70000,       # quotes and a path separator in one token
+    "/bin/rm -fr '" + "a b " * 20000 + "'",
+], ids=lambda c: f"{c[:14]!r}-{len(c)}")
+def test_a_long_segment_that_may_be_a_recursive_delete_blocks(command, tmp_path):
+    r = _run({"tool_input": {"command": command}}, cwd=tmp_path)
+    assert r.returncode == 2
+    assert "block-unsafe-recursive-delete.py" in r.stderr
+    assert "over 65536 characters" in r.stderr
+
+
+def test_many_short_segments_are_all_examined():
+    unexamined: list[str] = []
+    targets = hook._extract_target_paths("rm -rf a; " * 40000 + "rm -rf last", unexamined)
+    assert unexamined == []
+    assert targets == ["a", "last"]
+
+
+def test_the_squared_length_budget_stops_many_long_segments_adding_up():
+    segment = "rm -rf " + "a" * 60000
+    unexamined: list[str] = []
+    hook._extract_target_paths(";".join([segment] * 6), unexamined)
+    assert len(unexamined) == 2
+
+
+@pytest.mark.parametrize("command", [
+    "echo " + "a" * 400000,
+    "a" * 400000,
+    "git commit -m '" + "word " * 80000 + "'",
+    "ls -la " + "-r" * 100000,                    # a dash word with an r, but no rm
+    "rm" + "a" * 100000 + " -rf x",               # not an alias word
+    "<<" * 200000,
+    "a=" * 200000,
+    "`" * 400000,
+], ids=lambda c: f"{c[:14]!r}-{len(c)}")
+def test_a_long_segment_that_is_not_a_delete_is_allowed(command, tmp_path):
+    assert hook._could_be_recursive_delete(command) is False
+    r = _run({"tool_input": {"command": command}}, cwd=tmp_path)
+    assert r.returncode == 0
+
+
+def test_hostile_long_words_are_fast(tmp_path):
+    import time
+
+    # Measured on main (Windows, Git Bash): 22 s for `rm -rf ` plus 800 KB of
+    # `a`, 22 s for 400000 `<<`, 4-5 s for a 400 KB word.
+    for command in (
+        "rm -rf " + "a" * 800000,
+        "<<" * 400000,
+        "a" * 400000,
+        "rm -rf '" + "a b " * 100000 + "'",
+        "\\" * 400000,
+        "rm -rf " + "a/" * 300000,
+    ):
+        started = time.perf_counter()
+        _run({"tool_input": {"command": command}}, cwd=tmp_path)
+        assert time.perf_counter() - started < 8.0, command[:30]

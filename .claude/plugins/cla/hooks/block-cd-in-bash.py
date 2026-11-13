@@ -73,9 +73,26 @@ def _strip_quoted(cmd: str) -> str:
     return re.sub(r"`[^`]*`", "``", stripped)
 
 
+_WHITESPACE_RUN = re.compile(r"\s+")
+
+
+def _squash_whitespace(text: str) -> str:
+    """Shrink every whitespace run to one character, keeping what the matchers read.
+
+    `_SHADOW` and `_DIRECTIVE` open with a separator followed by `\\s*`. On a long
+    run of whitespace and newlines that restarts, and rescans the rest of the run,
+    from every newline in it: quadratic, 25 s for 12000 repeats of " \\n" against
+    the dispatcher's 15 s timeout, and this hook runs first, so a kill skips every
+    guard behind it. Neither pattern can tell one whitespace character from many,
+    except that a newline is itself a separator: so a run holding a newline becomes
+    one "\\n" and any other run one space. Every match, and no match, is preserved.
+    """
+    return _WHITESPACE_RUN.sub(lambda m: "\n" if "\n" in m.group() else " ", text)
+
+
 def shadows_cd(cmd: str) -> bool:
     """Return True iff `cmd` redefines `cd` as a function or alias."""
-    return bool(_SHADOW.search(_strip_quoted(cmd)))
+    return bool(_SHADOW.search(_squash_whitespace(_strip_quoted(cmd))))
 
 
 # A directory change that persists, as a directive: where a command starts (the
@@ -99,7 +116,7 @@ _DIRECTIVE = re.compile(
 
 def cd_outside_quotes(cmd: str) -> bool:
     """Return True iff a persisting directory change appears outside quoted text in `cmd`."""
-    return bool(_DIRECTIVE.search(_strip_quoted(cmd)))
+    return bool(_DIRECTIVE.search(_squash_whitespace(_strip_quoted(cmd))))
 
 
 def main() -> int:

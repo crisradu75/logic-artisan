@@ -71,8 +71,8 @@ MUTANTS = [
         # caught.
         "the directive matcher stops treating a leading cd as a directive",
         HOOK,
-        '    pattern = re.compile(r"(?:^|[;&|\\n])\\s*cd\\s+\\S", re.MULTILINE)',
-        '    pattern = re.compile(r"(?:[;&|\\n])\\s*cd\\s+\\S", re.MULTILINE)',
+        '    r"(?:^|[;&|\\n]|\\{\\s)\\s*"                                    # where a command starts',
+        '    r"(?:[;&|\\n]|\\{\\s)\\s*"                                    # where a command starts',
         TARGETS,
     ),
     (
@@ -86,8 +86,8 @@ MUTANTS = [
         # directive.
         "the directive matcher stops treating a bare ; as a cd separator",
         HOOK,
-        '    pattern = re.compile(r"(?:^|[;&|\\n])\\s*cd\\s+\\S", re.MULTILINE)',
-        '    pattern = re.compile(r"(?:^|[&|\\n])\\s*cd\\s+\\S", re.MULTILINE)',
+        '    r"(?:^|[;&|\\n]|\\{\\s)\\s*"                                    # where a command starts',
+        '    r"(?:^|[&|\\n]|\\{\\s)\\s*"                                    # where a command starts',
         TARGETS,
     ),
     (
@@ -129,6 +129,47 @@ MUTANTS = [
         HOOK,
         '            "blocked: this command redefines `cd` as a shell function or alias. "',
         '            "blocked: this command changed what the word cd does. "',
+        TARGETS,
+    ),
+    (
+        # Linear time: the directive matcher reads whitespace shrunk to one
+        # character. Without it a long run of whitespace and newlines is quadratic
+        # (24 s for 12000 repeats of " \n"), and this hook runs first.
+        "the directive matcher reads whitespace runs unshrunk, quadratic on a wall of newlines",
+        HOOK,
+        "    return bool(_DIRECTIVE.search(_squash_whitespace(_strip_quoted(cmd))))",
+        "    return bool(_DIRECTIVE.search(_strip_quoted(cmd)))",
+        TARGETS,
+    ),
+    (
+        "the shadow matcher reads whitespace runs unshrunk, quadratic on a wall of newlines",
+        HOOK,
+        "    return bool(_SHADOW.search(_squash_whitespace(_strip_quoted(cmd))))",
+        "    return bool(_SHADOW.search(_strip_quoted(cmd)))",
+        TARGETS,
+    ),
+    (
+        # A run holding a newline must stay a separator.
+        "a whitespace run holding a newline shrinks to a space, losing its separator",
+        HOOK,
+        '    return _WHITESPACE_RUN.sub(lambda m: "\\n" if "\\n" in m.group() else " ", text)',
+        '    return _WHITESPACE_RUN.sub(lambda m: " ", text)',
+        TARGETS,
+    ),
+    (
+        # A run must keep at least one character: `cd   x` is `cd x`, not `cdx`.
+        "a whitespace run without a newline shrinks to nothing, gluing words together",
+        HOOK,
+        '    return _WHITESPACE_RUN.sub(lambda m: "\\n" if "\\n" in m.group() else " ", text)',
+        '    return _WHITESPACE_RUN.sub(lambda m: "\\n" if "\\n" in m.group() else "", text)',
+        TARGETS,
+    ),
+    (
+        # ...and a plain run must not become a newline, which is a separator.
+        "a whitespace run without a newline shrinks to a newline, inventing a separator",
+        HOOK,
+        '    return _WHITESPACE_RUN.sub(lambda m: "\\n" if "\\n" in m.group() else " ", text)',
+        '    return _WHITESPACE_RUN.sub(lambda m: "\\n", text)',
         TARGETS,
     ),
 ]
