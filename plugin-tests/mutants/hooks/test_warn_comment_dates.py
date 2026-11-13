@@ -11,7 +11,7 @@ bounded to the text after the first hash rather than rescanning.
 Not mutated: the date pattern's own shape (`\\d{4}-\\d{2}-\\d{2}`) and its word boundaries,
 which the existing near-miss table covers and this change did not touch.
 
-The timing mutant restores the old quadratic search; it takes about a minute to be killed
+The timing mutant restores the old quadratic search; it takes up to about two minutes to be killed
 because the timing test must run the slow code to fail.
 
 Paths resolve from this file's own location, never an absolute developer path.

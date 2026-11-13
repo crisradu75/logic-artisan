@@ -169,7 +169,7 @@ def test_the_linear_check_agrees_with_the_old_pattern_on_generated_lines():
     hook = _load_hook()
     rng = random.Random(20261114)
     pieces = ["#", "#", " ", "2026", "-", "10", "30", "2026-10-30", "a", "x1", "1", "0", "--", "\t", "é", "٣"]
-    lines = ["#2026-10-30", "x#2026-10-30", "##2026-10-30", "a2026-10-30#", "# 12026-10-30", "# 2026-10-301", ""]
+    lines = ["#2026-10-30", "x#2026-10-30", "##2026-10-30", "a2026-10-30#", "# 12026-10-30", "# 2026-10-301", "#2026-10-30#", ""]
     lines += ["".join(rng.choice(pieces) for _ in range(rng.randint(0, 14))) for _ in range(600)]
     differing = [ln for ln in lines if bool(_OLD_PATTERN.search(ln)) != hook._has_dated_comment(ln)]
     assert differing == []
@@ -190,8 +190,9 @@ def _through_the_dispatcher(content: str) -> tuple[float, subprocess.CompletedPr
 # requirement: guard-warnings / A dated comment warns
 @pytest.mark.parametrize("unit", ["#", "# "], ids=["hashes", "hash-space"])
 def test_a_very_long_comment_line_is_scanned_in_linear_time(unit):
-    """The old pattern took 22 s on 40,000 hashes, past the dispatcher's 15 s hook timeout, which
-    lets the edit through unwarned. The bound is generous; the old pattern misses it by far."""
+    """The old pattern took 22 s on content '#' * 40000 for a .py file sent through
+    dispatch-edit-write-pretooluse.py (Windows 11, main 027b68c4), past the dispatcher's 15 s hook
+    timeout, which lets the edit through unwarned. The bound is generous; the old pattern misses it."""
     elapsed, result = _through_the_dispatcher(unit * (3_000_000 // len(unit)))
     assert result.returncode == 0 and result.stdout.strip() == ""
     assert elapsed < 5, f"{elapsed:.1f}s"
