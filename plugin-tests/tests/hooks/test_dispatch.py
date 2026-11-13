@@ -855,3 +855,97 @@ def test_bash_dispatch_stays_silent_when_the_shell_would_not_run_the_text(tmp_pa
     r = _run(_BASH_DISPATCH, {"tool_input": {"command": command}, "cwd": str(tmp_path)})
     assert r.returncode == 0
     assert "permissionDecision" not in r.stdout
+
+
+# --------------------------------------------------------------------------- #
+# Oversize command: asked about, never scanned, never allowed
+#
+# Guard cost grows linearly with the command, and a hook killed at the 15 s
+# timeout lets the call through. The dispatcher caps what it scans.
+# --------------------------------------------------------------------------- #
+
+_CAP = _load_dispatcher("dispatch-bash-pretooluse.py").MAX_SCANNED_COMMAND_CHARS
+
+
+def _padded(prefix: str, length: int) -> str:
+    return prefix + "a" * (length - len(prefix))
+
+
+def _bash(tmp_path, command: str):
+    return _run(_BASH_DISPATCH, {"tool_input": {"command": command}, "cwd": str(tmp_path)})
+
+
+def test_the_scan_cap_sits_between_real_commands_and_the_timeout():
+    # Longest real command measured: 25,270 characters. Worst hostile shape: ~7.5 us per
+    # character through the dispatcher, so past ~650,000 characters it nears the timeout.
+    assert 100_000 <= _CAP <= 600_000
+
+
+# requirement: guard-hooks / A command too large to scan asks first
+@pytest.mark.parametrize("length", [_CAP + 1, _CAP * 6])
+def test_an_oversize_command_gets_one_ask_naming_its_size_and_the_cap(tmp_path, length):
+    r = _bash(tmp_path, _padded("echo ", length))
+    assert r.returncode == 0
+    assert r.stderr.strip() == ""
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    reason = nested["permissionDecisionReason"]
+    assert nested == {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "ask",
+        "permissionDecisionReason": reason,
+    }
+    assert f"{length:,} characters" in reason
+    assert f"{_CAP:,}-character" in reason
+    assert "NO guard checked" in reason
+
+
+# requirement: guard-hooks / A command too large to scan asks first
+def test_an_oversize_command_runs_no_guard_not_even_the_first(tmp_path):
+    # `cd` is blocked (exit 2) and a force-push asked about by their own hooks;
+    # past the cap neither runs, and the one ask is the size ask.
+    for prefix in ("cd /tmp && ", "git push --force origin x; "):
+        r = _bash(tmp_path, _padded(prefix, _CAP + 1))
+        assert r.returncode == 0, prefix
+        reason = json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "NO guard checked" in reason and "force-push" not in reason, prefix
+
+
+# requirement: guard-hooks / A command too large to scan asks first
+def test_a_command_at_or_below_the_cap_is_still_scanned(tmp_path):
+    for length in (_CAP - 1, _CAP):
+        clean = _bash(tmp_path, _padded("echo ", length))
+        assert (clean.returncode, clean.stdout.strip()) == (0, ""), length
+        cd = _bash(tmp_path, _padded("cd /tmp && ", length))
+        assert cd.returncode == 2 and "block-cd-in-bash.py" in cd.stderr, length
+        push = _bash(tmp_path, _padded("git push --force origin x; ", length))
+        assert "force-push" in json.loads(push.stdout)["hookSpecificOutput"]["permissionDecisionReason"], length
+
+
+@pytest.mark.parametrize(
+    "stdin_text",
+    ["not json {", "[]", '{"tool_input": null}', '{"tool_input": []}', '{"tool_input": {}}',
+     '{"tool_input": {"command": 5}}'],
+)
+def test_input_without_a_command_string_goes_to_the_guards_unchanged(tmp_path, stdin_text):
+    # The size check reads only `tool_input.command`; anything else is not its business.
+    r = subprocess.run([sys.executable, str(_BASH_DISPATCH)], input=stdin_text, capture_output=True,
+                       text=True, encoding="utf-8", cwd=str(tmp_path))
+    assert (r.returncode, r.stdout.strip()) == (0, "")
+
+
+def test_the_cap_counts_characters_not_bytes(tmp_path):
+    # Multi-byte text at the cap is still scanned: guard cost follows characters.
+    command = "echo " + "é" * (_CAP - 5)
+    assert len(command.encode("utf-8")) > _CAP
+    r = _bash(tmp_path, command)
+    assert (r.returncode, r.stdout.strip()) == (0, "")
+
+
+# requirement: guard-hooks / A command too large to scan asks first
+def test_a_three_megabyte_command_answers_well_inside_the_hook_timeout(tmp_path):
+    import time
+
+    started = time.perf_counter()
+    r = _bash(tmp_path, ";" * 3_000_000)
+    assert time.perf_counter() - started < 5.0
+    assert json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"

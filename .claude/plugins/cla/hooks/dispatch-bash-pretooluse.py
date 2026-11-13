@@ -26,6 +26,8 @@ exactly as before (loaded here via the same importlib technique the test suite
 uses) — this file only orchestrates them; it holds no hook logic of its own.
 
 Order and semantics preserved exactly:
+  - A command longer than `MAX_SCANNED_COMMAND_CHARS` runs NO guard: the dispatcher
+    answers with one `ask` naming its size and the cap, before the first hook.
   - Any hook returning 2 blocks: its stderr message is shown, prefixed with any
     non-blocking warning text already produced by an earlier hook in this same
     run (not silently dropped), then this process exits 2.
@@ -81,6 +83,16 @@ except Exception as _exc:  # noqa: BLE001 -- any load failure must fail closed
 else:
     _LIB_ERROR = None
 
+# Longest command, in CHARACTERS of the decoded string (what the guards' regexes
+# scan, so the cost driver; bytes would over-count non-ASCII), that the guards
+# scan. Claude Code kills a hook at the 15 s `timeout` in hooks.json and a killed
+# hook lets the command through. Guard cost grows linearly with size: the slowest
+# hostile shape measured (a `;` chain) took 3.85 s at 500,000 characters and about
+# 7.5 s at 1,000,000 on Windows/Git Bash, so 500,000 keeps a 3x slower or loaded
+# machine under 15 s. The longest real command in 67,231 local transcripts was
+# 25,270 characters, 20x below the cap. Over it, the dispatcher asks, unscanned.
+MAX_SCANNED_COMMAND_CHARS = 500_000
+
 _HOOK_FILES = [
     "block-cd-in-bash.py",
     "ask-destructive-git.py",
@@ -128,8 +140,40 @@ def _extract_ask(stdout_text: str) -> str | None:
     return str(nested.get("permissionDecisionReason") or "A guard requested confirmation.")
 
 
+def _oversize_ask(stdin_text: str) -> str | None:
+    """The ask reason when the command is longer than `MAX_SCANNED_COMMAND_CHARS`, else None.
+
+    Reads only `tool_input.command`, the same field every guard reads. Unparseable
+    input or a missing command returns None: the guards already handle those.
+    """
+    try:
+        payload = json.loads(stdin_text)
+    except ValueError:
+        return None
+    tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    if not isinstance(command, str) or len(command) <= MAX_SCANNED_COMMAND_CHARS:
+        return None
+    return (
+        f"this command is {len(command):,} characters, over the {MAX_SCANNED_COMMAND_CHARS:,}-character "
+        "limit the cla guards scan, so NO guard checked it (a larger scan could outlast the hook "
+        "timeout, and a timed-out hook lets the call through). Confirm only if you know it is "
+        "safe, or split it into smaller commands. (hook: dispatch-bash-pretooluse.py)"
+    )
+
+
 def main() -> int:
     stdin_text = sys.stdin.read()
+    # Before any guard runs, so no guard can be the slow one. An `ask`, never an
+    # allow: an unscanned command must reach the user. Same JSON shape as `_fail_closed`.
+    oversize = _oversize_ask(stdin_text)
+    if oversize:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": oversize,
+        }}))
+        return 0
     deadline = Deadline()
     warnings: list[str] = []
     asks: list[str] = []

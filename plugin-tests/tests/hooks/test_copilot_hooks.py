@@ -176,6 +176,17 @@ def test_copilot_pretooluse_preserves_a_destructive_git_confirmation(tmp_path):
     assert "force-push" in decision["permissionDecisionReason"]
 
 
+def test_copilot_pretooluse_keeps_the_oversize_command_ask(tmp_path):
+    # The adapter runs the Bash dispatcher in-process, so the size cap applies; its ask
+    # must stay an ask (not the adapter's failure-marker deny) and name the size.
+    adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
+    result = _run_hook(adapter, _pre_event("Bash", {"command": "echo " + "a" * 600_000}, tmp_path), tmp_path)
+    assert result.returncode == 0, result.stderr
+    decision = json.loads(result.stdout)
+    assert decision["permissionDecision"] == "ask"
+    assert "600,005 characters" in decision["permissionDecisionReason"]
+
+
 def test_copilot_pretooluse_translates_an_advisory_warning(tmp_path):
     adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
     result = _run_hook(

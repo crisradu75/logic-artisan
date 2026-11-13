@@ -41,6 +41,20 @@ The guard hooks SHALL block, with the reason, a `cd` inside a shell command.
 - **WHEN** an agent runs a shell command that holds `cd`
 - **THEN** the command is blocked and the agent is told to use absolute paths
 
+### Requirement: A command too large to scan asks first
+
+The Bash and PowerShell dispatcher SHALL ask the user, naming the command's size and the limit, before a command longer than 500,000 characters, and SHALL run no guard on it, so a scan that outlasts the hook timeout cannot let it through unchecked.
+
+#### Scenario: A command over the limit
+
+- **WHEN** an agent runs a command longer than 500,000 characters
+- **THEN** the user is asked before it runs, and no guard scanned it
+
+#### Scenario: A command at the limit
+
+- **WHEN** an agent runs a command of exactly 500,000 characters
+- **THEN** the guards scan it as they would a shorter one
+
 ### Requirement: A write from a linked worktree into the main clone is blocked
 
 The guard hooks SHALL block, with the reason, a file write made from a linked worktree into the main clone or another worktree inside it, unless `ALLOW_WORKTREE_PATH_ESCAPE=1` is set.
