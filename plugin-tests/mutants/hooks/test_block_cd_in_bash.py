@@ -71,8 +71,8 @@ MUTANTS = [
         # caught.
         "the directive matcher stops treating a leading cd as a directive",
         HOOK,
-        '    r"(?:^|[;&|\\n]|\\{\\s)\\s*"                                    # where a command starts',
-        '    r"(?:[;&|\\n]|\\{\\s)\\s*"                                    # where a command starts',
+        "    yield 0",
+        "    pass",
         TARGETS,
     ),
     (
@@ -86,8 +86,8 @@ MUTANTS = [
         # directive.
         "the directive matcher stops treating a bare ; as a cd separator",
         HOOK,
-        '    r"(?:^|[;&|\\n]|\\{\\s)\\s*"                                    # where a command starts',
-        '    r"(?:^|[&|\\n]|\\{\\s)\\s*"                                    # where a command starts',
+        '_SEPARATOR = re.compile(r"[;&|\\n]")',
+        '_SEPARATOR = re.compile(r"[&|\\n]")',
         TARGETS,
     ),
     (
@@ -137,8 +137,38 @@ MUTANTS = [
         # (24 s for 12000 repeats of " \n"), and this hook runs first.
         "the directive matcher reads whitespace runs unshrunk, quadratic on a wall of newlines",
         HOOK,
-        "    return bool(_DIRECTIVE.search(_squash_whitespace(_strip_quoted(cmd))))",
-        "    return bool(_DIRECTIVE.search(_strip_quoted(cmd)))",
+        "    text = _squash_whitespace(_strip_quoted(cmd))",
+        "    text = _strip_quoted(cmd)",
+        TARGETS,
+    ),
+    (
+        # Linear time for chains: an answer for a (position, state) is reused. Without it
+        # `"\n!" * 20000` is 19 s, `"\nthen" * 20000` 38 s.
+        "the directive walk forgets what it already walked, quadratic on a wall of `\\n!`",
+        HOOK,
+        "        if key in memo:",
+        "        if False and key in memo:",
+        TARGETS,
+    ),
+    (
+        "a compound keyword is allowed after a prefix (`builtin then cd x`)",
+        HOOK,
+        "        keyword = _COMPOUND_KEYWORD.match(text, pos) if state == 0 else None",
+        "        keyword = _COMPOUND_KEYWORD.match(text, pos)",
+        TARGETS,
+    ),
+    (
+        "a prefix no longer moves the walk to the prefix state",
+        HOOK,
+        "            pos, state = prefix.end(), 1",
+        "            pos = prefix.end()",
+        TARGETS,
+    ),
+    (
+        "a start after `{ ` is no longer a command start",
+        HOOK,
+        "    for pattern in (_SEPARATOR, _BRACE_GROUP):",
+        "    for pattern in (_SEPARATOR,):",
         TARGETS,
     ),
     (

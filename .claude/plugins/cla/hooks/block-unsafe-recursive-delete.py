@@ -369,31 +369,31 @@ _SEGMENT_WORK_BUDGET = 4 * _MAX_SEGMENT_CHARS ** 2
 # still tokenized: a few big payloads must not block every later small `rm -rf`.
 _ALWAYS_TOKENIZED_CHARS = 4096
 
-_RM_WORD = re.compile(r"(?<![^\s/])(?:" + "|".join(sorted(_RM_ALIASES)) + r")(?!\S)", re.IGNORECASE)
-_DASH_WORD_WITH_R = re.compile(r"(?<!\S)--?[A-Za-z]*[rR]")
-_QUOTES_AS_SPACE = str.maketrans("'\"", "  ")
-_QUOTES_REMOVED = str.maketrans("", "", "'\"")
-_BACKSLASH_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
+# Quote and backslash characters, which shlex drops or keeps depending on its dialect
+# and on where they sit, so the superset check reads the RAW segment and lets any
+# number of them sit between the letters of a word (`r""m`, `r\m`, `-"r"f`) and on
+# either side of it (a closing quote ends a token for posix=False; a quoted or
+# escaped backslash is a path separator for posix=True: `bin'\'rm`).
+_JUNK = r"[\\'\"]*"
+_RM_WORD = re.compile(
+    r"(?<![^\s/\\'\"])(?:"
+    + "|".join(_JUNK.join(re.escape(c) for c in alias) for alias in sorted(_RM_ALIASES))
+    + r")(?![^\s\\'\"])",
+    re.IGNORECASE,
+)
+_DASH_WORD_WITH_R = re.compile(r"(?<![^\s\\'\"])--?[A-Za-z\\'\"]*[rR]")
 
 
 def _could_be_recursive_delete(segment: str) -> bool:
     """A superset, in linear time, of what `_extract_target_paths` would act on.
 
     It looks for an alias word and a dash word holding an `r`, which every
-    recursive spelling (`-r`, `-rf`, `--recursive`, `-Recurse`) has, in the
-    segment read two ways that bracket both shlex dialects. posix=False ends a
-    token at a closing quote and keeps `bin\\rm` whole, so there quotes are
-    spaces and backslashes are the `/` the hook already reads them as. posix=True
-    joins `r\\m` and `r""m` into `rm`, so there each backslash escape is resolved,
-    the quotes are removed, and any backslash left over is read as `/`.
+    recursive spelling (`-r`, `-rf`, `--recursive`, `-Recurse`) has, in the raw
+    segment, each tolerant of quote and backslash characters (see `_JUNK`). The two
+    words need not agree on a reading of the quotes, which is what a per-reading
+    check got wrong (`"bin\\rm" -"r"f`).
     """
-    for text in (
-        segment.translate(_QUOTES_AS_SPACE).replace("\\", "/"),
-        _BACKSLASH_ESCAPE.sub(r"\1", segment).translate(_QUOTES_REMOVED).replace("\\", "/"),
-    ):
-        if _RM_WORD.search(text) and _DASH_WORD_WITH_R.search(text):
-            return True
-    return False
+    return bool(_RM_WORD.search(segment) and _DASH_WORD_WITH_R.search(segment))
 
 
 def _extract_target_paths(command: str, unexamined: list[str] | None = None) -> list[str]:

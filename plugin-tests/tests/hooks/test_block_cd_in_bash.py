@@ -242,16 +242,60 @@ def test_whitespace_runs_keep_their_verdicts():
         assert not mod.cd_outside_quotes(cmd) and not mod.shadows_cd(cmd), repr(cmd)
 
 
+def test_keyword_and_prefix_chains_keep_their_verdicts():
+    for cmd in (
+        "then\ndo\n!\ncommand\ntime\ncd x",
+        "ls;\nif\n!\nbuiltin cd x",
+        "{ then\ndo cd x; }",
+        "a &&\n\\cd x",
+        "!\nthen\ncd x",           # a keyword after a prefix is not part of the chain, but a later start is
+        "x\n!\n!\n!\ncd x",
+    ):
+        assert mod.cd_outside_quotes(cmd), repr(cmd)
+    for cmd in (
+        "builtin then cd x",       # a keyword after a prefix: not a command position
+        "!\nthen\nfoo cd x",
+        "then\ndo\n!\ncd",         # no argument
+        "thenx cd y",
+        "x\n!\n!\n!\nls cd x",
+    ):
+        assert not mod.cd_outside_quotes(cmd), repr(cmd)
+
+
+def test_chains_split_by_newlines_are_fast_and_keep_their_verdict():
+    import time
+
+    # Main (Windows, Git Bash): 19 s for 20000 `\n!`, 38 s for 20000 `\nthen`.
+    for unit in ("\n!", "\nthen", "\ndo", "\ntime", "\nbuiltin", "\nthen\n!", "; !", "\n{", "\n if"):
+        for tail, blocked in ((" cd x", True), (" ls", False)):
+            command = unit * 20000 + tail
+            started = time.perf_counter()
+            found = mod.cd_outside_quotes(command)
+            assert time.perf_counter() - started < 2.0, repr(unit)
+            assert found is blocked, (repr(unit), tail)
+
+
+def test_a_wall_of_newlines_is_fast_for_the_directive_walk():
+    import time
+
+    # Without the whitespace shrink the walk skips the rest of the run from every
+    # newline in it: 13 s for this input, 0.05 s with it.
+    started = time.perf_counter()
+    assert mod.cd_outside_quotes("\n" * 100000 + "x") is False
+    assert time.perf_counter() - started < 5.0
+
+
 def test_long_whitespace_runs_are_fast_and_keep_their_verdict(monkeypatch, capsys):
     import time
 
     # The hook timeout is 15 s and a killed hook lets the command through, and
     # this hook runs first in the dispatcher. Measured on main (Windows, Git
     # Bash): 24 s for 12000 repeats of " \n", more than 40 s for 200000.
-    # 12000 repeats is already 24 s on main, so the broken form fails promptly.
+    # 12000 repeats is already 24 s on main (more than that for the directive walk
+    # without the shrink), so a broken form fails far above the threshold.
     for unit in (" \n", "\n", "\t\n", "\r\n", "\u00a0\n", " "):
         for tail, blocked in (("cd x", True), ("rm -rf ~", False), ("cd() { :; }", True)):
-            command = unit * 12000 + tail
+            command = unit * 30000 + tail
             started = time.perf_counter()
             code, _ = _run(monkeypatch, capsys, command)
             assert time.perf_counter() - started < 6.0, (repr(unit), tail)

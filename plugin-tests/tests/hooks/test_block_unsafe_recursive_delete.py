@@ -932,6 +932,10 @@ def test_a_segment_at_the_cap_is_tokenized_exactly_as_shlex_does():
     'r""m -rf ' + "a" * 70000,                    # posix shlex joins this into `rm`
     "r\\m -rf " + "a" * 70000,
     "C:\\bin\\rm -R " + "a" * 70000,
+    '"C:\\bin\\rm" -"r"f ' + "a" * 70000,         # each word needs a different reading of the quotes
+    "'x\\'r\"m\" -rf " + "a" * 70000,
+    "'C:\\bin\\rm' -'r'f " + "a" * 70000,
+    "C:\\bin'\\'r\\m -rf " + "a" * 70000,         # a quoted backslash is the path separator
     "rm 'x'-rf " + "a" * 70000,                   # posix=False ends a token at the closing quote
     "C:\\bin\\\\r\"\"m -\"r\"f " + "a" * 70000,       # quotes and a path separator in one token
     "/bin/rm -fr '" + "a b " * 20000 + "'",
@@ -941,6 +945,40 @@ def test_a_long_segment_that_may_be_a_recursive_delete_blocks(command, tmp_path)
     assert r.returncode == 2
     assert "block-unsafe-recursive-delete.py" in r.stderr
     assert "over 65536 characters" in r.stderr
+
+
+def test_the_superset_check_covers_every_spelling_the_tokenizer_acts_on():
+    import random
+
+    # Whatever shlex would read as a recursive delete, the linear check must flag,
+    # however the quotes and backslashes are spread over the words.
+    rng = random.Random(7)
+    bases = [["rm", "-rf", "x"], ["rm", "-r", "-f", "x"], ["/bin/rm", "-Rf", "x"], ["C:\\bin\\rm", "-rf", "x"],
+             ["Remove-Item", "-Recurse", "-Force", "x"], ["ri", "-Path", "x", "-Recurse", "-Force"],
+             ["rmdir", "--recursive", "--force", "x"]]
+
+    def obfuscate(word):
+        out = []
+        for ch in word:
+            roll = rng.random()
+            if roll < 0.12:
+                out.append(rng.choice(["''", '""']))
+            elif roll < 0.2:
+                out.append("\\")
+            elif roll < 0.26:
+                out.append(rng.choice(["'", '"']) + ch + rng.choice(["'", '"']))
+                continue
+            out.append(ch)
+        return "".join(out)
+
+    found = 0
+    for _ in range(4000):
+        words = [obfuscate(w) if rng.random() < 0.7 else w for w in rng.choice(bases)]
+        command = rng.choice([" ", "  ", "\t"]).join(words)
+        if hook._extract_target_paths(command):
+            found += 1
+            assert hook._could_be_recursive_delete(command), command
+    assert found > 500  # the generator really does produce deletes
 
 
 def test_many_short_segments_are_all_examined():
