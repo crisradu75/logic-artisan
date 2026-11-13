@@ -406,3 +406,105 @@ MUTANTS.append((
     '    return _RM_REMEDY if sys.platform == "win32" else _PS_REMEDY',
     TARGETS,
 ))
+
+# ---------------------------------------------------------------------------
+# Bounded tokenizing: `shlex` is quadratic in a token's length, so a segment over
+# 64 KiB (or past the squared-length budget) is not tokenized, and one that may
+# be a recursive delete blocks instead of being allowed.
+# ---------------------------------------------------------------------------
+
+MUTANTS.append((
+    "the per-segment size cap is dropped, so a 70 KB `rm -rf` word is tokenized and allowed",
+    HOOK,
+    "        if len(segment) > _MAX_SEGMENT_CHARS or (",
+    "        if False or (",
+    TARGETS,
+))
+
+MUTANTS.append((
+    "the squared-length budget is dropped, so many segments just under the cap add up",
+    HOOK,
+    "            work > _SEGMENT_WORK_BUDGET and len(segment) > _ALWAYS_TOKENIZED_CHARS",
+    "            False and len(segment) > _ALWAYS_TOKENIZED_CHARS",
+    TARGETS,
+))
+
+MUTANTS.append((
+    "past the budget a short segment is no longer tokenized, so a small rm -rf is blocked",
+    HOOK,
+    "            work > _SEGMENT_WORK_BUDGET and len(segment) > _ALWAYS_TOKENIZED_CHARS",
+    "            work > _SEGMENT_WORK_BUDGET",
+    TARGETS,
+))
+
+MUTANTS.append((
+    "the work counter never grows, so the budget never fires",
+    HOOK,
+    "        work += len(segment) ** 2",
+    "        work += 0",
+    TARGETS,
+))
+
+MUTANTS.append((
+    "a long segment that may be a recursive delete is dropped instead of reported",
+    HOOK,
+    "            if unexamined is not None and _could_be_recursive_delete(segment):",
+    "            if False and unexamined is not None and _could_be_recursive_delete(segment):",
+    TARGETS,
+))
+
+MUTANTS.append((
+    "main ignores the unexamined segments and allows the command",
+    HOOK,
+    "    if unexamined:",
+    "    if False and unexamined:",
+    TARGETS,
+))
+
+MUTANTS.append((
+    "the superset check never says yes, so every over-long segment is allowed",
+    HOOK,
+    "    return bool(_RM_WORD.search(segment) and _DASH_WORD_WITH_R.search(segment))",
+    "    return False",
+    TARGETS,
+))
+
+MUTANTS.append((
+    "the superset check says yes to everything, so a long non-delete blocks",
+    HOOK,
+    "    return bool(_RM_WORD.search(segment) and _DASH_WORD_WITH_R.search(segment))",
+    "    return bool(_RM_WORD.search(segment) or _DASH_WORD_WITH_R.search(segment))",
+    TARGETS,
+))
+
+MUTANTS.append((
+    "the dash-word test stops accepting a capital R (`rm -R`, `-Recurse`)",
+    HOOK,
+    '_DASH_WORD_WITH_R = re.compile(r"(?<![^\\s\\\\\'\\"])--?[A-Za-z\\\\\'\\"]*[rR]")',
+    '_DASH_WORD_WITH_R = re.compile(r"(?<![^\\s\\\\\'\\"])--?[A-Za-z\\\\\'\\"]*[r]")',
+    TARGETS,
+))
+
+MUTANTS.append((
+    "quote and backslash characters stop being tolerated inside a word (`r\\\\m`, `-\"r\"f`)",
+    HOOK,
+    '_JUNK = r"[\\\\\'\\"]*"',
+    '_JUNK = r""',
+    TARGETS,
+))
+
+MUTANTS.append((
+    "the dash word may not be preceded by a quote (`'x'-rf` is two tokens for posix=False)",
+    HOOK,
+    '_DASH_WORD_WITH_R = re.compile(r"(?<![^\\s\\\\\'\\"])--?',
+    '_DASH_WORD_WITH_R = re.compile(r"(?<![^\\s])--?',
+    TARGETS,
+))
+
+MUTANTS.append((
+    "the alias word may be glued to a longer word (`rma -rf`)",
+    HOOK,
+    '    + r")(?![^\\s\\\\\'\\"])",',
+    '    + r")",',
+    TARGETS,
+))

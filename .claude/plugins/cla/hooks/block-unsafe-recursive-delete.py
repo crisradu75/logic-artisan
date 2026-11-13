@@ -350,10 +350,69 @@ def _candidate_paths(tokens: list[str], start: int) -> list[str]:
     return paths
 
 
-def _extract_target_paths(command: str) -> list[str]:
+# `shlex` builds each token one character at a time with `self.token += char`,
+# which copies the token every time: a segment that is one long word, or one long
+# quoted string, costs time quadratic in its length (22 s for `rm -rf ` plus 800 KB,
+# against the dispatcher's 15 s timeout; a killed hook lets the command through).
+# Segments are therefore tokenized only up to a size, and only while the sum of
+# their squared lengths stays in a budget:
+#   - 64 KiB: one such segment costs about 0.15 s per variant on the machine this
+#     was measured on, and no real command has a segment this long (a 5000-file
+#     `rm -rf` list is 50 KB). Verdicts under it are exactly shlex's.
+#   - the budget is four such segments, so many of them cannot add up to a timeout.
+# A segment over either limit is NOT tokenized. If it could still be a recursive
+# delete (`_could_be_recursive_delete`) the hook blocks, saying so, instead of
+# allowing: never less strict than tokenizing it would have been.
+_MAX_SEGMENT_CHARS = 64 * 1024
+_SEGMENT_WORK_BUDGET = 4 * _MAX_SEGMENT_CHARS ** 2
+# A segment this short costs well under a millisecond, so past the budget it is
+# still tokenized: a few big payloads must not block every later small `rm -rf`.
+_ALWAYS_TOKENIZED_CHARS = 4096
+
+# Quote and backslash characters, which shlex drops or keeps depending on its dialect
+# and on where they sit, so the superset check reads the RAW segment and lets any
+# number of them sit between the letters of a word (`r""m`, `r\m`, `-"r"f`) and on
+# either side of it (a closing quote ends a token for posix=False; a quoted or
+# escaped backslash is a path separator for posix=True: `bin'\'rm`).
+_JUNK = r"[\\'\"]*"
+_RM_WORD = re.compile(
+    r"(?<![^\s/\\'\"])(?:"
+    + "|".join(_JUNK.join(re.escape(c) for c in alias) for alias in sorted(_RM_ALIASES))
+    + r")(?![^\s\\'\"])",
+    re.IGNORECASE,
+)
+_DASH_WORD_WITH_R = re.compile(r"(?<![^\s\\'\"])--?[A-Za-z\\'\"]*[rR]")
+
+
+def _could_be_recursive_delete(segment: str) -> bool:
+    """A superset, in linear time, of what `_extract_target_paths` would act on.
+
+    It looks for an alias word and a dash word holding an `r`, which every
+    recursive spelling (`-r`, `-rf`, `--recursive`, `-Recurse`) has, in the raw
+    segment, each tolerant of quote and backslash characters (see `_JUNK`). The two
+    words need not agree on a reading of the quotes, which is what a per-reading
+    check got wrong (`"bin\\rm" -"r"f`).
+    """
+    return bool(_RM_WORD.search(segment) and _DASH_WORD_WITH_R.search(segment))
+
+
+def _extract_target_paths(command: str, unexamined: list[str] | None = None) -> list[str]:
+    """Candidate delete targets in `command`.
+
+    `unexamined`, if given, collects the segments too long to tokenize that could
+    still be a recursive delete (see `_MAX_SEGMENT_CHARS`).
+    """
     targets: list[str] = []
     seen: set[str] = set()
+    work = 0
     for segment in _SEGMENT_SPLIT.split(_strip_non_command_text(command)):
+        work += len(segment) ** 2
+        if len(segment) > _MAX_SEGMENT_CHARS or (
+            work > _SEGMENT_WORK_BUDGET and len(segment) > _ALWAYS_TOKENIZED_CHARS
+        ):
+            if unexamined is not None and _could_be_recursive_delete(segment):
+                unexamined.append(segment)
+            continue
         for tokens in _tokenize_variants(segment):
             idx = _rm_command_index(tokens)
             if idx is None:
@@ -640,7 +699,8 @@ def main() -> int:
     if not isinstance(cwd, str) or not cwd:
         cwd = os.getcwd()
 
-    for raw_target in _extract_target_paths(command):
+    unexamined: list[str] = []
+    for raw_target in _extract_target_paths(command, unexamined):
         try:
             unresolved = raw_target if os.path.isabs(raw_target) else os.path.join(cwd, raw_target)
 
@@ -769,6 +829,20 @@ def main() -> int:
             # stderr failures gave a silent allow and a prompt — neither of them
             # the block that had been computed.
             continue  # this one candidate couldn't be probed -- still check the rest
+    if unexamined:
+        # A segment too long to tokenize quickly that may be a recursive delete.
+        # Block rather than allow: the targets are unknown, and an unexamined
+        # command and an approved one look the same from the outside.
+        print(
+            "blocked: this command has a segment over "
+            f"{_MAX_SEGMENT_CHARS} characters (or the command's segments together are too "
+            "long to tokenize in time) that looks like a recursive delete (`rm -r...` / "
+            "`Remove-Item -Recurse`), so this guard could not check whether its target is a "
+            "symlink or directory junction. Blocking rather than allowing. Split the delete "
+            "into shorter commands. (hook: block-unsafe-recursive-delete.py)",
+            file=sys.stderr,
+        )
+        return 2
     return 0
 
 

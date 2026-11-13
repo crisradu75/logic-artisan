@@ -912,3 +912,126 @@ def test_a_delete_after_a_wall_of_unterminated_heredocs_is_still_seen():
     # No cap: a long run of operators must not hide what follows it.
     command = "cat <<A\n" * 5000 + "rm -rf target"
     assert hook._extract_target_paths(command) == ["target"]
+
+
+# --------------------------------------------------------------------------- #
+# Tokenizing: shlex is quadratic in a token's length, so a segment is bounded
+# --------------------------------------------------------------------------- #
+
+def test_a_segment_at_the_cap_is_tokenized_exactly_as_shlex_does():
+    word = "a" * 60000
+    unexamined: list[str] = []
+    assert hook._extract_target_paths(f"rm -rf {word}", unexamined) == [word]
+    assert unexamined == []
+
+
+@pytest.mark.parametrize("command", [
+    "rm -rf " + "a" * 70000,
+    "rm " + "-" + "r" * 70000,
+    "Remove-Item -Path " + "a" * 70000 + " -Recurse -Force",
+    'r""m -rf ' + "a" * 70000,                    # posix shlex joins this into `rm`
+    "r\\m -rf " + "a" * 70000,
+    "C:\\bin\\rm -R " + "a" * 70000,
+    '"C:\\bin\\rm" -"r"f ' + "a" * 70000,         # each word needs a different reading of the quotes
+    "'x\\'r\"m\" -rf " + "a" * 70000,
+    "'C:\\bin\\rm' -'r'f " + "a" * 70000,
+    "C:\\bin'\\'r\\m -rf " + "a" * 70000,         # a quoted backslash is the path separator
+    "rm 'x'-rf " + "a" * 70000,                   # posix=False ends a token at the closing quote
+    "C:\\bin\\\\r\"\"m -\"r\"f " + "a" * 70000,       # quotes and a path separator in one token
+    "/bin/rm -fr '" + "a b " * 20000 + "'",
+], ids=lambda c: f"{c[:14]!r}-{len(c)}")
+def test_a_long_segment_that_may_be_a_recursive_delete_blocks(command, tmp_path):
+    r = _run({"tool_input": {"command": command}}, cwd=tmp_path)
+    assert r.returncode == 2
+    assert "block-unsafe-recursive-delete.py" in r.stderr
+    assert "over 65536 characters" in r.stderr
+
+
+def test_the_superset_check_covers_every_spelling_the_tokenizer_acts_on():
+    import random
+
+    # Whatever shlex would read as a recursive delete, the linear check must flag,
+    # however the quotes and backslashes are spread over the words.
+    rng = random.Random(7)
+    bases = [["rm", "-rf", "x"], ["rm", "-r", "-f", "x"], ["/bin/rm", "-Rf", "x"], ["C:\\bin\\rm", "-rf", "x"],
+             ["Remove-Item", "-Recurse", "-Force", "x"], ["ri", "-Path", "x", "-Recurse", "-Force"],
+             ["rmdir", "--recursive", "--force", "x"]]
+
+    def obfuscate(word):
+        out = []
+        for ch in word:
+            roll = rng.random()
+            if roll < 0.12:
+                out.append(rng.choice(["''", '""']))
+            elif roll < 0.2:
+                out.append("\\")
+            elif roll < 0.26:
+                out.append(rng.choice(["'", '"']) + ch + rng.choice(["'", '"']))
+                continue
+            out.append(ch)
+        return "".join(out)
+
+    found = 0
+    for _ in range(4000):
+        words = [obfuscate(w) if rng.random() < 0.7 else w for w in rng.choice(bases)]
+        command = rng.choice([" ", "  ", "\t"]).join(words)
+        if hook._extract_target_paths(command):
+            found += 1
+            assert hook._could_be_recursive_delete(command), command
+    assert found > 500  # the generator really does produce deletes
+
+
+def test_many_short_segments_are_all_examined():
+    unexamined: list[str] = []
+    targets = hook._extract_target_paths("rm -rf a; " * 40000 + "rm -rf last", unexamined)
+    assert unexamined == []
+    assert targets == ["a", "last"]
+
+
+def test_the_squared_length_budget_stops_many_long_segments_adding_up():
+    segment = "rm -rf " + "a" * 60000
+    unexamined: list[str] = []
+    hook._extract_target_paths(";".join([segment] * 6), unexamined)
+    assert len(unexamined) == 2
+
+
+def test_a_short_delete_after_the_budget_is_spent_is_still_examined():
+    segment = "rm -rf " + "a" * 60000
+    unexamined: list[str] = []
+    targets = hook._extract_target_paths(";".join([segment] * 6) + "; rm -rf small", unexamined)
+    assert "small" in targets
+    assert len(unexamined) == 2
+
+
+@pytest.mark.parametrize("command", [
+    "echo " + "a" * 400000,
+    "a" * 400000,
+    "git commit -m '" + "word " * 80000 + "'",
+    "ls -la " + "-r" * 100000,                    # a dash word with an r, but no rm
+    "rm" + "a" * 100000 + " -rf x",               # not an alias word
+    "<<" * 200000,
+    "a=" * 200000,
+    "`" * 400000,
+], ids=lambda c: f"{c[:14]!r}-{len(c)}")
+def test_a_long_segment_that_is_not_a_delete_is_allowed(command, tmp_path):
+    assert hook._could_be_recursive_delete(command) is False
+    r = _run({"tool_input": {"command": command}}, cwd=tmp_path)
+    assert r.returncode == 0
+
+
+def test_hostile_long_words_are_fast(tmp_path):
+    import time
+
+    # Measured on main (Windows, Git Bash): 22 s for `rm -rf ` plus 800 KB of
+    # `a`, 22 s for 400000 `<<`, 4-5 s for a 400 KB word.
+    for command in (
+        "rm -rf " + "a" * 800000,
+        "<<" * 400000,
+        "a" * 400000,
+        "rm -rf '" + "a b " * 100000 + "'",
+        "\\" * 400000,
+        "rm -rf " + "a/" * 300000,
+    ):
+        started = time.perf_counter()
+        _run({"tool_input": {"command": command}}, cwd=tmp_path)
+        assert time.perf_counter() - started < 8.0, command[:30]

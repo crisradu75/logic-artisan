@@ -73,9 +73,26 @@ def _strip_quoted(cmd: str) -> str:
     return re.sub(r"`[^`]*`", "``", stripped)
 
 
+_WHITESPACE_RUN = re.compile(r"\s+")
+
+
+def _squash_whitespace(text: str) -> str:
+    """Shrink every whitespace run to one character, keeping what the matchers read.
+
+    `_SHADOW` and the directive walk open with a separator followed by `\\s*`. On a long
+    run of whitespace and newlines that restarts, and rescans the rest of the run,
+    from every newline in it: quadratic, 25 s for 12000 repeats of " \\n" against
+    the dispatcher's 15 s timeout, and this hook runs first, so a kill skips every
+    guard behind it. Neither pattern can tell one whitespace character from many,
+    except that a newline is itself a separator: so a run holding a newline becomes
+    one "\\n" and any other run one space. Every match, and no match, is preserved.
+    """
+    return _WHITESPACE_RUN.sub(lambda m: "\n" if "\n" in m.group() else " ", text)
+
+
 def shadows_cd(cmd: str) -> bool:
     """Return True iff `cmd` redefines `cd` as a function or alias."""
-    return bool(_SHADOW.search(_strip_quoted(cmd)))
+    return bool(_SHADOW.search(_squash_whitespace(_strip_quoted(cmd))))
 
 
 # A directory change that persists, as a directive: where a command starts (the
@@ -88,18 +105,68 @@ def shadows_cd(cmd: str) -> bool:
 # `pushd`/`popd` and PowerShell's `Push-Location` are not matched: a paired
 # `Push-Location x; ...; Pop-Location` restores the directory, and CLAUDE.md names it
 # as the way to run a command in another worktree.
-_DIRECTIVE = re.compile(
-    r"(?:^|[;&|\n]|\{\s)\s*"                                    # where a command starts
-    r"(?:(?:then|do|else|if|elif|while|until)\s+)*"             # a compound keyword there
-    r"(?:(?:builtin|command|time|!)\s+)*"                       # a prefix that still runs cd
-    r"\\?cd\s+\S",                                              # `\cd` skips an alias
-    re.MULTILINE,
-)
+#
+# This used to be one regex, `(?:^|[;&|\n]|\{\s)\s*(?:KEYWORD\s+)*(?:PREFIX\s+)*\\?cd\s+\S`.
+# A run of keywords or prefixes split by newlines (`"\n!" * 20000`, 19 s; `"\nthen" * 20000`,
+# 38 s, against the dispatcher's 15 s timeout, and this hook runs first) restarted the
+# whole chain at every newline: quadratic. The stdlib `re` of the oldest supported Python
+# (3.8) has no atomic groups, so the same grammar is walked by hand, each (position, state)
+# once: a chain that runs into a place an earlier start already walked reuses its answer.
+_SEPARATOR = re.compile(r"[;&|\n]")
+_BRACE_GROUP = re.compile(r"\{\s")                              # `{ cd x; }`
+_COMPOUND_KEYWORD = re.compile(r"(?:then|do|else|if|elif|while|until)\s+")
+_RUNS_CD_PREFIX = re.compile(r"(?:builtin|command|time|!)\s+")  # a prefix that still runs cd
+_CD_WORD = re.compile(r"\\?cd\s+\S")                            # `\cd` skips an alias
+_SKIP_WHITESPACE = re.compile(r"\s*")
+
+
+def _command_starts(text: str):
+    """Every offset where a command starts: the start, after `;` `&` `|` or a newline, after `{ `."""
+    yield 0
+    for pattern in (_SEPARATOR, _BRACE_GROUP):
+        for match in pattern.finditer(text):
+            yield match.end()
+
+
+def _directive_from(text: str, pos: int, memo: dict) -> bool:
+    """Whether `[keyword...] [prefix...] cd <arg>` starts at `pos` (after the start's whitespace).
+
+    State 0 may still read compound keywords, state 1 (after a prefix) may not.
+    """
+    state = 0
+    walked = []
+    while True:
+        key = (pos, state)
+        if key in memo:
+            found = memo[key]
+            break
+        walked.append(key)
+        if _CD_WORD.match(text, pos):
+            found = True
+            break
+        keyword = _COMPOUND_KEYWORD.match(text, pos) if state == 0 else None
+        if keyword:
+            pos = keyword.end()
+            continue
+        prefix = _RUNS_CD_PREFIX.match(text, pos)
+        if prefix:
+            pos, state = prefix.end(), 1
+            continue
+        found = False
+        break
+    for key in walked:
+        memo[key] = found
+    return found
 
 
 def cd_outside_quotes(cmd: str) -> bool:
     """Return True iff a persisting directory change appears outside quoted text in `cmd`."""
-    return bool(_DIRECTIVE.search(_strip_quoted(cmd)))
+    text = _squash_whitespace(_strip_quoted(cmd))
+    memo: dict = {}
+    return any(
+        _directive_from(text, _SKIP_WHITESPACE.match(text, start).end(), memo)
+        for start in _command_starts(text)
+    )
 
 
 def main() -> int:
