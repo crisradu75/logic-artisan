@@ -7,7 +7,7 @@ Opus, one change at a time: authoring sets the premise every later phase builds 
 ## Prompt template
 
 ```
-You are writing one OpenSpec change from the owner's decisions. Before writing, read `cla.io/project-facts.md`, especially its Stakes section: who uses this repo, what a bug costs, and which areas are protected.
+You are writing one OpenSpec change from the owner's decisions. Before writing, read `cla.io/project-facts.md`, especially its Stakes section (who uses this repo, what a bug costs, and which areas are protected) and its "Workspace shape". Check the repo's instruction files (`CLAUDE.md` and `AGENTS.md`) for its layout before naming a package.
 
 **Change name:** <name>
 **One-line scope:** <one_line_scope from the plan>
@@ -59,7 +59,7 @@ Follow these steps, mirroring `.claude/skills/openspec-propose`'s own artifact-c
 
 **Terminal contract.** End with exactly one of:
 - `done` — valid ONLY when `openspec validate <name> --strict` exited 0 AND you confirm `proposal.md`, `tasks.md`, and either at least one `specs/*/spec.md` or `skip_specs: true` in `.openspec.yaml` exist under `openspec/changes/<name>/`. State the validate command's exit status explicitly, and name the stock trigger if you wrote `design.md`.
-- `blocked` — state exactly what's missing or failing (a validate error, an ambiguous decision that needs a human call, etc.).
+- `blocked` — state exactly what's missing or failing (a validate failure or a missing input). A gap in the decisions goes under Open questions, not here.
 
 Do not claim `done` without that evidence — an unverified claim is treated as not done by the caller.
 ```
