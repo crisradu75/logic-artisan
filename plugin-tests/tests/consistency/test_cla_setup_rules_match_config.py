@@ -579,9 +579,15 @@ def _skills_ref(*parts: str) -> str:
 _FLOOR = ("security", "writes to a user's files", "honesty claims")
 
 
-def _protected_clauses() -> dict[str, str]:
+def _areas(text: str, start: str, end: str) -> list[str]:
+    """The areas listed between two markers, split on commas and a closing "and" or "or"."""
+    body = " ".join(text.split()).split(start, 1)[1].split(end, 1)[0]
+    return [a.strip() for a in re.split(r",\s*(?:and |or )?|\s+(?:and|or)\s+", body) if a.strip()]
+
+
+def _protected_clauses() -> dict[str, tuple[str, str, str]]:
     """The three places that state the protected list inline, because they are copied into other repos
-    (or read there) and cannot follow a pointer into the plugin."""
+    (or read there) and cannot follow a pointer into the plugin: (text, start marker, end marker)."""
     models = _skills_ref("_shared", "references", "model-routing.md")
     sizing = models.split("A second review pass", 1)[1].split("economy-rules-file:review-sizing:end", 1)[0]
     economy = next(
@@ -589,36 +595,35 @@ def _protected_clauses() -> dict[str, str]:
         if line.startswith("- Protected rules")
     )
     seeded = next(i for i in _rule_items() if "Protected areas are the ones" in i)
-    return {"model-routing.md": " ".join(sizing.split()), "economy-rules-file.md": economy, "seeded rule": seeded}
+    return {
+        "model-routing.md": (sizing, "with no such section ", ", and always security"),
+        "economy-rules-file.md": (economy, "with no such section ", "; always security"),
+        "seeded rule": (seeded, "the default is ", ". Security"),
+    }
 
 
 # requirement: cla-setup / Stakes and change budget on setup
-def test_every_inline_protected_clause_matches_blocking_findings():
-    shared = " ".join(_skills_ref("_shared", "references", "blocking-findings.md").split())
-    default = next(s for s in shared.split("- **") if s.startswith("The default list"))
-    floor = next(s for s in shared.split("- **") if s.startswith("The floor"))
-    for area in _SHARED_DEFAULT:
-        assert area in default, f"blocking-findings.md default list lacks {area}"
+def test_every_inline_protected_clause_matches_blocking_findings_exactly():
+    shared = _skills_ref("_shared", "references", "blocking-findings.md")
+    default = _areas(shared, "has no Stakes section: ", ". It is the set")
+    assert default == list(_SHARED_DEFAULT), "blocking-findings.md default list changed: update every inline copy"
+    floor = " ".join(shared.split()).split("- **The floor", 1)[1]
     for word in _FLOOR:
         assert word in floor, f"blocking-findings.md floor lacks {word}"
-    for site, text in _protected_clauses().items():
+    for site, (text, start, end) in _protected_clauses().items():
         assert "Stakes section of `cla.io/project-facts.md`" in text or "Stakes section of cla.io/project-facts.md" in text, site
-        for area in _SHARED_DEFAULT:
-            assert area in text, f"{site} lacks the default area {area}"
+        assert _areas(text, start, end) == list(_SHARED_DEFAULT), f"{site}: default list differs from blocking-findings.md"
         for word in _FLOOR:
             assert word in text.lower(), f"{site} lacks the floor item {word}"
 
 
 # requirement: cla-setup / Stakes and change budget on setup
-def test_the_default_list_is_defined_once_and_is_cla_setups_option_set():
+def test_the_default_list_is_cla_setups_option_set():
     shared = _skills_ref("_shared", "references", "blocking-findings.md")
-    facts = " ".join(_skills_ref("cla-setup", "references", "facts-file.md").split())
-    default = next(line for line in shared.splitlines() if line.startswith("- **The default list**"))
-    options = facts.split("`- Protected areas:` (any of ", 1)[1].split("; or `none`)", 1)[0]
-    for area in _SHARED_DEFAULT:
-        assert area in default, f"blocking-findings.md default list lacks {area}"
-        assert area in options, f"cla-setup's Stakes options lack {area}"
-    assert "security" in shared and "honesty claims" in shared  # the floor stays
+    facts = _skills_ref("cla-setup", "references", "facts-file.md")
+    options = _areas(facts, "`- Protected areas:` (any of ", "; or `none`)")
+    assert _areas(shared, "has no Stakes section: ", ". It is the set") == list(_SHARED_DEFAULT)
+    assert options == list(_SHARED_DEFAULT), f"cla-setup's Stakes options differ: {options}"
 
 
 # requirement: cla-setup / Stakes and change budget on setup

@@ -31,10 +31,9 @@ other repo-wide fact you find):
   sentence it offers for `openspec/config.yaml`, so re-run the item 5 script after writing it. The
   owner may also edit the numbers in the config; the checker reads whatever sentence is there. A
   reconcile keeps an existing section as written. This section is the one place a repo's protected
-  areas are defined. The multi-spec authoring brief reads it, and so do the review skills that apply
-  `_shared/references/blocking-findings.md` (`review-change/references/dispatch.md` and
-  `spec-to-pr/references/revise.md` step 1b); that file also holds the default list for a repo without
-  the section, and the always-protected floor.
+  areas are defined. The multi-spec authoring brief reads it, and so does every skill that applies
+  `_shared/references/blocking-findings.md`, plus the three inline clauses that state its default list;
+  that file also holds the default list for a repo without the section, and the always-protected floor.
 - **Workspace shape** — the workspace member list (apps/packages/services and their one-line roles),
   derived from the repo's own workspace manifest (e.g. `pnpm-workspace.yaml` + each `package.json`
   name, a Cargo workspace's `Cargo.toml`, a Go module's `go.work`, or whatever this repo actually uses

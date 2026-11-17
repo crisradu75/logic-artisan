@@ -14,7 +14,7 @@ A finding that names a protected area is never non-blocking. Whoever applies the
 
 ## What is protected
 
-This is the one definition. Every other file points here and does not restate it.
+This is the one definition. Every other file points here and does not restate it. The exception is three clauses that are copied into, or read in, other repos and cannot follow a pointer: the seeded `config.yaml` rule, the review-sizing block of `model-routing.md` and the quality floor of `economy-rules-file.md`. A test holds each to this file's default list and floor.
 
 - **The repo's list:** the `- Protected areas:` line of the Stakes section of `cla.io/project-facts.md`, which `/cla:cla-setup` writes. A line of `none` adds nothing beyond the floor.
 - **The default list**, used when the repo has no Stakes section: money, personal data, accessibility, the user's own files, and anything shipped to other repos. It is the set of options `/cla:cla-setup` offers for that line.
