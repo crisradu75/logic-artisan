@@ -13,7 +13,7 @@ with a decision.
 | Round 1 | v1 | 6,618 | 38 | ~16 | 5 of 8 (e partial; g, h missing) | 1st of r1 / A / real |
 | Round 2 | v2 | 8,140 | 42 | ~24 (r2 judge), ~20 (r3 judge) | 7 of 8 (g missing) | 1st of r2 / A / r1 |
 | Round 3 | v3 | 8,860 | 45 | ~24 | 7 of 8 (g missing) | 1st of r3 / A / r2 |
-| No guidance (A) | none | 12,235 | 59 | ~29 / ~38 / ~45 by judge | 3–4 of 8 | 2nd–3rd |
+| No guidance (A) | none | 12,243 | 59 | ~29 / ~38 / ~45 by judge | 3–4 of 8 | 2nd–3rd |
 
 Brief changes:
 - v1: principle 4, "think broadly, write narrowly": protected-area risks become requirements, the

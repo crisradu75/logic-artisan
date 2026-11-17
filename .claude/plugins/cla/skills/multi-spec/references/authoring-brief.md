@@ -7,7 +7,7 @@ Opus, one change at a time: authoring sets the premise every later phase builds 
 ## Prompt template
 
 ```
-You are writing one OpenSpec change from the owner's decisions. Before writing, read `cla.io/project-facts.md`, especially its Stakes section (who uses this repo, what a bug costs, and which areas are protected) and its "Workspace shape". Check the repo's instruction files (`CLAUDE.md` and `AGENTS.md`) for its layout before naming a package.
+You are writing one OpenSpec change from the owner's decisions. Before writing, read `cla.io/project-facts.md`, especially its Stakes section (who uses this repo, what a bug costs, and which areas are protected) and its "Workspace shape". With no Stakes section, treat as protected the areas the seeded `rules:` name (money, security, personal data, honesty claims, accessibility) plus the user's own files. Check the repo's instruction files (`CLAUDE.md` and `AGENTS.md`) for its layout before naming a package.
 
 **Change name:** <name>
 **One-line scope:** <one_line_scope from the plan>
@@ -19,7 +19,7 @@ You are writing one OpenSpec change from the owner's decisions. Before writing, 
 
 ## How to write it
 
-Specify what the decisions decided, in the owner's terms. A decision the owner made is settled: don't reopen it, and don't ask about it. If you think one is wrong, specify it as decided and put your concern under `## Open questions`; never change it in the spec.
+Specify what the decisions decided, in the owner's terms. A decision the owner made is settled: don't reopen it. If you think one is wrong, specify it as decided and raise your concern under `## Open questions`; never change it in the spec.
 
 Think broadly, then write narrowly.
 
@@ -34,15 +34,15 @@ Think broadly, then write narrowly.
    - **Otherwise:** one line under `## Risks noted` in proposal.md. Don't design machinery against it.
 3. For each protected-area risk, check whether a decision rules out the obvious fix. If it does, keep the decision, and raise the conflict under `## Open questions` with your proposed fix.
 
-Requirements state outcomes, not how to build them. Write design.md only when a real choice needs recording. A number that changes behaviour (a time limit, a retry count) gets a concrete default. A check or score says what counts as a pass, or asks. design.md and the specs must agree; where they would differ, the spec wins and design.md follows it.
+Requirements state outcomes, not how to build them. Write design.md only when a real choice needs recording. A number that changes behaviour (a time limit, a retry count) gets a concrete default, in a scenario or in design.md. A check or score says what counts as a pass, or asks. design.md and the specs must agree; where they would differ, the spec wins and design.md follows it.
 
 Tests and manual checks run on copies or scratch data, never on what the Stakes protect.
 
 Where the decisions are silent on something the change truly needs, list it under `## Open questions` in proposal.md, with your recommended answer. Search the decisions before listing one: a question the decisions already answer is a defect.
 
-Add nothing that neither a decision nor a protected-area risk asks for: no extra options, commands, metadata, docs or test machinery.
+Add nothing beyond what the decisions, a protected-area risk and the `rules:` in `openspec/config.yaml` require: no extra options, commands, metadata, docs or test machinery.
 
-`openspec/config.yaml` `rules:` set the format and the change budget, and a script enforces the budget. If the protected-area requirements can't fit in it, say so in your report rather than cutting them.
+`openspec/config.yaml` `rules:` set the format, the proof each requirement carries, how code and spec mismatches are fixed and the change budget, and a script enforces the budget. If the protected-area requirements can't fit in it, say so in your report rather than cutting them (the post-check surfaces it to the owner).
 
 ## Mechanics
 
@@ -71,6 +71,8 @@ Does `openspec/changes/<name>/proposal.md` already exist AND is it tracked (`git
 ## Post-check (after dispatching, regardless of what the agent reports)
 
 Confirm `openspec/changes/<name>/proposal.md`, `tasks.md`, and either at least one `specs/*/spec.md` or `skip_specs: true` in `.openspec.yaml` exist, that a `design.md`, if present, came with a named stock trigger, and re-run `openspec validate <name> --strict` yourself. A `done` claim without this holding is treated as not done — finish it inline (or re-dispatch once) rather than trusting the report, same discipline `/cla:spec-to-pr`'s Implement delegate contract uses. The agent's `done`/`blocked` status is a signal, not a trusted fact.
+
+Also record, for the PR body and the final report: the change's `## Open questions` in `proposal.md` (one line each), and any budget problem from `python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/check_spec_proof.py` run for this change, with a protected-area requirement the agent says it could not fit. The commit step below is unchanged.
 
 ## Commit + push (immediately, before starting the next change)
 

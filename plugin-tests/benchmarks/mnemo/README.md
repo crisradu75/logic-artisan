@@ -55,6 +55,12 @@ Current baseline to beat: brief v3 (`baseline/brief-v3/`, the brief shipped in
 is a known gap: covering it conflicts with the decision "a `[meta]` PR is never batched with content
 changes", and no version raised that conflict. Revisit g when the owner settles that decision.
 
+Brief v3 fails rule (a) as written, on outcome g, and shipped under the owner's exception: g is
+recorded as a known gap, not passed.
+
 Packaging items that depend on decisions Q11-Q14 are left out of the baseline; see
-`baseline/score.md`. No baseline version passes: all three miss h, and today's CLA, which covers a-g,
-is 20,510 words and 96 requirements.
+`baseline/score.md`. No pre-v3 baseline version passes: all three miss h, and the CLA of that day
+(before brief v3), which covers a-g, is 20,510 words and 96 requirements.
+
+Variant A's size is 12,243 words everywhere. Its files were not kept, so it cannot be re-counted;
+`baseline/brief-v3/score.md` once said 12,235, and now says 12,243 to match the first measurement.
