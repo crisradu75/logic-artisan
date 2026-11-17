@@ -15,17 +15,14 @@ c. a hung save/hook is time-bounded;
 d. a failed check commits nothing;
 e. a secret-scan hit blocks the commit and does not fall back to inbox/;
 f. the improve loop's scoring does not change or consume the query log it learns from;
-g. a test question added for a fix is not scored against a base where the fix doesn't exist yet.
-
-### Candidate eighth outcome (not scored yet)
-
+g. a test question added for a fix is not scored against a base where the fix doesn't exist yet;
 h. a commit left unpushed on a clean tree is retried by a later save.
 
-All three baseline versions missed this. Each reports "committed, not pushed" (exit 3), but a later
-`save` on a clean tree exits 0 without pushing (baseline `note-saving` spec; A `note-save`; B
-`note-save`), so an unpushed commit is retried only when a later save has new changes. It is
-recorded here so a future run can see it; it is not in the judge prompt, so no score counts it.
-Promoting it means adding it to the judge prompt and re-scoring the baseline.
+Outcome h was added by the owner on 2026-11-17, after the baseline run; it was not in the judge
+prompt that run used. All three baseline versions miss it. Each reports "committed, not pushed"
+(exit 3), but a later `save` on a clean tree exits 0 without pushing (baseline `note-saving` spec;
+A `note-save`; B `note-save`), so an unpushed commit is retried only when a later save has new
+changes. The baseline is scored "missing" on h for all three from that reading, not from a judge.
 
 ## Scoring dimensions
 
@@ -36,7 +33,7 @@ Promoting it means adding it to the judge prompt and re-scoring the baseline.
 3. **Gap handling**: where the decisions are silent on something the change truly needs, does the
    version invent an answer silently, invent and flag it, or ask the owner, and is that the right
    call?
-4. **Critical outcomes**: a to g above.
+4. **Critical outcomes**: a to h above.
 5. **Reviewability**, 1-5: could the owner read and approve each change in about 15 minutes, with
    `wc -w` per file.
 6. **Implementability**, 1-5: could a competent implementer build it without guessing on anything

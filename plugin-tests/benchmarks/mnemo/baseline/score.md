@@ -45,7 +45,7 @@ Measured with `wc -w` over every file of both changes, and `grep -r '### Require
 | B (lean brief) | 3,734 | 22 | 5 | about 5 |
 | real (today's CLA) | 20,510 | 96 | 19 | about 70 (30 + 40), upper bound |
 
-## Critical outcomes covered (a-g), packaging-independent
+## Critical outcomes covered (a-h), packaging-independent
 
 | | A | B | real |
 |---|---|---|---|
@@ -56,25 +56,26 @@ Measured with `wc -w` over every file of both changes, and `grep -r '### Require
 | e. secret hit blocks, no inbox fallback | covered | covered | covered |
 | f. scoring leaves the query log alone | implicit only | missing | covered |
 | g. test question not scored against a base without its fix | missing | missing | covered |
-| **covered of 7** | 4 (f only implicit) | 4 | 7 |
+| h. unpushed commit on a clean tree is retried | missing | missing | missing |
+| **covered of 8** | 4 (f only implicit) | 4 | 7 |
 
 Outcome a is "covered" in all three in the sense that each reports "committed, not pushed" (exit
-3). All three miss the retry of that commit on a clean tree: the candidate outcome h in `rubric.md`,
-not scored.
+3). Outcome h was added after the judge ran; its "missing" scores come from reading each version's
+save spec (see `rubric.md`), not from the judge.
 
 ## Pass rule
 
-The rule in `README.md`: (a) all 7 outcomes covered, (b) smaller than A in words and requirements,
+The rule in `README.md`: (a) all 8 outcomes covered, (b) smaller than A in words and requirements,
 (c) fewer invented items than A.
 
-| | (a) all 7 covered | (b) smaller than A | (c) fewer invented than A | passes |
+| | (a) all 8 covered | (b) smaller than A | (c) fewer invented than A | passes |
 |---|---|---|---|---|
-| A | no (3 missing or implicit) | n/a, it is the reference | n/a | no |
-| B | no (c, f, g missing) | yes (3,734 < 12,243 words; 22 < 59) | yes (about 5 < about 35) | no |
-| real | yes | no (20,510 > 12,243 words; 96 > 59) | no (about 70 > about 35) | no |
+| A | no (c, g, h missing; f implicit) | n/a, it is the reference | n/a | no |
+| B | no (c, f, g, h missing) | yes (3,734 < 12,243 words; 22 < 59) | yes (about 5 < about 35) | no |
+| real | no (h missing) | no (20,510 > 12,243 words; 96 > 59) | no (about 70 > about 35) | no |
 
-Nothing passes today. Today's CLA fails on size and invention, as expected. The lean brief fails on
-rigor, which is the gap the next change has to close: keep a-g and stay under A's size.
+Nothing passes today. Today's CLA fails on size, invention and h. The lean brief fails on rigor.
+The next change has to close both gaps: cover a-h and stay under A's size.
 
 ## For reference: the judge's own scores (with packaging)
 

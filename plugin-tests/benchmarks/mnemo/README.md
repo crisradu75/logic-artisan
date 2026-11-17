@@ -9,7 +9,7 @@ Nothing here runs under pytest.
 ## Contents
 
 - `inputs/`: the mnemo files the spec writer reads (`SOURCE.md` gives the mnemo commit).
-- `rubric.md`: the 7 critical outcomes (a-g), the scoring dimensions, and the candidate eighth outcome.
+- `rubric.md`: the 8 critical outcomes (a-h) and the scoring dimensions.
 - `judge-prompt.md`: the blind-judge prompt, verbatim.
 - `author-prompts.md`: the prompts for variants A (no guidance) and B (lean brief), verbatim.
 - `baseline/`: the real CLA output for the two changes, and `score.md` with the scores.
@@ -33,7 +33,7 @@ Nothing here runs under pytest.
 3. Blind it: copy each version's two change folders to `X`, `Y`, `Z` in a random order. Keep the key
    aside. Include variant A's output from the baseline run as a comparison point; only its numbers
    are kept in `baseline/score.md`, so re-author A with `author-prompts.md` if you need the files.
-4. Run `judge-prompt.md` on an Opus agent. Take the critical outcomes a-g from its report, and the
+4. Run `judge-prompt.md` on an Opus agent. Take the critical outcomes a-h from its report, and the
    rough invented-item count.
 5. Compare with `baseline/score.md` and apply the pass rule. Report failures; do not auto-fix.
 
@@ -43,11 +43,10 @@ A judge's single run is noisy. Re-run only to settle a close call, with the same
 
 A change to spec writing or review passes only if, judged blind:
 
-- (a) it covers ALL 7 critical outcomes, a to g. The list is fixed; it is not relative to any earlier run.
+- (a) it covers ALL 8 critical outcomes, a to h. The list is fixed; it is not relative to any earlier run.
 - (b) its output is smaller than the no-guidance variant A, in total words (12,243) and in requirements (59).
 - (c) it has fewer invented items than variant A (about 35, the judge's rough count).
 
-The unretried unpushed commit (candidate h in `rubric.md`) joins the list only when the owner
-confirms it. Packaging items that depend on decisions Q11-Q14 are left out of the baseline; see
-`baseline/score.md`. Today's CLA does not pass: it covers all 7 but is 20,510 words and 96
-requirements.
+Packaging items that depend on decisions Q11-Q14 are left out of the baseline; see
+`baseline/score.md`. No baseline version passes: all three miss h, and today's CLA, which covers a-g,
+is 20,510 words and 96 requirements.
