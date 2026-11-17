@@ -576,12 +576,37 @@ def _skills_ref(*parts: str) -> str:
     return (_SKILL.parents[1].joinpath(*parts)).read_text(encoding="utf-8")
 
 
+_FLOOR = ("security", "writes to a user's files", "honesty claims")
+
+
+def _protected_clauses() -> dict[str, str]:
+    """The three places that state the protected list inline, because they are copied into other repos
+    (or read there) and cannot follow a pointer into the plugin."""
+    models = _skills_ref("_shared", "references", "model-routing.md")
+    sizing = models.split("A second review pass", 1)[1].split("economy-rules-file:review-sizing:end", 1)[0]
+    economy = next(
+        line for line in _skills_ref("_shared", "references", "economy-rules-file.md").splitlines()
+        if line.startswith("- Protected rules")
+    )
+    seeded = next(i for i in _rule_items() if "Protected areas are the ones" in i)
+    return {"model-routing.md": " ".join(sizing.split()), "economy-rules-file.md": economy, "seeded rule": seeded}
+
+
 # requirement: cla-setup / Stakes and change budget on setup
-def test_the_seeded_protected_rule_keys_on_stakes_and_names_no_area():
-    item = next(i for i in _rule_items() if "Protected areas are the ones" in i)
-    assert "Stakes section of cla.io/project-facts.md" in item and "blocking-findings.md" in item
-    for area in ("money", "personal data", "accessibility", "honesty"):
-        assert area not in item.lower(), f"the seeded rule hard-codes {area}"
+def test_every_inline_protected_clause_matches_blocking_findings():
+    shared = " ".join(_skills_ref("_shared", "references", "blocking-findings.md").split())
+    default = next(s for s in shared.split("- **") if s.startswith("The default list"))
+    floor = next(s for s in shared.split("- **") if s.startswith("The floor"))
+    for area in _SHARED_DEFAULT:
+        assert area in default, f"blocking-findings.md default list lacks {area}"
+    for word in _FLOOR:
+        assert word in floor, f"blocking-findings.md floor lacks {word}"
+    for site, text in _protected_clauses().items():
+        assert "Stakes section of `cla.io/project-facts.md`" in text or "Stakes section of cla.io/project-facts.md" in text, site
+        for area in _SHARED_DEFAULT:
+            assert area in text, f"{site} lacks the default area {area}"
+        for word in _FLOOR:
+            assert word in text.lower(), f"{site} lacks the floor item {word}"
 
 
 # requirement: cla-setup / Stakes and change budget on setup
