@@ -61,7 +61,7 @@ Done:
 
 Left, in order:
 
-- [ ] 4e. **Owner decisions, one at a time.** Done when each has an answer, and an answer that
+- [x] 4e. **Owner decisions, one at a time.** (answers recorded; the file changes are built in 4g and 4h) Done when each has an answer, and an answer that
   changes a file is built into 4h, or into 4g for the release skill.
   - Four proposed edits to the owner's user-level `CLAUDE.md` (audit part D: F1, F2, F3, F6).
     These affect every project.
@@ -70,7 +70,7 @@ Left, in order:
   - Leftover review suggestions: the PR body (user-level file) or `TODO.md` (this repo).
   - Retire or keep each of the six never-invoked skills: annotate, codify-retro, diagnose,
     save-permissions, spec-to-pr-retro, sync-context.
-- [ ] 4f. **Lite by default (principle 8).** lite-pr is the default path, and spec-to-pr is for a
+- [x] 4f. **Lite by default (principle 8).** (#PRNUM) lite-pr is the default path, and spec-to-pr is for a
   change that touches a protected area or behaviour shipped to other repos. shape-decision and
   multi-spec recommend a path per change from the Stakes, and the owner can override. Audit B F8
   and C H15. Done when merged after one review.

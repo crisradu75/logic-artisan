@@ -1,6 +1,6 @@
 ---
 name: lite-pr
-description: "Lightweight end-to-end path for a small change without OpenSpec artifacts: plan, implement with docs and tests, one test pass, open the PR, one review round with a single fix round (a second, on the fix diff, for a protected-area fix). Stops only on an unresolved test failure. Triggers: /cla:lite-pr, 'quick PR for X', 'small change, just ship it'."
+description: "The default path for a change: lightweight and end to end, without OpenSpec artifacts (use spec-to-pr instead for a protected area or behaviour shipped to other repos): plan, implement with docs and tests, one test pass, open the PR, one review round with a single fix round (a second, on the fix diff, for a protected-area fix). Stops only on an unresolved test failure. Triggers: /cla:lite-pr, 'quick PR for X', 'small change, just ship it'."
 argument-hint: "[description | (empty)]"
 ---
 
@@ -9,7 +9,7 @@ argument-hint: "[description | (empty)]"
 > **Copilot CLI support: unsupported.** The complete workflow requires Claude Code skill chaining
 > and agent delegation for its review phase.
 
-Sibling to `/cla:spec-to-pr` for changes that don't need OpenSpec's artifacts or its multi-round PR-review loop. There is no formal routing rule between the two and no mid-flight escalation path — if a change turns out bigger than expected once you're inside Implement, stop and reassess manually (re-plan, split the change, or switch to `/cla:spec-to-pr`) rather than expecting an automatic handoff.
+Sibling to `/cla:spec-to-pr` and the default path: plan, build, one review, with no OpenSpec artifacts. Use `/cla:spec-to-pr` instead when the change touches a protected area (see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`, "What is protected") or behaviour that ships to other repos. A path the user states always wins. There is no mid-flight escalation path — if a change turns out bigger than expected once you're inside Implement, stop and reassess manually (re-plan, split the change, or switch to `/cla:spec-to-pr`) rather than expecting an automatic handoff.
 
 **Where this repo's facts and rules live.** Commands, paths and file sets come from `cla.io/project-facts.md` only (run `/cla:cla-setup` when it is missing or stale). If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". `cla.io/overlays/lite-pr.md`, if present, adds rules specific to this skill in this repo; apply them alongside the steps below.
 
@@ -184,7 +184,7 @@ Continuous — no "confirm to proceed?" prompts between phases, matching `/cla:s
 
 ## Scope
 
-Which workflow to use, lite-pr or `/cla:spec-to-pr`, is your judgment call at invocation time. The intro says there is no size rule for choosing the workflow and no automatic escalation. The rename/docs-only tier in Test sizes the checking inside lite-pr. It does not choose the workflow. The actionable corollary: reassess mid-run if a change outgrows "lite". Stop, then re-plan or switch to `/cla:spec-to-pr` rather than forcing it through here.
+Which workflow to use follows the stakes (see the intro); `shape-decision` and `multi-spec` recommend one per change, and a path the user states always wins. The rename/docs-only tier in Test sizes the checking inside lite-pr. It does not choose the workflow. Reassess mid-run if a change outgrows "lite": stop, then re-plan or switch to `/cla:spec-to-pr` rather than forcing it through here.
 
 ## What this skill deliberately does not do
 

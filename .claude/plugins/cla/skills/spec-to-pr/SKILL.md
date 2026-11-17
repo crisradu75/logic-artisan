@@ -1,6 +1,6 @@
 ---
 name: spec-to-pr
-description: "Drive one OpenSpec change end-to-end, from idea, change name or /opsx:explore result, to an opened, archived PR with review fixes applied. No merge, no deploy. Triggers: /cla:spec-to-pr, 'take this change to a PR', 'spec-to-pr the X feature'."
+description: "The full path, for a change that touches a protected area or behaviour shipped to other repos (otherwise lite-pr is the default): drive one OpenSpec change end-to-end, from idea, change name or /opsx:explore result, to an opened, archived PR with review fixes applied. No merge, no deploy. Triggers: /cla:spec-to-pr, 'take this change to a PR', 'spec-to-pr the X feature'."
 argument-hint: "[change-name | description | (empty)]"
 ---
 

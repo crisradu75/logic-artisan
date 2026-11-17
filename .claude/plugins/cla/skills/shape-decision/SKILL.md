@@ -83,7 +83,7 @@ On a yes, use `Write` to save `cla.io/decisions/{topic-slug}-{date}.md` at the r
 - The topic, and what was inferred if it was not given
 - Each question asked, the chosen option, and its one-line rationale
 - The final Decision Summary table, with its **Noted, not asked** lines
-- A short closing note on why the decision matters and the natural next step (for example "feeds `/cla:spec-to-pr` for change X")
+- A short closing note on why the decision matters and the natural next step. When it ends in a recommendation to build, name a path per change, with a one-line reason from the Stakes section of `cla.io/project-facts.md`: `/cla:lite-pr` by default, and `/cla:spec-to-pr` for a change that touches a protected area (defined in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`, "What is protected") or behaviour shipped to other repos. A path the user states always wins.
 
 ## Domain terminology
 
