@@ -107,6 +107,25 @@ A requirement proven partly by a test and partly by a prompt SHALL carry a marke
 - **WHEN** the config states no change budget
 - **THEN** the checker enforces nothing for it and says no budget was enforced
 
+### Requirement: A change can opt in to the protected budget
+
+`check_spec_proof.py` SHALL hold a change whose `proposal.md` carries the line `Budget: protected` to the protected budget sentence in the config instead of the repo's, SHALL report any other `Budget:` value, or that line with no protected sentence in the config, and SHALL exit 2 on a budget number it cannot read.
+
+#### Scenario: A change opts in to the protected budget
+
+- **WHEN** a change's proposal carries the line `Budget: protected` and the config states a protected budget sentence
+- **THEN** that change is held to the protected numbers and every other change to the repo's
+
+#### Scenario: A Budget line the checker cannot honour
+
+- **WHEN** a proposal's `Budget:` line has another value, or says `protected` with no protected sentence in the config
+- **THEN** the checker reports a problem for that change
+
+#### Scenario: A budget number in unreadable wording
+
+- **WHEN** the config gives a budget number as words or with a space or a dot as thousands separator
+- **THEN** the checker exits 2 naming the wording
+
 ### Requirement: A checker notes a touched spec's Purpose without failing the run
 
 `check_spec_proof.py` SHALL print an advisory `NOTE purpose:` line for each live spec whose Purpose is missing, TBD, or not a `**Serves:**` line followed by exactly one sentence, limited to the specs the branch touches (every live spec when there is no base commit to compare with), never changing its exit code, and SHALL print a `purpose notes:` line saying which it checked.

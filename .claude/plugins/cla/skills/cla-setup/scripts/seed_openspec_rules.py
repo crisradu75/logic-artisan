@@ -42,7 +42,7 @@ RULES = r"""rules:
   proposal:
     - Keep it to about 400 words. Point to the specs and design instead of restating them.
     - "Keep the whole change within its budget, counted over every .md file in its folder: at most 25 requirements across all its specs and at most 6,000 words in total. Over budget, cut; never split into more capabilities to get under it."
-    - If this change carries higher stakes than the Stakes section of cla.io/project-facts.md states, say so in one line of this proposal.
+    - "A change whose proposal.md carries the line `Budget: protected` is held to this budget instead: at most 25 requirements across all its specs and at most 6,000 words in total. Use it for a change that touches a protected area the Stakes section of cla.io/project-facts.md names."
   design:
     - Write design.md only when a stock trigger applies (a cross-cutting change, a new dependency or data model, security, performance or migration complexity, or real ambiguity), and name the trigger.
     - "Keep it to about 800 words: for each decision, the choice, one line of why, and one line per rejected alternative. No history or transcripts."
@@ -100,6 +100,16 @@ LEAN_BUDGET = (
 )
 # What `check_spec_proof.py` reads as the budget; a config line holding this counts as the rule.
 _BUDGET_LINE = re.compile(r"at most [\d,]+ requirements across all its specs")
+# The sentence for a change that opts in to the protected budget names this; the repo's own does not.
+_OVERRIDE_MARK = "Budget: protected"
+
+
+def _is_repo_budget(line: str) -> bool:
+    return bool(_BUDGET_LINE.search(line)) and _OVERRIDE_MARK not in line
+
+
+def _is_override_budget(line: str) -> bool:
+    return bool(_BUDGET_LINE.search(line)) and _OVERRIDE_MARK in line
 
 FACTS = Path("cla.io") / "project-facts.md"
 _BUDGET = re.compile(r"^- Change budget: (lean|protected)[ \t]*$", re.M)
@@ -129,7 +139,7 @@ def _blocks(granularity: str, budget: str = "protected") -> tuple[str, str]:
     """The shipped and the earlier-wording blocks for a test proof granularity and a change budget."""
     rules, retired = RULES.split("\n"), RETIRED.split("\n")
     if budget == "lean":
-        rules[next(i for i, line in enumerate(rules) if _BUDGET_LINE.search(line))] = LEAN_BUDGET
+        rules[next(i for i, line in enumerate(rules) if _is_repo_budget(line))] = LEAN_BUDGET
     if granularity != "scenario":
         return "\n".join(rules), RETIRED
     at = next(i for i, line in enumerate(rules) if "requirement: <spec> / <heading>" in line)
@@ -155,13 +165,14 @@ def _unquote(rule: str) -> str:
 def _rule_lines(block: str, mark: str, want: bool, have: set[str], quoted: set[str]) -> list[str]:
     """`mark artifact: - rule` for each rule of `block` the file carries (want) or lacks (not want)."""
     found, key = [], ""
-    budget_held = any(_BUDGET_LINE.search(line) for line in have)
+    budget_held = any(_is_repo_budget(line) for line in have)
+    override_held = any(_is_override_budget(line) for line in have)
     for line in block.split("\n"):
         if re.fullmatch(r"  [a-z].*:", line):
             key = line[2:]
         elif line.startswith("    - "):
             rule = line[4:]
-            has = rule in have or (want and _unquote(rule) in quoted) or (budget_held and bool(_BUDGET_LINE.search(rule)))
+            has = rule in have or (want and _unquote(rule) in quoted) or (budget_held and _is_repo_budget(rule)) or (override_held and _is_override_budget(rule))
             if has == want:
                 found.append(f"{mark} {key} {rule}")
     return found

@@ -60,7 +60,11 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
     whole-change budget in ``rules:`` ("at most N requirements across all its specs and at most
     N words in total", read by ``read_change_budget``): the total words over every ``.md`` file
     in its folder (what ``wc -w`` counts) and the total ``### Requirement:`` headings. A budget the
-    config does not state is not enforced, and the ``change budget`` output line says so.
+    config does not state is not enforced, and the ``change budget`` output line says so. A
+    ``Budget: protected`` line in the change's ``proposal.md`` holds that change to the protected
+    override sentence (the one naming `Budget: protected`) instead; any other ``Budget:`` value, or that
+    line with no override sentence in the config, is a ``budget`` problem. A budget number in wording the
+    reader does not know ("twenty-five", "6 000") exits 2.
   - ``empty``: a live spec with no unit, or an active delta whose requirements sit
     under no ADDED, MODIFIED, REMOVED or RENAMED heading; in scenario mode, also a
     requirement in a live spec or active delta with no ``#### Scenario:`` heading (a live spec
@@ -475,25 +479,81 @@ def read_format_limits(root: Path) -> tuple[dict[str, int], list[str]]:
     return found, missing
 
 
-def read_change_budget(root: Path) -> dict[str, int]:
+def read_change_budget(root: Path) -> tuple[dict[str, int], dict[str, int]]:
     """The whole-change budget, read from the `rules:` text of openspec/config.yaml (or .yml).
 
     Like `read_format_limits`, nothing is copied here: the numbers come from the sentence the repo
     wrote ("at most 25 requirements across all its specs and at most 6,000 words in total").
-    Returns {"requirements": n, "words": n} for each one found; a budget the config does not state
-    is not enforced, and the output line says so."""
+    Returns (the repo's budget, the protected override budget), each {"requirements": n, "words": n}
+    for each number found; one the config does not state is not enforced, and the output line says so."""
     cfg = next((p for p in (root / "openspec" / "config.yaml", root / "openspec" / "config.yml") if p.is_file()), None)
     try:
         text = cfg.read_text(encoding="utf-8-sig") if cfg else ""
     except (OSError, UnicodeDecodeError) as exc:
         raise CheckerError(f"cannot read {cfg.name}: {exc}") from exc
-    text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    rules = _rules_text(text)
+    # The override sentence names `Budget: protected`; every other budget sentence is the repo's own.
+    lines = rules.splitlines()
+    override_text = "\n".join(line for line in lines if _OVERRIDE_MARK in line)
+    repo_text = "\n".join(line for line in lines if _OVERRIDE_MARK not in line)
+    name = cfg.name if cfg else "config"
+    return _parse_budget(repo_text, name), _parse_budget(override_text, name)
+
+
+_OVERRIDE_MARK = "Budget: protected"
+_BUDGET_PHRASES = {"requirements": r"requirements\s+across\s+all\b", "words": r"words\s+in\s+total\b"}
+
+
+def _rules_text(text: str) -> str:
+    """The lines under the top-level `rules:` key, comments dropped: nothing outside it (a `context:`
+    block, say) can state a budget."""
+    out, in_rules = [], False
+    for line in text.splitlines():
+        if not in_rules:
+            in_rules = bool(re.match(r"^rules:\s*(?:#.*)?$", line))
+            continue
+        if line.strip() and not line[0].isspace() and not line.startswith("- "):
+            break  # the next top-level key
+        if not line.lstrip().startswith("#"):
+            out.append(line)
+    return "\n".join(out)
+
+
+def _parse_budget(text: str, name: str) -> dict[str, int]:
+    """{"requirements": n, "words": n} for each budget `text` states. A budget phrase whose number is
+    in wording this reader does not know ("twenty-five", "6 000", "6.000") raises: a guard that
+    enforces less than the config says must not look like one that found nothing wrong."""
     found = {}
-    for name, pat in _BUDGET_PATTERNS.items():
+    for key, pat in _BUDGET_PATTERNS.items():
         hit = re.search(pat, text, re.I)
         if hit:
-            found[name] = int(hit.group(1).replace(",", ""))
+            found[key] = int(hit.group(1).replace(",", ""))
+        elif re.search(_BUDGET_PHRASES[key], text, re.I):
+            raise CheckerError(f"the change budget in {name} gives a {key} number in wording this checker does not read; use e.g. 'at most 25 requirements across all its specs', 'at most 6,000 words in total'")
     return found
+
+
+_BUDGET_LINE = re.compile(r"^[ \t]*Budget:[ \t]*(.*?)[ \t]*$", re.M)
+
+
+def change_budget_for(proposal: Path, budget: dict[str, int], override: dict[str, int], name: str) -> tuple[dict[str, int], str, list[str]]:
+    """(the budget this change is held to, a label for the output line, PROBLEM lines) after reading a
+    `Budget:` line of its proposal. `Budget: protected` selects the override sentence; any other value, or
+    that value with no override sentence in the config, is a problem and the repo budget stays."""
+    try:
+        text = proposal.read_text(encoding="utf-8-sig", errors="replace") if proposal.is_file() else ""
+    except OSError as exc:
+        raise CheckerError(f"cannot read {proposal}: {exc}") from exc
+    values = _BUDGET_LINE.findall(text)
+    problems, chosen = [], budget
+    for value in values:
+        if value != "protected":
+            problems.append(f"PROBLEM budget: openspec/changes/{name}/proposal.md: 'Budget: {value}' is not a budget this checker knows; the only value is 'Budget: protected'")
+        elif not override:
+            problems.append(f"PROBLEM budget: openspec/changes/{name}/proposal.md: 'Budget: protected' but the config states no protected budget sentence, so it raises nothing")
+        else:
+            chosen = override
+    return chosen, (" (Budget: protected)" if chosen is override else ""), problems
 
 
 def change_totals(change_dir: Path) -> tuple[int, int]:
@@ -510,7 +570,7 @@ def change_totals(change_dir: Path) -> tuple[int, int]:
     return requirements, words
 
 
-def check_change_budget(root: Path, budget: dict[str, int]) -> tuple[list[str], list[str]]:
+def check_change_budget(root: Path, budget: dict[str, int], override: dict[str, int] | None = None) -> tuple[list[str], list[str]]:
     """(PROBLEM lines, one info line per active change) for the changes over the whole-change budget.
 
     Active changes only: `openspec/changes/<name>/`, never `archive/`, which is not edited."""
@@ -520,11 +580,13 @@ def check_change_budget(root: Path, budget: dict[str, int]) -> tuple[list[str], 
         return problems, info
     for d in sorted(p for p in changes.iterdir() if p.is_dir() and p.name != "archive"):
         reqs, words = change_totals(d)
-        info.append(f"change {d.name}: {reqs} requirements, {words} words")
-        if "requirements" in budget and reqs > budget["requirements"]:
-            problems.append(f"PROBLEM budget: openspec/changes/{d.name}: {reqs} requirements, the budget is {budget['requirements']}")
-        if "words" in budget and words > budget["words"]:
-            problems.append(f"PROBLEM budget: openspec/changes/{d.name}: {words} words, the budget is {budget['words']}")
+        held, label, bad = change_budget_for(d / "proposal.md", budget, override or {}, d.name)
+        problems += bad
+        info.append(f"change {d.name}: {reqs} requirements, {words} words{label}")
+        if "requirements" in held and reqs > held["requirements"]:
+            problems.append(f"PROBLEM budget: openspec/changes/{d.name}: {reqs} requirements, the budget is {held['requirements']}")
+        if "words" in held and words > held["words"]:
+            problems.append(f"PROBLEM budget: openspec/changes/{d.name}: {words} words, the budget is {held['words']}")
     return problems, info
 
 
@@ -1727,8 +1789,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
 
     limits, unenforced = read_format_limits(root)
     problems += check_format(files, limits)
-    budget = read_change_budget(root)
-    budget_problems, change_info = check_change_budget(root, budget)
+    budget, budget_override = read_change_budget(root)
+    budget_problems, change_info = check_change_budget(root, budget, budget_override)
     problems += budget_problems
 
     map_line = None
@@ -1889,7 +1951,10 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         + (", ".join(f"{k} {v}" for k, v in limits.items()) or "none")
         + (f"; not enforced, not found: {', '.join(unenforced)}" if unenforced else ""),
         "change budget (from openspec/config.yaml): "
-        + (", ".join(f"{k} {v}" for k, v in budget.items()) or "none, not enforced"),
+        + (", ".join(f"{k} {v}" for k, v in budget.items()) or "none, not enforced")
+        + (f"; not enforced, not found: {', '.join(k for k in _BUDGET_PATTERNS if k not in budget)}" if budget and len(budget) < len(_BUDGET_PATTERNS) else "")
+        + "; protected override: "
+        + (", ".join(f"{k} {v}" for k, v in budget_override.items()) or "none"),
         *change_info,
         *([map_line] if map_line else []),
         "purpose notes: "

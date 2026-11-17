@@ -15,7 +15,7 @@ rules:
   proposal:
     - Keep it to about 400 words. Point to the specs and design instead of restating them.
     - "Keep the whole change within its budget, counted over every .md file in its folder: at most 25 requirements across all its specs and at most 6,000 words in total. Over budget, cut; never split into more capabilities to get under it."
-    - If this change carries higher stakes than the Stakes section of cla.io/project-facts.md states, say so in one line of this proposal.
+    - "A change whose proposal.md carries the line `Budget: protected` is held to this budget instead: at most 25 requirements across all its specs and at most 6,000 words in total. Use it for a change that touches a protected area the Stakes section of cla.io/project-facts.md names."
   design:
     - Write design.md only when a stock trigger applies (a cross-cutting change, a new dependency or data model, security, performance or migration complexity, or real ambiguity), and name the trigger.
     - "Keep it to about 800 words: for each decision, the choice, one line of why, and one line per rejected alternative. No history or transcripts."

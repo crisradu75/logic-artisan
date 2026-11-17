@@ -39,7 +39,7 @@ What `/cla:cla-setup` creates, proposes and asks when it sets a repo up.
 #### Scenario: A repo with none
 
 - **WHEN** the facts file says `- Change budget: lean`
-- **THEN** the seeded rules carry the lean numbers
+- **THEN** the seeded rules carry the lean numbers, and the protected numbers stay as the sentence a change opts in to with `Budget: protected`
 
 ### Requirement: Retired ledgers on setup
 
