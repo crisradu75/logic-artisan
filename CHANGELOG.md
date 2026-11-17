@@ -28,6 +28,12 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
   squeezing a clause. Splitting a capability escaped the cap and grew one repo to 41 capabilities. A
   repo whose config still carries the old sentences keeps the old cap until `/cla:cla-setup` is re-run
   and the owner agrees to its listed update.
+- **multi-spec's authoring brief is replaced by a tested one** ("think broadly, write narrowly"):
+  the author reads the repo's Stakes, turns each protected-area risk into a requirement, notes the
+  rest in one line, keeps decided rules as decided and raises a conflict as an open question. It
+  drops the pinned-numbers block, "cross-cutting rules go first" and the `blocked` return for a
+  vague owner rule. On the mnemo benchmark it covers 7 of 8 critical outcomes; outcome g is a known
+  gap (`plugin-tests/benchmarks/mnemo/baseline/brief-v3`).
 
 ## [2.3.0] — 2026-11-04
 

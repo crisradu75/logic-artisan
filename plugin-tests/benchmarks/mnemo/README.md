@@ -47,6 +47,14 @@ A change to spec writing or review passes only if, judged blind:
 - (b) its output is smaller than the no-guidance variant A, in total words (12,243) and in requirements (59).
 - (c) it has fewer invented items than variant A (about 35, the judge's rough count).
 
+Owner's rule (2026-11-17): for an outcome whose full coverage would contradict a decision, "kept the
+decision and raised the conflict as an open question with a proposed fix" counts as passing.
+
+Current baseline to beat: brief v3 (`baseline/brief-v3/`, the brief shipped in
+`multi-spec/references/authoring-brief.md`): 8,860 words, 45 requirements, 7 of 8 outcomes. Outcome g
+is a known gap: covering it conflicts with the decision "a `[meta]` PR is never batched with content
+changes", and no version raised that conflict. Revisit g when the owner settles that decision.
+
 Packaging items that depend on decisions Q11-Q14 are left out of the baseline; see
 `baseline/score.md`. No baseline version passes: all three miss h, and today's CLA, which covers a-g,
 is 20,510 words and 96 requirements.
