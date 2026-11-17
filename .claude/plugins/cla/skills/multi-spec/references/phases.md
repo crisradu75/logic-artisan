@@ -44,8 +44,8 @@ Compare the two shas in Claude's own context (do not pipe through `grep`/`awk`).
 ## Phase 5 — open the PR
 
 ```
-gh pr create --title "docs(openspec): <N> <batch-slug> change proposals" --body "Proposals only — not implemented. Changes: <name-1>, <name-2>, .... All pass openspec validate --strict. Open questions for the owner: <name-1>: <question; ...>, <name-2>: none. Budget problems: <none or the line>."
+gh pr create --title "docs(openspec): <N> <batch-slug> change proposals" --body-file <body-file>
 ```
-Fill the last two sentences from the recorded Phase 3 post-check notes (`references/authoring-brief.md`). Single-line body, no `\n#` sequence (same `gh pr create --body` parser-bug avoidance `/cla:spec-to-pr` documents). Post-check: `gh pr view --json url state` returns `OPEN`.
+Write `<body-file>` with the Write tool in the system temp folder, never inside the repo, and delete it after the PR is created. Its lines: "Proposals only — not implemented.", the change names, "All pass openspec validate --strict.", then per change its open questions (or "none") and its budget result, both from the recorded Phase 3 post-check notes (`references/authoring-brief.md`). Proposal text can hold backticks, `$` and quotes, which is why the body goes in a file and not in `--body "…"`. Post-check: `gh pr view --json url state` returns `OPEN`.
 
 **Resume note:** before creating, check `gh pr list --head docs/propose-<batch-slug> --state open` — if one already exists, skip creation and use it.

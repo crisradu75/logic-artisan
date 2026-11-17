@@ -72,7 +72,7 @@ Does `openspec/changes/<name>/proposal.md` already exist AND is it tracked (`git
 
 Confirm `openspec/changes/<name>/proposal.md`, `tasks.md`, and either at least one `specs/*/spec.md` or `skip_specs: true` in `.openspec.yaml` exist, that a `design.md`, if present, came with a named stock trigger, and re-run `openspec validate <name> --strict` yourself. A `done` claim without this holding is treated as not done — finish it inline (or re-dispatch once) rather than trusting the report, same discipline `/cla:spec-to-pr`'s Implement delegate contract uses. The agent's `done`/`blocked` status is a signal, not a trusted fact.
 
-Also record, for the PR body and the final report: the change's `## Open questions` in `proposal.md` (one line each), and any budget problem from `python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/check_spec_proof.py` run for this change, with a protected-area requirement the agent says it could not fit. The commit step below is unchanged.
+Also record, for the PR body and the final report, the change's `## Open questions` in `proposal.md` (one line each) and a budget result. Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/check_spec_proof.py` once over the repo and read only its budget lines that name this change, plus any protected-area requirement the agent says it could not fit. The script checks the whole repo and flags every new requirement `uncovered` on a proposals-only branch, so its exit code and `uncovered` lines are never a post-check failure. An exit 2 is recorded as "budget not checked: <its message>". The budget result is information for the owner: it is not `done` evidence, and it never blocks the commit or triggers a re-dispatch.
 
 ## Commit + push (immediately, before starting the next change)
 
