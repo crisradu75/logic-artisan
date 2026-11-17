@@ -493,9 +493,9 @@ def read_change_budget(root: Path) -> tuple[dict[str, int], dict[str, int]]:
         raise CheckerError(f"cannot read {cfg.name}: {exc}") from exc
     rules = _rules_text(text)
     # The override sentence names `Budget: protected`; every other budget sentence is the repo's own.
-    lines = rules.splitlines()
-    override_text = "\n".join(line for line in lines if _OVERRIDE_MARK in line)
-    repo_text = "\n".join(line for line in lines if _OVERRIDE_MARK not in line)
+    items = _list_items(rules)  # whole items, so a sentence YAML wraps onto a second line stays one
+    override_text = "\n".join(item for item in items if _OVERRIDE_MARK in item)
+    repo_text = "\n".join(item for item in items if _OVERRIDE_MARK not in item)
     name = cfg.name if cfg else "config"
     return _parse_budget(repo_text, name), _parse_budget(override_text, name)
 
@@ -519,12 +519,35 @@ def _rules_text(text: str) -> str:
     return "\n".join(out)
 
 
+def _list_items(rules: str) -> list[str]:
+    """The `- ` list items of a `rules:` block, each on one line: a line that does not start with `- `
+    and is not a `key:` line continues the item above it. A key line ends the item."""
+    items: list[str] = []
+    open_item = False
+    for line in rules.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("- "):
+            items.append(s[2:].strip())
+            open_item = True
+        elif re.fullmatch(r"[\w-]+:\s*(?:[|>][-+]?)?", s):
+            open_item = False
+        elif open_item:
+            items[-1] += " " + s
+        else:
+            items.append(s)  # a block scalar's line or a bare scalar: its own item
+    return items
+
+
 def _parse_budget(text: str, name: str) -> dict[str, int]:
     """{"requirements": n, "words": n} for each budget `text` states. A budget phrase whose number is
     in wording this reader does not know ("twenty-five", "6 000", "6.000") raises: a guard that
     enforces less than the config says must not look like one that found nothing wrong."""
     found = {}
     for key, pat in _BUDGET_PATTERNS.items():
+        if len(re.findall(_BUDGET_PHRASES[key], text, re.I)) > 1:
+            raise CheckerError(f"the change budget in {name} states a {key} budget more than once for the same budget; keep one sentence per budget")
         hit = re.search(pat, text, re.I)
         if hit:
             found[key] = int(hit.group(1).replace(",", ""))

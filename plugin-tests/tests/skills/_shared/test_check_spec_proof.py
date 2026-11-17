@@ -1258,6 +1258,36 @@ def test_the_override_sentence_alone_does_not_state_the_repo_budget(repo):
     assert csp.read_change_budget(repo) == ({}, {"requirements": 4, "words": 100000})
 
 
+_WRAPPED_OVERRIDE = (
+    "    - \"A change whose proposal.md carries the line `Budget: protected` is held to this budget instead:\n"
+    "      at most 25 requirements across all its specs and at most 6,000 words in total.\"\n"
+)
+_REPO_SENTENCE = "    - \"Repo budget: at most 12 requirements across all its specs and at most 3,000 words in total.\"\n"
+_TAIL = "  specs:\n    - \"500 characters or fewer, at most 3 scenarios.\"\n"
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+@pytest.mark.parametrize("override_first", [True, False])
+def test_an_override_sentence_wrapped_onto_a_second_line_stays_the_override(repo, override_first):
+    body = _WRAPPED_OVERRIDE + _REPO_SENTENCE if override_first else _REPO_SENTENCE + _WRAPPED_OVERRIDE
+    _write(repo, CONFIG, "rules:\n  proposal:\n" + body + _TAIL)
+    assert csp.read_change_budget(repo) == (
+        {"requirements": 12, "words": 3000},
+        {"requirements": 25, "words": 6000},
+    )
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+def test_two_budget_phrases_for_one_budget_are_an_error(repo):
+    twice = "    - \"Also: at most 20 requirements across all its specs.\"\n"
+    _write(repo, CONFIG, "rules:\n  proposal:\n" + _REPO_SENTENCE + twice + _TAIL)
+    with pytest.raises(csp.CheckerError, match="more than once"):
+        csp.read_change_budget(repo)
+    _write(repo, CONFIG, "rules:\n  proposal:\n" + _WRAPPED_OVERRIDE + _WRAPPED_OVERRIDE.replace("25", "30") + _TAIL)
+    with pytest.raises(csp.CheckerError, match="more than once"):
+        csp.read_change_budget(repo)
+
+
 # requirement: spec-proof / A change can opt in to the protected budget
 def test_a_budget_missing_one_number_names_it_as_not_enforced(repo, capsys):
     _write(repo, CONFIG, "rules:\n  proposal:\n    - \"At most 3 requirements across all its specs.\"\n  specs:\n    - \"500 characters or fewer, at most 3 scenarios.\"\n")
