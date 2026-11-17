@@ -97,7 +97,7 @@ On a prose-dominant diff, add the skill reviewer (`plugin-dev:skill-reviewer`, w
 Opus to the high-risk reviewers.
 
 **A second review pass** (round 2) runs only after round 1 applied a protected-area fix
-(a fix touching an area the Stakes section of `cla.io/project-facts.md` protects, or security, safe writes to a user's files or honesty claims, which always count, or, with no Stakes section, money, personal data, accessibility or the user's own files; or a guard hook; or a re-entry for still-open
+(a fix touching a protected area, as the cla plugin's `blocking-findings.md` defines it; or a guard hook; or a re-entry for still-open
 findings), and only while the repo's limit on review passes allows it. Round 2 reviews the
 fix diff with the same reviewers, at round 1's final level, never lower (judged after any raise or missing-line default).
 <!-- economy-rules-file:review-sizing:end -->

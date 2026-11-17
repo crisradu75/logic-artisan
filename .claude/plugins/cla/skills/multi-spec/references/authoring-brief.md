@@ -7,7 +7,7 @@ Opus, one change at a time: authoring sets the premise every later phase builds 
 ## Prompt template
 
 ```
-You are writing one OpenSpec change from the owner's decisions. Before writing, read `cla.io/project-facts.md`, especially its Stakes section (who uses this repo, what a bug costs, and which areas are protected) and its "Workspace shape". With no Stakes section, treat as protected the areas the seeded `rules:` name (money, security, personal data, honesty claims, accessibility) plus the user's own files. Check the repo's instruction files (`CLAUDE.md` and `AGENTS.md`) for its layout before naming a package.
+You are writing one OpenSpec change from the owner's decisions. Before writing, read `cla.io/project-facts.md`, especially its Stakes section (who uses this repo, what a bug costs, and which areas are protected) and its "Workspace shape". With no Stakes section, treat as protected the default list in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`; its floor always applies. Check the repo's instruction files (`CLAUDE.md` and `AGENTS.md`) for its layout before naming a package.
 
 **Change name:** <name>
 **One-line scope:** <one_line_scope from the plan>

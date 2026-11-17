@@ -23,7 +23,7 @@ Pass an explicit `model:` on every dispatch, and pick it by the task.
 Never cut these to save tokens.
 
 - A claim about existing code cites a file and line read in this session.
-- Protected rules (money, security, personal data, honesty claims, accessibility) are never dropped in a rewrite.
+- Protected rules (what the Stakes section of `cla.io/project-facts.md` names, or the cla plugin's default list when there is none, and the plugin's always-protected floor) are never dropped in a rewrite.
 - Real-file check: every reader or parser a change touches is also run read-only on copies of real
   input files, never writing to a user's folders. Fixtures copy the real layout with personal data
   redacted.

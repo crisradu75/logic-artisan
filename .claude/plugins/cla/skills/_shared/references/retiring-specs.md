@@ -15,7 +15,7 @@ The change's `tasks.md` ends with a `## Removed requirements` section, one group
 
 ## Review: the destination text, not just the heading
 
-For each `restated` row, open the destination requirement and read it. It must state the same outcome the old one did, including any rule on money, security, personal data, honesty or accessibility. A heading that exists proves nothing. For each `dropped` row, ask whether the owner could see the behaviour (a limit, a pause, a refusal): if so, it is not internal, and it moves to a destination.
+For each `restated` row, open the destination requirement and read it. It must state the same outcome the old one did, including any rule on a protected area (`blocking-findings.md`, "What is protected"). A heading that exists proves nothing. For each `dropped` row, ask whether the owner could see the behaviour (a limit, a pause, a refusal): if so, it is not internal, and it moves to a destination.
 
 ## Pending rows
 

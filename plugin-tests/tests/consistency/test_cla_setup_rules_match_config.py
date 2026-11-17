@@ -567,3 +567,43 @@ def test_the_two_bloat_rules_are_gone_from_the_shipped_block():
 def test_the_facts_reference_asks_for_stakes_and_names_the_budget_line():
     text = (_SKILL.parent / "references" / "facts-file.md").read_text(encoding="utf-8")
     assert "## Stakes" in text and "- Change budget: lean" in text and "- Change budget: protected" in text
+
+
+_SHARED_DEFAULT = ("money", "personal data", "accessibility", "the user's own files", "anything shipped to other repos")
+
+
+def _skills_ref(*parts: str) -> str:
+    return (_SKILL.parents[1].joinpath(*parts)).read_text(encoding="utf-8")
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_the_seeded_protected_rule_keys_on_stakes_and_names_no_area():
+    item = next(i for i in _rule_items() if "Protected areas are the ones" in i)
+    assert "Stakes section of cla.io/project-facts.md" in item and "blocking-findings.md" in item
+    for area in ("money", "personal data", "accessibility", "honesty"):
+        assert area not in item.lower(), f"the seeded rule hard-codes {area}"
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_the_default_list_is_defined_once_and_is_cla_setups_option_set():
+    shared = _skills_ref("_shared", "references", "blocking-findings.md")
+    facts = " ".join(_skills_ref("cla-setup", "references", "facts-file.md").split())
+    default = next(line for line in shared.splitlines() if line.startswith("- **The default list**"))
+    options = facts.split("`- Protected areas:` (any of ", 1)[1].split("; or `none`)", 1)[0]
+    for area in _SHARED_DEFAULT:
+        assert area in default, f"blocking-findings.md default list lacks {area}"
+        assert area in options, f"cla-setup's Stakes options lack {area}"
+    assert "security" in shared and "honesty claims" in shared  # the floor stays
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_a_config_with_the_hard_coded_areas_lists_them_out_and_the_stakes_rule_in(tmp_path: Path):
+    old_line = _retired("are protected: a rewrite compresses")
+    new_line = next(i for i in _rule_items() if "Protected areas are the ones" in i).strip()
+    text = _CONFIG.read_text(encoding="utf-8")
+    assert "    " + new_line in text
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(text.replace("    " + new_line, "    " + old_line).encode("utf-8"))
+    out = _run_seed(tmp_path).splitlines()
+    assert out == [_HEADER.format("config.yaml"), "+ specs: " + new_line, "- specs: " + old_line]
