@@ -183,14 +183,14 @@ Facts checked and found current: every `${CLAUDE_PLUGIN_ROOT}/skills/_shared/...
 **F16. Location:** `multi-pr/SKILL.md:37`, `references/discover-and-gate.md:137`, `references/change-loop.md:58-64`
 - **Evidence:** "'No unresolved Critical or Important issue' is the default policy — stricter than `/cla:spec-to-pr`'s own default"; the Suggestions go to `TODO.md`.
 - **Pattern:** Group 2, possible conflict with D5 (filter by stakes) and a safety rule, so `flag`.
-- **Why flagged, not fixed:** A standing instruction outside the repo says to fix Critical and Important findings and list Suggestions, which this matches, while D5 narrows "must fix" to findings that block a merge. The two statements disagree, and a stricter default is the safe direction; history cannot say which governs. The owner decides. If D5 wins, the Phase 1 gate's policy question gains a middle option "fix what blocks a merge, list the rest".
+- **Why flagged, not fixed:** An owner rule outside the repo bears on this, and D5 narrows "must fix" to findings that block a merge. History cannot say which governs. The owner decides. If D5 wins, the Phase 1 gate's policy question gains a middle option "fix what blocks a merge, list the rest".
 - **Confidence:** Low.
 - **Action:** flag.
 
 **F17. Location:** `multi-pr/references/discover-and-gate.md:155-160` (§1c), `change-loop.md:11, 121-125` (steps 2, 6, 7)
 - **Evidence:** the upfront chain-time estimate: complexity buckets, averages of prior run-notes timings by bucket, a range, per-change point estimates, and an actual-versus-predicted report after every change.
 - **Pattern:** Group 1c (arithmetic rubric the model computes), Group 1d (unenforced).
-- **Why flagged:** About 600 words of procedure for a number the text itself calls a rough ballpark; the sample is local gitignored run notes on one machine, usually under three records. Whether anyone reads the number is not visible in the repo; a preference for a lean plugin points the same way, but I have no firing count, so this stays a flag.
+- **Why flagged:** About 600 words of procedure for a number the text itself calls a rough ballpark; the sample is local gitignored run notes on one machine, usually under three records. Whether anyone reads the number is not visible in the repo; an owner rule outside the repo bears on it, but I have no firing count, so this stays a flag.
 - **Confidence:** Low.
 - **Action:** flag.
 

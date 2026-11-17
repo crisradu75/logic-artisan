@@ -277,12 +277,12 @@ subshells, `pushd`/`popd`) and `skills/_shared/references/bash-discipline.md:7` 
 
 ### Low (flag only, no hunk)
 
-**L1. Location:** `output-styles/CLA.md:57-81` against a per-user preference for finishing a turn without a confirmation question.
+**L1. Location:** `output-styles/CLA.md:57-81` against an owner rule outside the repo.
 **Evidence:** the style makes every finished interactive piece of work end with a "What's next ... offered as a `[y/n]`" line, which blame shows was tightened 2026-10-26 and 2026-11-02.
 **Pattern:** Group 2, instruction files that contradict each other. The preference lives outside the project and carries no date, so the direction cannot be set from blame, and the fix would loosen a prompt rule.
 **Confidence:** Low. **Action:** flag. The owner decides which governs interactive finishes.
 
-**L2. Location:** `skills/_shared/references/runtime-rules.md:18`. "Pipe verbose command output through `head`/`tail`" against a per-user preference about long-running commands. Different cases; only a risk of misreading. Low. Flag.
+**L2. Location:** `skills/_shared/references/runtime-rules.md:18`. "Pipe verbose command output through `head`/`tail`" against an owner rule outside the repo. Different cases; only a risk of misreading. Low. Flag.
 
 **L3. Location:** `skills/shape-decision/SKILL.md:26-55`. Eight checklist axes plus six outside-service sub-axes, three levels with quoted evidence, Noted lines, a cold check. Pattern: Group 1c step-by-step choreography and patch accretion (blame shows additions across 2026-10 and 2026-11). It is an owner-tuned protocol that makes decisions auditable; no incident or measurement says it should shrink. Low. Flag.
 
@@ -290,7 +290,7 @@ subshells, `pushd`/`popd`) and `skills/_shared/references/bash-discipline.md:7` 
 
 **L5. Location:** `skills/annotate/SKILL.md:188-190`. "Those percentages come from `scripts/sweep_changes.py` over 355 real changes" (51% not checkable, 22% covered). The command is named, which satisfies check 3, but `openspec/changes/archive` holds 60 directories today, so "355" cannot be re-run here. Low. Flag. Never invoked.
 
-**L6. Location:** `skills/spec-to-pr-retro/SKILL.md:42` ("Under 40 lines"), `skills/codify-learnings/SKILL.md:101` ("at most 150 words"), `skills/_shared/references/orchestration-economy.md:8` ("about 300 words"). Numeric report caps (Group 1f). The 300-word figure is a standing report limit, so it is protected policy; the other two are report shapes with listed contents. Low. Flag.
+**L6. Location:** `skills/spec-to-pr-retro/SKILL.md:42` ("Under 40 lines"), `skills/codify-learnings/SKILL.md:101` ("at most 150 words"), `skills/_shared/references/orchestration-economy.md:8` ("about 300 words"). Numeric report caps (Group 1f). The 300-word figure is covered by an owner rule outside the repo, so it is protected policy; the other two are report shapes with listed contents. Low. Flag.
 
 Total: 5 High, 18 Medium, 6 Low = 29 findings (L1-L6). Each finding is counted once, in the group of its main pattern.
 

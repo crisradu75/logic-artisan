@@ -33,7 +33,7 @@ What the plugin promises when a batch of changes from one decisions doc is propo
 
 #### Scenario: Resuming before a change's findings were fixed
 
-- **WHEN** a resumed chain cannot show that a change's Critical and Important findings were fixed, and a later change needs it merged
+- **WHEN** a resumed chain cannot show that a change's blocking findings were fixed, and a later change needs it merged
 - **THEN** it is not merged and no later change starts
 
 ### Requirement: A failed OpenSpec change stops the chain

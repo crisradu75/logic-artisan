@@ -52,7 +52,7 @@ These rules apply across every phase.
 |---|---|
 | `--review-rounds N` | Review — the change's **artifacts**, before Implement. Default 1. |
 | `--test-rounds N` | Test fix rounds. Default 3. |
-| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs only after round 1 applied a fix that touches a protected area (`_shared/references/blocking-findings.md`); `1` opts out; `0` skips Revise. A re-entry for still-open findings also runs. |
+| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs only after round 1 applied a fix that touches a protected area (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`); `1` opts out; `0` skips Revise. A re-entry for still-open findings also runs. |
 | `--skip-review` | Skips Revise, as does the user saying "no review". |
 | `--gate-on-push`, `--interactive` | Pause before push and PR open ("Autonomy gate"). |
 | `--pr-base <branch>`, `--inherits '<entries>'` | See "Placeholders". |
@@ -127,7 +127,7 @@ Cap: `--review-rounds N` (default `1`).
 For each round:
 1. Run the review and parse its verdict (`READY` / `FIX FIRST` / `RETHINK`). On a sub-Opus session, a `RETHINK` verdict, or a `FIX FIRST` verdict with at least one Critical finding, is seconded by one `opus` `Agent` fed the same context brief; a FIX FIRST with only Important or Suggestion findings is not.
 2. `READY` → `ok`, exit the loop.
-3. `FIX FIRST` / `RETHINK` → before the first fix, read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/review-sweeps.md` "Applying a round's fixes" and capture the `design.md` rejected-alternatives snapshot. Apply every blocking Critical and Important (checklist "Blocking and non-blocking": the rest go to TODO.md) to `openspec/changes/<name>/` and re-check each landed. A remedy that reintroduces a rejected alternative is a Critical on the fix; no snapshot captured → Review `warn`. Then `openspec validate <name> --strict`.
+3. `FIX FIRST` / `RETHINK` → before the first fix, read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/review-sweeps.md` "Applying a round's fixes" and capture the `design.md` rejected-alternatives snapshot. Apply every blocking finding (checklist "Blocking and non-blocking": the rest go to TODO.md) to `openspec/changes/<name>/` and re-check each landed. A remedy that reintroduces a rejected alternative is a Critical on the fix; no snapshot captured → Review `warn`. Then `openspec validate <name> --strict`.
 4. Decrement the budget. Exhausted → `warn`, residue to Handoff. RETHINK with Critical > 0 after re-validation → `warn` even with budget left; the next round is the user's call.
 
 ### Implement

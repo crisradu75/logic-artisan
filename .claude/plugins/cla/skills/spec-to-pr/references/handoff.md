@@ -50,7 +50,7 @@ When there is ANY Deferred-Known-Issue, ANY rejected remedy still open, OR ANY S
 - ...
 
 **Suggestions** (low-priority PR-review residue, plus every finding the Stakes filter judged non-blocking; one line each):
-- [Suggestion] <issue>
+- [<original label: Critical, Important or Suggestion>] <issue>
 - ...
 ```
 

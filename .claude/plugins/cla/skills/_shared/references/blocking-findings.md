@@ -14,6 +14,9 @@ A finding that names a protected area is never non-blocking. Whoever applies the
 
 **A brief that applies this filter carries this file's text** (the three conditions, the floor and the default list), because the agent or reader may not open the file. When the repo has no Stakes section, the brief says the default list applies; it never says "nothing is protected".
 
-## What a protected-area fix buys
+## What a fix buys
 
-A second review round, and the by-hand mutation check ("break the fix, confirm a test fails"), run only after a **protected-area fix**: a fix that touches a protected area, or one in a guard hook. Any other fix ships with a test that fails without it, and no second round or hand-mutation. Fixing a doc is a protected-area fix only when the doc is itself a protected area.
+Two triggers, kept distinct.
+
+- **The by-hand mutation check** ("break the fix, confirm a test fails") runs for every fix of a blocking finding, and for any guard-hook rewrite.
+- **A second review round** runs only after a **protected-area fix**: a fix that touches a protected area, or one in a guard hook. Fixing a doc is a protected-area fix only when the doc is itself a protected area.

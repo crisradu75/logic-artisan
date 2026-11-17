@@ -205,7 +205,7 @@ dependency-first, unattended:
 - **`multi-lite`** pulls every `lite-pr`-sized candidate out of a decisions doc, orders them,
   confirms the plan with you once, then runs `lite-pr` on each.
 - **`multi-pr`** does the same at spec scale: it runs `spec-to-pr` on each OpenSpec change in
-  dependency order, and makes sure every Critical and Important review finding is fixed before it
+  dependency order, and makes sure every blocking review finding is fixed before it
   moves on.
 
 ```

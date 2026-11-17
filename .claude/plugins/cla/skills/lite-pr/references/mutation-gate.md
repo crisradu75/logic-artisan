@@ -1,6 +1,6 @@
 # Mutation gate for review fixes (moved from Review step 2b of SKILL.md; "step 3" is SKILL.md's Review step 3, the fix commit)
 
-2b. **Mutation gate (by hand, not an automated mutation batch; required before the commit in step 3, for a protected-area fix per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`).** Such a fix
+2b. **Mutation gate (by hand, not an automated mutation batch; required before the commit in step 3, for every fix of a blocking finding and every guard-hook rewrite, per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`).** Such a fix
    is a change like any other and earns the same evidence the original code needed —
    "the reviewer's finding is now handled" is not that evidence. Break **what the fix
    touches**, not only what it targets: correcting one return path routinely breaks another. Do each one by hand: edit the code so the defect is back, run the affected

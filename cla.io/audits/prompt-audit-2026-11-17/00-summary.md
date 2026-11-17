@@ -6,12 +6,12 @@
 - **Scope audited:**
   - project `CLAUDE.md`
   - `.claude/skills/release/`
-  - user `~/.claude/CLAUDE.md` (any edit there affects all projects)
+  - the user-level configuration (any edit there affects all projects)
   - the CLA plugin loaded from `.claude/plugins/cla/`: every skill, its references, the helper agents, the output styles, and the rule text that `seed_openspec_rules.py` seeds into each repo
 - **Report-only:** CLA is loaded as a plugin, so its hunks are proposals for the owner's trim PRs, not edits to apply here.
 - **Skipped:**
   - settings files, `.mcp.json` and credentials (the audit rule)
-  - `~/.claude/skills/synced/`, the Anthropic skills synced from claude.ai
+  - the user-level synced skills, the Anthropic skills synced from claude.ai
   - the plugins installed from the official marketplace; none of these can be edited from here
 - **Not applicable:** Groups 3 and 4. The scope holds no tool definitions and no request-building code.
 
@@ -41,7 +41,7 @@
    - The release section of `CLAUDE.md` restates the `/release` skill, and it loads every session.
    - The release skill carries version-incident stories and a stale "tag 0.10.0" trigger example.
 6. **Flag only (conflicts across layers):**
-   - Three conflicts between this repo's rules and rules kept outside it (release approval, test parallelism, where leftover suggestions go); detail kept out of the repo with Part D.
+   - Conflicts between this repo's rules and an owner rule outside the repo; detail kept out of the repo with Part D.
    - (D)
 
 Copies of the review-sizing and never-end-a-turn rules agree across files. They are protected by keep-list item 8 and not reported as findings.
@@ -62,4 +62,4 @@ Never-invoked skills in scope: annotate, codify-retro, diagnose, save-permission
 
 The full findings and diffs follow, part by part.
 
-Part D (the project `CLAUDE.md`, `/release` and the owner's user-level `CLAUDE.md`) was kept out of the repo because it quotes a private file; its counts stay in the table above.
+Part D (the project `CLAUDE.md`, `/release` and the user-level configuration) was kept out of the repo because it quotes a private file; its counts stay in the table above.
