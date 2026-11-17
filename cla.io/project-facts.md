@@ -10,7 +10,7 @@ repo: it has no product code.
 - `.claude-plugin/marketplace.json` — the Claude Code catalog; `.github/plugin/marketplace.json` — the Copilot CLI catalog.
 - `plugin-tests/` — every test, mutation batch, `mutate.py` and the pytest config; never ships.
 - `.claude/skills/release/` — the repo-local `/release` skill; never ships.
-- `.claude/skills/openspec-*/`, `.claude/commands/opsx/` — OpenSpec's generated skills and commands; never ship.
+- `.claude/skills/openspec-*/` — OpenSpec's generated skills; never ship.
 - `openspec/` — live specs and active changes; `cla.io/` — this repo's facts, decisions, retros and overlays.
 - `cla`, `cla.cmd` — launchers that load the plugin from the working tree.
 

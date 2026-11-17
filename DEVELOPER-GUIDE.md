@@ -543,7 +543,7 @@ plugin-tests/                  the repo's ONE pytest scope
   SKILL.md
   scripts/check_shipped_tree.py
   scripts/check_copilot_models.py
-.claude/skills/openspec-*/     OpenSpec's generated skills (with .claude/commands/opsx/)
+.claude/skills/openspec-*/     OpenSpec's generated skills
 .claude-plugin/                marketplace.json — the Claude Code catalog
 .github/plugin/                marketplace.json — the GitHub Copilot CLI catalog
 ```
