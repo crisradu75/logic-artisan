@@ -1,11 +1,9 @@
-"""lite-pr reviews a high-risk fix once more, and never a third time.
+"""lite-pr reviews a protected-area fix once more, and never a third time.
 
-Decision 5 (cla.io/decisions/open-issues-2026-10-13.md): on three high-risk PRs, a
-second review over fixes for Important findings found new Important defects every
-time. lite-pr's Review had one pass and no re-dispatch. It now runs one more pass of
-the two bug-hunters over the fix diff when the PR is high risk and step 1 fixed a
-Critical or Important finding, and stops there. A low-risk fix still gets no second
-pass, so the cost lands only where the defects were.
+Principle 5 (cla.io/decisions/cla-foundation-2026-11-17.md): one review, then a stakes
+filter. lite-pr's Review runs one more pass of the sizing-table reviewers over the fix
+diff only when step 1 applied a fix that touches a protected area, and stops there. Any
+other fix gets no second pass, so the cost lands only where a defect would cost most.
 """
 
 from __future__ import annotations
@@ -23,29 +21,30 @@ def _review_step(prefix: str) -> str:
     return next(line for line in lines if line.startswith(prefix))
 
 
-def test_a_high_risk_fix_gets_one_more_pass_over_its_diff():
-    step = _review_step("4. **A second pass only for a high-risk fix.**")
-    assert "When this Review ran at high risk and step 1 fixed a Critical or Important finding" in step
+def test_a_protected_area_fix_gets_one_more_pass_over_its_diff():
+    step = _review_step("4. **A second pass only for a protected-area fix.**")
+    assert "When step 1 applied a protected-area fix" in step
     assert "the same sizing-table reviewers once more, at the same models" in step
     assert "over the fix commit's diff only" in step
 
 
-def test_high_risk_is_the_level_the_review_used_not_the_literal_line():
-    """lite-pr raises a missed level and treats a missing line as high without rewriting the
-    PR body, so a trigger on the literal line would skip the second pass on those PRs."""
-    step = _review_step("4. **A second pass only for a high-risk fix.**")
-    assert "the `Risk:` line said high, you raised it, or the line was missing, unreadable or named an unknown level" in step
+def test_the_second_pass_does_not_key_on_the_risk_level_or_a_severity_label():
+    """The trigger is the area a fix touches. A restored `Risk:` clause or a Critical/Important
+    label would send a low-stakes fix to a second review."""
+    step = _review_step("4. **A second pass only for a protected-area fix.**")
+    assert "Risk:" not in step and "high risk" not in step
+    assert "Critical or Important" not in step
 
 
 def test_the_second_pass_is_the_last():
-    step = _review_step("4. **A second pass only for a high-risk fix.**")
+    step = _review_step("4. **A second pass only for a protected-area fix.**")
     assert "then stop: there is no third pass" in step
     assert "Otherwise do NOT re-dispatch the review agents" in step, (
         "a low-risk fix, or a clean round 1, now re-dispatches the reviewers"
     )
     text = _SKILL.read_text(encoding="utf-8")
-    assert "one pass, plus one pass over the fix diff of a high-risk change; never a third." in text
-    assert "(a second, on the fix diff, for a high-risk fix)" in text.split("\n---", 1)[0], (
+    assert "one pass, plus one pass over the fix diff of a protected-area fix; never a third." in text
+    assert "(a second, on the fix diff, for a protected-area fix)" in text.split("\n---", 1)[0], (
         "lite-pr's description still promises a single fix round at every risk"
     )
 

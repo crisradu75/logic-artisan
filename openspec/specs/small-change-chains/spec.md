@@ -19,7 +19,7 @@ What the plugin promises when `/cla:multi-lite` runs and merges a batch of small
 
 ### Requirement: What a small-change chain merges
 
-`/cla:multi-lite` SHALL merge a pull request only under the merge policy confirmed for that run, which is `merge-dependencies-only` when the invocation pre-confirms the plan without naming one, and only when its review left no Critical or Important finding open, counting any finding it cannot recount as open, its full test suite passed on the exact commit being merged with no uncommitted changes, and the host reports it merged rather than queued.
+`/cla:multi-lite` SHALL merge a pull request only under the merge policy confirmed for that run, which is `merge-dependencies-only` when the invocation pre-confirms the plan without naming one, and only when its review left no blocking finding open, counting any finding it cannot recount as open, its full test suite passed on the exact commit being merged with no uncommitted changes, and the host reports it merged rather than queued.
 
 #### Scenario: A fix committed after the tests ran
 

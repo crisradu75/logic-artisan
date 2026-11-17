@@ -127,8 +127,11 @@ A prose edit here ships like code, and nothing compiles it. Each check comes fro
    name both versions. Don't repeat an old number as if it were current.
    A rate or score compared across variants uses the same inputs and the same judge on both
    sides. A figure from another input set or judge is not a comparison.
-4. **Fixing a defect a review found?** Break the fix and confirm a test fails, then restore it. Do
-   this by hand, once per fix. That is the whole floor. **A mutation batch is opt-in** (owner
+4. **Fixing a defect a review found?** For a fix to a blocking finding
+   (`.claude/plugins/cla/skills/_shared/references/blocking-findings.md`), or a guard-hook rewrite:
+   Break the fix and confirm a test fails, then restore it. Do
+   this by hand, once per such fix. That is the whole floor. Any other fix needs only a test that
+   fails without it. **A mutation batch is opt-in** (owner
    decision, 2026-10-14): run `python3 plugin-tests/mutate.py <batch.py>` (a batch is a Python file
    whose `MUTANTS` list holds small deliberate bugs) only when the owner asks for it, or when a
    guard hook, a file under `.claude/plugins/cla/hooks/`, is rewritten. A checker or a guard test
@@ -156,7 +159,7 @@ or a new component. A small addition to something already built and tested does 
 | | run |
 |---|---|
 | Editing one skill or area | `pytest plugin-tests/tests/<area> -n auto --dist loadfile`, **once** |
-| Fixing a defect a review found | that area, and break each fix by hand once; a mutation batch only when the owner asks or a guard hook is rewritten, run once after the last fix |
+| Fixing a defect a review found | that area, and break each blocking-finding fix (and each guard-hook rewrite) by hand once; a mutation batch only when the owner asks or a guard hook is rewritten, run once after the last fix |
 | Adding a new script, skill, or hook | the five checks above, in full |
 | Before opening a PR | `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict`, each once |
 

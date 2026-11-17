@@ -83,7 +83,7 @@ def test_the_second_pass_dispatches_also_carry_the_model_the_diff_file_and_the_r
     assert "`model:` passed on every dispatch" in round_n and "diff-review rule verbatim" in round_n
     assert "Save it to a diff file" in round_n
     lite = _flat(_SITES["lite-pr Review"].read_text(encoding="utf-8"))
-    step4 = lite.split("4. **A second pass only for a high-risk fix.**", 1)[1].split("5. **", 1)[0]
+    step4 = lite.split("4. **A second pass only for a protected-area fix.**", 1)[1].split("5. **", 1)[0]
     assert "`model:` on EVERY dispatch" in step4 and "diff-review rule verbatim" in step4
     assert "new diff file outside the working tree" in step4
 

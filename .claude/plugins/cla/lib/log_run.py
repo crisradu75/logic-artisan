@@ -137,13 +137,13 @@ REVISE_AGENTS = ("code-reviewer", "silent-failure-hunter", "pr-test-analyzer",
 # whenever they ran. Review loops too but is single-pass by default, and its pair
 # stays optional.
 ROUNDS_REQUIRED_ON = ("Test", "Revise")
-# Why a Revise round after the first ran, in precedence order: `critical` (the round
-# before fixed any Critical), else `high-important` (it fixed an Important on a
-# high-risk PR), else `reentry` (still-open findings re-attempted); `unknown` only when
+# Why a Revise round after the first ran, in precedence order: `protected` (the round
+# before applied a protected-area fix), else `reentry` (still-open findings
+# re-attempted); `unknown` only when
 # the run cannot tell, which is also Handoff's one answer to a refusal naming `trigger`. The retro splits round-2 yield by it, so a weak arm cannot
 # hide behind a strong one. A spec-to-pr-retro copy of this list is kept equal by
 # tests/consistency/test_run_record_values_agree.py.
-ROUND_TRIGGERS = ("critical", "high-important", "reentry", "unknown")
+ROUND_TRIGGERS = ("protected", "reentry", "unknown")
 
 
 def _phase_rule(phase: dict) -> list[str]:

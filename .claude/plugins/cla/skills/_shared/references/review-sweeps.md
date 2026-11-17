@@ -18,7 +18,7 @@ Read from the Review stub in `spec-to-pr`'s `SKILL.md` and from `multi-spec`'s `
 ## Applying a round's fixes
 
 1. **Capture the rejected-alternatives snapshot BEFORE the round's first fix.** Read the change's `design.md` rejected-alternatives / explicitly-rejected-decisions section and hold it for the round. The fixes routinely edit `design.md` itself, so a later read sees the edited file.
-2. **Apply** each Critical and Important finding by Edit/Write under `openspec/changes/<name>/`: to design.md or tasks.md, and to spec text only when the finding is about an outcome or interface. For prose, prefer this repo's canonical terms from `cla.io/terminology.md` when it exists and covers the concept.
+2. **Apply** each blocking finding by Edit/Write under `openspec/changes/<name>/`: to design.md or tasks.md, and to spec text only when the finding is about an outcome or interface. For prose, prefer this repo's canonical terms from `cla.io/terminology.md` when it exists and covers the concept.
 3. **Re-validate each fix landed** — not a re-dispatch: grep the artifact for the symbol, heading or clause the finding named, or re-read the section. Still visible → a follow-up edit in the same round.
 4. **Check every applied remedy against the snapshot.** Each fix on this path is one the orchestrator both specified and judges, so confirm none reintroduces a rejected alternative. Never `git show HEAD:<path>`: Review runs before Ship, so a fresh change dir is not committed yet and the git form fails.
    - **No snapshot captured → the check has not run.** Review `warn`, recorded under *Issues encountered* as `rejected-alternatives check did not run (no snapshot captured)`, the round's remedies treated as unchecked.

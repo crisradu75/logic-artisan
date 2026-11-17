@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -513,4 +514,6 @@ def test_this_repos_ledger_passes_the_writers_check() -> None:
         if line.strip():
             rec = json.loads(line)
             problems = set(log_run.shape_problems(rec, log_run.SHAPES[name])) - _history_gaps(rec, rec)
+            # The writer no longer accepts these two round triggers, but records written while it did keep them.
+            problems = {p for p in problems if not re.search(r'\.trigger` must be one of .*, got "(critical|high-important)"$', p)}
             assert not problems, f"{name}:{no}: {problems}"

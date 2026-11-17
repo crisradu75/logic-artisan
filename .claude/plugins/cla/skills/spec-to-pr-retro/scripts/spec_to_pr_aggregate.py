@@ -150,8 +150,8 @@ CAPPED_PHASES = ("Review", "Test", "Revise")
 NUDGE_PHASES = ("Revise", "Test")
 FINDINGS_PHASE = "Revise"
 REASON_STATUSES = ("warn", "fail")
-# Revise runs a second round after its first fixed a Critical, or an Important on
-# a high-risk PR, so reaching its cap is an expected path. It counts as exhausted only when it also ended warn or
+# Revise runs a second round after its first applied a protected-area fix,
+# so reaching its cap is an expected path. It counts as exhausted only when it also ended warn or
 # fail: the record's spelling for findings left open at the cap.
 RESIDUE_PHASES = ("Revise",)
 # Placeholders `migrate_run_records.py` writes where an old record kept no
@@ -334,14 +334,14 @@ def aggregate(records: list[dict]) -> dict:
 # What started a Revise round after the first: a copy of `lib/log_run.py`'s list,
 # kept equal by tests/consistency/test_run_record_values_agree.py. A record from a
 # newer plugin may carry a value not listed here; it is counted under its own arm.
-ROUND_TRIGGERS = ("critical", "high-important", "reentry", "unknown")
+ROUND_TRIGGERS = ("protected", "reentry", "unknown")
 
 
 def round_2_yield(records: list[tuple[str, dict]]) -> dict:
     """How often Revise's second round still finds something.
 
-    Round 2 runs only after round 1 fixed a Critical, or an Important on a
-    high-risk PR (spec-to-pr's Revise reference); this is the health check on
+    Round 2 runs only after round 1 applied a protected-area fix
+    (spec-to-pr's Revise reference); this is the health check on
     that default. A change counts when
     its Revise `findings_by_round` holds a round >= 2, and surfaces when such a
     round found at least one Critical or Important. Changes are distinct

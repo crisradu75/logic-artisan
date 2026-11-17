@@ -255,7 +255,7 @@ def _spec_record() -> dict:
             {"name": "Ship", "status": "ok"},
             {"name": "Revise", "status": "ok", "rounds_used": 2, "rounds_cap": 2,
              "findings_by_round": [{"round": 1, "found": 3},
-                                   {"round": 2, "found": 1, "trigger": "critical"}]},
+                                   {"round": 2, "found": 1, "trigger": "protected"}]},
             {"name": "Archive", "status": "ok"},
             {"name": "Handoff", "status": "ok"},
         ],
@@ -407,7 +407,7 @@ def _with_trigger(round_no: int, trigger) -> dict:
     return record
 
 
-@pytest.mark.parametrize("trigger", ["critical", "high-important", "reentry", "unknown"])
+@pytest.mark.parametrize("trigger", ["protected", "reentry", "unknown"])
 def test_a_later_round_may_name_what_started_it(tmp_path: Path, trigger: str) -> None:
     r = _run(json.dumps(_with_trigger(2, trigger)), tmp_path)
     assert r.returncode == 0, r.stderr
@@ -425,8 +425,8 @@ def test_a_later_round_without_a_trigger_is_refused(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("round_no", "trigger", "fragment"),
     [
-        (1, "critical", "`trigger` belongs only on a round after the first"),
-        (0, "critical", "`trigger` belongs only on a round after the first"),
+        (1, "protected", "`trigger` belongs only on a round after the first"),
+        (0, "protected", "`trigger` belongs only on a round after the first"),
         (2, "important", "`phases[5].findings_by_round[1].trigger` must be one of"),
         (2, "", "`phases[5].findings_by_round[1].trigger` must be one of"),
         (2, 1, "`phases[5].findings_by_round[1].trigger` must be one of"),

@@ -132,5 +132,5 @@ The writer SHALL append only to the spec-to-pr ledger, refusing a record for any
 
 #### Scenario: Second-round yield, in total and by what started the round
 
-- **WHEN** three changes had a second pull request review round, two following a fixed Critical and finding something, one following only Important fixes on a high-risk pull request and finding nothing
+- **WHEN** three changes had a second pull request review round, two following a protected-area fix and finding something, one following a re-entry on still-open findings and finding nothing
 - **THEN** the summary reports three such changes, two of which found one, and reports each kind apart so the empty kind is visible next to the one still finding defects

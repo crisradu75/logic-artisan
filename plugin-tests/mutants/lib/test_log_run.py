@@ -334,10 +334,10 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the high-risk Important trigger is refused",
+        "the protected trigger is refused",
         SCRIPT,
-        'ROUND_TRIGGERS = ("critical", "high-important", "reentry", "unknown")',
-        'ROUND_TRIGGERS = ("critical", "reentry", "unknown")',
+        'ROUND_TRIGGERS = ("protected", "reentry", "unknown")',
+        'ROUND_TRIGGERS = ("reentry", "unknown")',
         TARGETS,
     ),
     (
