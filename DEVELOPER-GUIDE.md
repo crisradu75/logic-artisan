@@ -80,7 +80,8 @@ Check it worked: type `/cla:` and the skill list should autocomplete.
 
 ## 3. Your first change: `lite-pr`
 
-`lite-pr` is the light end-to-end path for a small, well-understood change. Reach for it first. It
+`lite-pr` is the default path: plan, build, one review. Reach for it first, and use `spec-to-pr` only
+when the change touches a protected area or behaviour shipped to other repos. It
 implements, keeps docs and tests in step, opens a PR, then runs one automated review pass with one
 fix round. It never merges.
 
@@ -133,13 +134,13 @@ a probable root cause, never a confirmed diagnosis) and writes a dated triage do
 It walks the options one at a time with pros and cons, recommends one, and writes a decisions doc
 under `cla.io/decisions/`. `multi-spec`, `multi-lite` and `multi-pr` all take that doc as input.
 
-A typical small change: `shape-decision` → `lite-pr`, or straight to `lite-pr` when the shape is
+A typical change: `shape-decision` → `lite-pr`, or straight to `lite-pr` when the shape is
 already clear.
 
 ## 5. Spec-scale changes: `multi-spec` → `review-change` → `spec-to-pr`
 
-When a change is too big for one prompt, CLA runs it through OpenSpec (the vendored `opsx:*`
-skills) rather than skip the thinking. CLA orchestrates around OpenSpec; it does not replace it.
+When a change touches a protected area (what the repo's Stakes section lists) or behaviour shipped to other repos, CLA runs it through OpenSpec (the vendored `opsx:*`
+skills) rather than skip the thinking. `multi-spec` writes a proposal only for such a change and lists the rest as `lite-pr` items. CLA orchestrates around OpenSpec; it does not replace it.
 For open exploration first, use `opsx:explore`.
 
 1. **`multi-spec`** turns a decisions doc into a batch of OpenSpec proposals (`proposal.md`,
@@ -202,7 +203,7 @@ comments back up.
 One decisions doc often yields several independent changes. The chainers run them
 dependency-first, unattended:
 
-- **`multi-lite`** pulls every `lite-pr`-sized candidate out of a decisions doc, orders them,
+- **`multi-lite`** pulls every `lite-pr` candidate (one that is not protected or shipped behaviour) out of a decisions doc, orders them,
   confirms the plan with you once, then runs `lite-pr` on each.
 - **`multi-pr`** does the same at spec scale: it runs `spec-to-pr` on each OpenSpec change in
   dependency order, and makes sure every blocking review finding is fixed before it
@@ -698,14 +699,14 @@ question or change a rule.
 
 | I want to… | Reach for |
 |---|---|
-| Ship a small, clear change | `lite-pr` |
+| Ship a change (the default path) | `lite-pr` |
 | Dump rough observations somewhere useful | `feedback` |
 | Decide between approaches | `shape-decision` |
 | Turn a decision into spec proposals | `multi-spec` |
 | Sanity-check a proposal before building | `review-change` |
 | Read and mark up a document or a change yourself | `annotate` |
-| Drive one spec'd change to a PR | `spec-to-pr` |
-| Run a batch of small changes unattended | `multi-lite` |
+| Drive one protected or shipped-behaviour change to a PR | `spec-to-pr` |
+| Run a batch of lite changes unattended | `multi-lite` |
 | Run a batch of spec'd changes unattended | `multi-pr` |
 | Work in parallel without collisions | `/cla:new-worktree`, at any point in a session |
 | Pick the cheapest adequate model for a task | `right-model` |

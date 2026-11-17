@@ -86,9 +86,9 @@ per item. Reading another skill's reference file is not calling it: `spec-to-pr`
 
 ### Typical flows
 
-- **Small change:** `shape-decision` → `lite-pr` (or straight to `lite-pr`).
-- **Larger change:** `shape-decision` → `multi-spec` → `review-change` → `spec-to-pr`.
-- **A batch off one decisions doc:** `multi-lite` (small) or `multi-pr` (spec-scale).
+- **Default change:** `shape-decision` → `lite-pr` (or straight to `lite-pr`).
+- **Change touching a protected area or behaviour shipped to other repos:** `shape-decision` → `multi-spec` → `review-change` → `spec-to-pr`.
+- **A batch off one decisions doc:** `multi-lite` (lite by default) or `multi-pr` (changes that touch a protected area or shipped behaviour).
 - **After a session:** `codify-learnings`; periodically `spec-to-pr-retro` to tune the orchestrator.
 
 ## Always-on guardrails (hooks)

@@ -25,7 +25,7 @@ path with `/skills/<name>` removed, or the absolute path of any plugin file you 
 at `.../plugins/cla`. If neither works, say so and stop. Detail:
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
-This is the `lite-pr` analogue of `/cla:multi-pr` (which chains `/cla:spec-to-pr` over OpenSpec changes). Use `multi-lite` when the work is a batch of **small** changes that don't need OpenSpec artifacts — lite is the default path, and `spec-to-pr` is for a change that touches a protected area or behaviour shipped to other repos, applied to a batch.
+This is the `lite-pr` analogue of `/cla:multi-pr` (which chains `/cla:spec-to-pr` over OpenSpec changes). Use `multi-lite` for a batch of changes that don't touch a protected area or behaviour shipped to other repos: lite is the default path, and such a change belongs on `spec-to-pr`, which `multi-lite` flags out of scope.
 
 **This skill does not reimplement `/cla:lite-pr`.** Every actual Explore/Plan/Implement/Test/Ship/Review step for a single candidate is `/cla:lite-pr`'s job — invoke it via `Skill(cla:lite-pr, args="<one-line description>")`. Its Review step sizes the reviewers by risk, per "Review sizing by risk" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`. `multi-lite` owns exactly four things `/cla:lite-pr` doesn't: **candidate extraction**, **sequencing + the upfront confirmation gate**, **policy-driven merging**, and **failure quarantine + the final report**.
 

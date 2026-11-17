@@ -47,11 +47,11 @@ Read the resolved decisions file in full before Phase 1.
 
 ## Phase 1 — Discover the change plan
 
-Derive an ordered change plan (each change's `name`, decisions covered, one-line scope, `depends_on`) from the file's own Sequencing section, or by grouping judgment when no such section exists — do not default to one change per decision. Full mechanics + the sub-Opus escalate-up rule: `references/phases.md`. Print the plan before authoring starts; hold it in working context only — **do not** write or commit it here (Phase 2 persists it, once the branch that its `batch_slug`/`branch` fields depend on actually exists).
+Derive an ordered change plan (each change's `name`, decisions covered, one-line scope, `depends_on`) from the file's own Sequencing section, or by grouping judgment when no such section exists — do not default to one change per decision. Full mechanics + the sub-Opus escalate-up rule: `references/phases.md`. **Then sort each change before anything is authored:** a change that touches a protected area (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`, "What is protected", read against the repo's Stakes section, or its default list when there is none) or behaviour shipped to other repos is a `spec` change and gets a proposal; every other change is a `lite` item and gets **none**. A path the owner states for a change wins. Only `spec` changes enter Phases 2 to 5; if there are none, write no plan, branch or PR and go straight to the report. Print the plan, each change's path and its one-line Stakes reason before authoring starts; hold it in working context only — **do not** write or commit it here (Phase 2 persists it, once the branch that its `batch_slug`/`branch` fields depend on actually exists).
 
 ## Phase 2 — Batch branch preflight, then persist the plan
 
-All N changes land in **one** PR on **one** dedicated branch, `docs/propose-<batch-slug>` (not one branch per change). Full branch-slug derivation, preflight, and plan-persist-commit recipe: `references/phases.md`. This phase's first push **must** set the upstream (`-u`) — every push after it is bare.
+All N proposals (the `spec` changes only) land in **one** PR on **one** dedicated branch, `docs/propose-<batch-slug>` (not one branch per change). Full branch-slug derivation, preflight, and plan-persist-commit recipe: `references/phases.md`. This phase's first push **must** set the upstream (`-u`) — every push after it is bare.
 
 ## Phase 3 — Author each change, sequentially, committing as you go
 
@@ -67,7 +67,7 @@ Opening a PR is not a deployment action (same boundary `/cla:spec-to-pr`'s Ship 
 
 ## Report
 
-Emit a terminal report: batch slug, decisions file, PR URL, the change list (name + one-line scope + dependency order), the review verdict per change, each change's open questions and any budget problem (so the owner sees them before merging), and — the load-bearing next step — **name the follow-on path for each change, with a one-line reason from the Stakes section of `cla.io/project-facts.md`**: `/cla:lite-pr` by default, and `/cla:spec-to-pr <name>` (or `/cla:multi-pr` for the whole produced sequence) for a change that touches a protected area (defined in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`, "What is protected") or behaviour shipped to other repos. A path the owner states always wins. `multi-spec` stopping here is deliberate, not a truncated run.
+Emit a terminal report: batch slug, decisions file, PR URL, the change list (name + one-line scope + dependency order), the review verdict per change, each change's open questions and any budget problem (so the owner sees them before merging), and — the load-bearing next step — **name the follow-on path for each change, with a one-line reason from the Stakes section of `cla.io/project-facts.md`**: every proposal written is a `/cla:spec-to-pr <name>` item (or `/cla:multi-pr` for the whole produced sequence), and each `lite` item is listed with its one-line scope, its decision ids and its one-line Stakes reason as a `/cla:lite-pr` item, with no proposal. A path the owner states always wins. If no change needed a proposal, the report is all there is: no PR was opened. `multi-spec` stopping here is deliberate, not a truncated run.
 
 
 ## Resume behavior
