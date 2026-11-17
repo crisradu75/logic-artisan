@@ -62,5 +62,6 @@ Packaging items that depend on decisions Q11-Q14 are left out of the baseline; s
 `baseline/score.md`. No pre-v3 baseline version passes: all three miss h, and the CLA of that day
 (before brief v3), which covers a-g, is 20,510 words and 96 requirements.
 
-Variant A's size is 12,243 words everywhere. Its files were not kept, so it cannot be re-counted;
-`baseline/brief-v3/score.md` once said 12,235, and now says 12,243 to match the first measurement.
+Variant A's 12,243 words is `wc -w` over every file in its two change folders, including the two
+`.openspec.yaml` files; its `.md` files alone hold 12,235. The brief-v3 rounds were counted over
+`.md` files only, the way `check_spec_proof.py` counts a change budget, so compare them with 12,235.
