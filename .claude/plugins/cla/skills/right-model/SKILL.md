@@ -75,9 +75,9 @@ Check the real keyword; vague encouragement is inert. Wrong tool for a long unat
 
 Ask a short yes/no; use `AskUserQuestion` only when there is a real branch to choose. Then:
 
-- **Self-contained task** → launch it with `Agent`, `model` set to the recommendation. `Agent` sets
-  the model only; effort inherits the session (capability table: `model-routing.md`). If the
-  effort difference matters, say so — don't use `Workflow` as a workaround.
+- **Self-contained task** → launch it with `Agent`, `model` set to the recommendation. Pass the
+  recommended effort too, as the `Agent` tool's per-call `effort` (this skill is the explicit ask
+  that parameter requires; capability table: `model-routing.md`). Don't use `Workflow` as a workaround.
 - **Task that needs this conversation** → only the user can switch the session's model and effort
   (e.g. `/model`; check the current mechanism). The model is visible to you, the effort usually is
   not. Tell them what to set, and proceed as soon as they confirm.

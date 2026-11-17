@@ -31,8 +31,7 @@ fix the mistake until a verified copy exists elsewhere — copy first, confirm, 
 clean up. If a commit ever goes missing after a shared branch gets switched/deleted
 out from under it, check `git reflog` / `git fsck --unreachable` before assuming it's
 lost — worktrees share one object store, so `git checkout <sha> -- <path>` recovers
-files into a different worktree with no copy step needed. (Full incident writeup: see
-memory `worktree-isolation-file-paths`.)
+files into a different worktree with no copy step needed.
 
 ## Steps
 
@@ -89,10 +88,9 @@ memory `worktree-isolation-file-paths`.)
      checkout, so its parent directory is the main checkout root regardless of which
      worktree you're currently in):
      ```bash
-     cd <app-dir>
-     MAIN="$(dirname "$(git rev-parse --git-common-dir)")"
+     MAIN="$(dirname "$(git -C <app-dir> rev-parse --git-common-dir)")"
      if [ -f "$MAIN/<env-file-path>" ]; then
-       cp "$MAIN/<env-file-path>" ".env" && echo "copied .env"
+       cp "$MAIN/<env-file-path>" "<app-dir>/.env" && echo "copied .env"
      else
        echo "no <env-file-path> in main checkout — skipping"
      fi

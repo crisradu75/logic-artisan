@@ -5,10 +5,8 @@ effort level) chosen to keep quality at the judgment-critical points while spend
 mechanical bulk. This file is the ONE place the routing table lives — SKILL.md and the workflow
 diagram point here; change routing HERE and reflect it in those pointers, never fork the table.
 
-**Shared, and now filed as such.** This is the repo's single routing source for *all* dispatched
-review work. It lived under `spec-to-pr/references/` until the skills that depend on it outnumbered
-its nominal owner; it now sits in `skills/_shared/references/`, which is what it always was:
-`review-change/references/dispatch.md` (the checklist's Step 4 3-agent dispatch) and `project-review/SKILL.md`
+**Shared.** This is the repo's single routing source for *all* dispatched
+review work: `review-change/references/dispatch.md` (the checklist's Step 4 3-agent dispatch) and `project-review/SKILL.md`
 (Step 2 5-agent dispatch) both route by the "Review-agent dispatch" section below. Keeping one table
 means the "reviewer runs at the top tier, structured-rubric work runs a tier down" posture is
 consistent wherever agents review code — see that section for why each review dimension gets the tier
@@ -19,13 +17,13 @@ creative-writing-shaped work, so there's no fit for it here.)
 
 **Why routing is possible at all:** the orchestrator's own main-loop turns run at whatever model the
 *session* was launched with — the skill cannot change that mid-run. Routing therefore applies only to
-**dispatched** work. Effort is dialable in exactly one mechanism:
+**dispatched** work. Only one mechanism is used to set effort, and only when a user has opted in:
 
 | Mechanism | Model knob | Effort knob | Used for |
 |---|---|---|---|
-| `Agent(subagent_type, model:)` | yes (per call) | **no** (inherits session) | Implement delegate, Revise round 1 (default) and round ≥2, escalate-up dispatches, `fact-gatherer`/`doc-sweeper` dispatches |
+| `Agent(subagent_type, model:)` | yes (per call) | optional `effort:` per call; the tool says to set it only when the user or a skill explicitly asks, so this plugin leaves it inherited | Implement delegate, Revise round 1 (default) and round ≥2, escalate-up dispatches, `fact-gatherer`/`doc-sweeper` dispatches |
 | `Workflow` `agent(prompt, {model, effort, agentType, schema})` | yes | **yes** (per call) | Revise round 1 fan-out ONLY, and only when the user has opted into workflows |
-| `${CLAUDE_PLUGIN_ROOT}/agents/*.md` frontmatter | yes (`model:`) | **no** (no effort key exists) | our own agents: `fact-gatherer`, `doc-sweeper` |
+| `${CLAUDE_PLUGIN_ROOT}/agents/*.md` frontmatter | yes (`model:`) | yes (`effort:`); unused by our two agents | our own agents: `fact-gatherer`, `doc-sweeper` |
 
 The agents we own get model-only pinning via frontmatter plus an output instruction in their body.
 Both are read-only (`Read`/`Grep`/`Glob` only) haiku helpers and caller-scoped: they never guess a
@@ -46,8 +44,8 @@ and file edits. That rule is the only safeguard, an accepted risk.
 | Dispatch | Model | Effort | Mechanism |
 |---|---|---|---|
 | Propose authoring, Review verdict, Revise triage | inline (session) | session | main loop — escalate-up (Propose authoring + verdict seconding of RETHINK or Critical-bearing FIX FIRST ONLY; triage never escalated) when session < Opus |
-| Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
-| Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
+| Review Step-2 fact-gathering offload (large changes) | haiku | inherited | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
+| Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | inherited | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
 | Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff; `model:` is passed on every dispatch) | inherited (medium only on the opted-in `Workflow` path) | `Agent`; `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter` (`Workflow` `agent()` only if opted in) |
 | Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; `plugin-dev:skill-reviewer` on a prose-dominant diff per "Review sizing by risk" below | inherited (medium only on the opted-in `Workflow` path) | `Agent` (`Workflow` `agent()` only if opted in) |
 | Revise R1 — `comment-analyzer` | sonnet | inherited (medium only on the opted-in `Workflow` path) | `Agent`; `pr-review-toolkit:comment-analyzer` (`Workflow` `agent()` only if opted in) |
@@ -141,7 +139,7 @@ application" principle:
 Rationale mirrors the high-risk bug-hunter economics (see "Why high-risk diffs keep the bug-hunters on Opus"): the design/architecture/vision reviewers
 catch the expensive "the premise itself is wrong" class, where a cheaper model's miss ships a bad
 design; the task/spec/structure/validation reviewers apply a well-specified rubric where sonnet is
-sufficient. **These dispatches are `Agent`-based, so effort is not dialable** (inherits the session —
+sufficient. **These dispatches are `Agent`-based, and this plugin leaves effort inherited** (the session's —
 see the mechanism table above); only an opted-in Revise round-1 `Workflow` fan-out can set effort per call; on the default `Agent` path round 1 inherits the session effort, as round 2 onward does.
 
 **Which branch is the normal path depends on how the session was started, so check rather than

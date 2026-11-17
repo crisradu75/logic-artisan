@@ -1,6 +1,6 @@
 # Bash-style discipline (hard rules)
 
-These shapes defeat the project's Bash permission allowlist matching, or write where the skill must not. The skill MUST NOT emit them. The same rules also live in the project's root `CLAUDE.md`; this file is the orchestrator's local enforcement reference.
+These shapes defeat the project's Bash permission allowlist matching, or write where the skill must not. The skill MUST NOT emit them.
 
 ## Forbidden shapes
 

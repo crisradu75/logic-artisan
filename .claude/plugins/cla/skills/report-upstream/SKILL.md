@@ -9,9 +9,8 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 
 The plugin is installed read-only from a marketplace, so a repo that finds a defect in
 portable core cannot fix it where it lives. Without a channel back, the observation dies
-with the session and the same defect is rediagnosed independently in every repo running
-the plugin — which is exactly what happened before this existed: one launcher bug was
-diagnosed and fixed separately in three repos, and none of those fixes reached the others.
+with the session and every repo running the plugin rediagnoses the same defect
+independently, and none of those fixes reaches the others.
 
 This skill moves **prose, not code**. It opens an issue; a human upstream decides.
 
@@ -35,9 +34,8 @@ a maintainer's triage; a wrong "no" costs every repo the fix.
 **Read the actual core file** in the installed plugin and quote what is wrong. An issue
 whose claim cannot be checked against a line of source is not actionable.
 
-State a claim about the current core only if you verified it **this run**. The recurring
-failure in the file-based predecessor of this channel was an item asserting "unfixed
-upstream" that had been fixed long before.
+State a claim about the current core only if you verified it **this run**; an issue
+asserting "unfixed upstream" about a defect already fixed costs a maintainer's triage.
 
 Establish, in this order:
 

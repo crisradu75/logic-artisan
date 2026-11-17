@@ -103,12 +103,12 @@ an archived requirement as unmodified on the strength of that note.
 # one document — Markdown, plain text or HTML. `render_doc.py` dispatches on the
 # extension, so this is the same command for all three and the CLI and the server
 # cannot disagree about what a file renders as.
-python3 "$CLAUDE_PLUGIN_ROOT/skills/annotate/scripts/render_doc.py" <path>
-python3 "$CLAUDE_PLUGIN_ROOT/skills/annotate/scripts/annotate_server.py" <path>
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/annotate/scripts/render_doc.py" <path>
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/annotate/scripts/annotate_server.py" <path>
 
 # a whole change — the server takes the same target and works out which it is
-python3 "$CLAUDE_PLUGIN_ROOT/skills/annotate/scripts/render_change.py" <change>
-python3 "$CLAUDE_PLUGIN_ROOT/skills/annotate/scripts/annotate_server.py" <change>
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/annotate/scripts/render_change.py" <change>
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/annotate/scripts/annotate_server.py" <change>
 ```
 
 **Always re-render before serving.** The page is a view of the document, so a

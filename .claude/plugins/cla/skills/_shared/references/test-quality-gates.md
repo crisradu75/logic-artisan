@@ -19,13 +19,9 @@ floor to survive a change**; a floor relaxed to go green certifies exactly what 
 stopped checking, which is worse than never having written it, because now something
 green is standing where the check used to be.
 
-Measured in one session (2026-08-23) during a ~70-file tree move, three floors found
-stale in the source repo and each raised in the same edit that found it: one sat at
-`>= 55` against a real 83 (a 34% collapse would have passed) and is now `>= 80`;
-another at `>= 6` against a real 17 and is now `>= 15`; a third at `>= 95` against 96,
-which is the shape working as intended and was left alone. Quote the *current* value
-when citing one — a floor named here after being raised is a number a reader will
-grep for and not find.
+Illustration: a floor of `>= 55` over 83 real files lets a 34% collapse pass, while a
+floor of `>= 95` over 96 is the shape working as intended. Never quote a repo's current
+floor from memory; read it from the assertion.
 
 State what you derived the number from, in the assertion's own comment, so the next
 person moving the tree can re-derive it rather than guess whether the margin is
@@ -271,20 +267,11 @@ expect to fail** — otherwise you learn that the matrix catches the mutant and 
 about whether it was the only thing that did, which is a different claim and the one
 people actually want to make.
 
-Measured, in the source repo (`f0e8dd7`): a guard file whose rules are written by hand
-per command went through three review rounds finding 5, 5 and 4 real bypasses, every
-round after the first the same displacement shape — a construct handled for one rule and
-never carried to the others. A fourth round, after the matrix replaced the case list,
-came back clean of that class.
-
-A caution earned in the same commit. Its message claimed three planted displacements
-were killed "BY THE MATRIX, not by a bug-specific test", and that second half was false:
-the batch pointed each mutant at the matrix test and ran only that test, so it could
-never have observed a hand-written test dying too — and at least one had, since
-`test_branch_delete_fires_on_every_executable_spelling` had covered that exact spelling
-since `865d366`. What the run showed is that the matrix catches these; the exclusivity
-was inferred from evidence that could not carry it. Note the shape, because it is this
-file's own subject: a green targeted run is evidence about the target and nothing else.
+A guard whose rules were written by hand per command went through three review rounds
+finding 5, 5 and 4 real bypasses, each after the first the same displacement shape, and
+came back clean of that class once a matrix replaced the case list. A matrix run shows
+the matrix catches a planted bug; it does not show the matrix was the only test that did,
+so say only what the whole-file run showed.
 
 ## Why these and not a longer list
 
