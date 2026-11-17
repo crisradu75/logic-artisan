@@ -67,7 +67,7 @@ Opening a PR is not a deployment action (same boundary `/cla:spec-to-pr`'s Ship 
 
 ## Report
 
-Emit a terminal report: batch slug, decisions file, PR URL, the change list (name + one-line scope + dependency order), the review verdict per change, and — the load-bearing next step — **point explicitly at `/cla:multi-pr` for the produced change list** (or `/cla:spec-to-pr <name>` / `/cla:lite-pr <name>` per-change) as the follow-on that actually implements them. `multi-spec` stopping here is deliberate, not a truncated run.
+Emit a terminal report: batch slug, decisions file, PR URL, the change list (name + one-line scope + dependency order), the review verdict per change, each change's open questions and any budget problem (so the owner sees them before merging), and — the load-bearing next step — **point explicitly at `/cla:multi-pr` for the produced change list** (or `/cla:spec-to-pr <name>` / `/cla:lite-pr <name>` per-change) as the follow-on that actually implements them. `multi-spec` stopping here is deliberate, not a truncated run.
 
 
 ## Resume behavior

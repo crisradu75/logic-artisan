@@ -27,6 +27,7 @@ Score each version on each change, 1–5 with evidence (file:line quotes):
    f. the improve loop's scoring does not change or consume the query log it learns from;
    g. a test question added for a fix is not scored against a base where the fix doesn't exist yet;
    h. a commit left unpushed on a clean tree is retried by a later save.
+   For any outcome whose full coverage would contradict a decision, "kept the decision and raised the conflict as an open question with a proposed fix" counts as covered.
 5. **Reviewability** — could the owner read and approve each change in ~15 minutes? Word counts (`wc -w`) per file.
 6. **Implementability** — could a competent implementer build it without guessing on anything that matters for one user?
 

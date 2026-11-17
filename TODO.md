@@ -2,6 +2,8 @@
 
 Leftover review suggestions. The inbox is emptied by regular sweep PRs.
 
+- The seeded ~400-word proposal rule leaves little room for the authoring brief's new `## Open questions` and `## Risks noted` sections.
+- Cap `## Risks noted` in the authoring brief at about 5 lines.
 - The seed's `_BUDGET_LINE` matches only lowercase "at most"; a config that capitalises it is listed as missing the budget.
 - The seed's `budget_held` counts commented-out lines in a config as carrying the budget.
 - `check_change_budget` checks every active change, whatever the `--base` or path filter.

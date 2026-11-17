@@ -34,6 +34,7 @@ are agreed one at a time. Nothing in CLA changes until all are agreed and the be
 2. Add the Stakes section to cla-setup and to project-facts; replace the per-spec cap with the
    whole-change budget script.
 3. Iterate the spec-writing and review briefs (principles 4 and 5) against the benchmark.
+   Done for spec writing: brief v3, 7 of 8 outcomes, g a known gap, see the benchmark's baseline/brief-v3.
 4. Audit and trim the skills in place (principle 2), tagging each kept rule with origin and scope
    (principle 6); each trim must hold the benchmark.
 5. Roll out to one repo (mnemo) before the others.
