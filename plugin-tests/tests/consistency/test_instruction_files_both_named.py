@@ -13,8 +13,6 @@ _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cl
 
 # Files that name CLAUDE.md on purpose, with the reason each is allowed to.
 _EXCEPTIONS = {
-    # Describes this source repo's own CLAUDE.md, not a client repo's.
-    "skills/_shared/references/bash-discipline.md",
     # Quotes this source repo's own CLAUDE.md rule ("break the fix and confirm a test fails").
     "skills/_shared/references/test-quality-gates.md",
 }
