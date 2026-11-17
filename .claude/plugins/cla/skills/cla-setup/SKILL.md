@@ -130,8 +130,8 @@ Seeds or compares the OpenSpec `rules:` block through `scripts/seed_openspec_rul
 lines the script lists; `openspec/` absent → create nothing. A non-zero exit, or output with no
 `openspec/...:` status line, means the config was not checked: say so, never call the rules current.
 **Read `references/openspec-rules.md` first** for the cases, the version check, the script call and the
-quoting rule. If item 13 records a `scenario` test-proof choice, re-run the item 5 script after the
-facts file is written.
+quoting rule. If item 13 records a `scenario` test-proof choice or a `lean` change budget, re-run the
+item 5 script after the facts file is written.
 
 ### 6. Retired ledgers — `cla.io/retro/`
 
@@ -223,6 +223,9 @@ Show the user, in order:
 8. Test proof granularity, when `openspec/` exists and the facts file has no `## Test proof` line:
    ask once, with `requirement` recommended (the line is item 10's draft 4). Without an answer the
    checker silently uses `requirement`.
+9. Stakes, when `openspec/` exists and the facts file has no `## Stakes` section: ask the owner for
+   the section and offer a change budget preset from the answers (detail in `references/facts-file.md`).
+   Without an answer the seed offers `protected`.
 
 Ask for a yes (`AskUserQuestion` or a plain yes/no) before writing anything; on a request for
 changes, revise and ask again rather than applying part of it. On yes, write each confirmed file

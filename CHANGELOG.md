@@ -8,6 +8,27 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ## [Unreleased]
 
+### Added
+
+- **Stakes and a whole-change size budget:** `/cla:cla-setup` asks the owner for a short `## Stakes`
+  section in `cla.io/project-facts.md` (who uses the repo, what a bug costs, protected areas) and
+  offers a `lean` (12 requirements, 3,000 words) or `protected` (25 requirements, 6,000 words) budget
+  per change, written as `- Change budget: lean|protected`. `check_spec_proof.py` reports an active
+  change over the budget in `openspec/config.yaml`, counting every `.md` file in the change folder
+  and its `### Requirement:` headings. A change may carry one line, `Budget: protected`, in its
+  `proposal.md` to be held to the protected budget instead (a second seeded sentence, which the
+  checker reads); any other `Budget:` value, or that line with no such sentence, is a problem. A
+  budget number in wording the checker can't read exits 2. The numbers are placeholders until tuned
+  against the mnemo benchmark.
+
+### Changed
+
+- **The seeded spec rules drop the per-spec requirement cap** ("a spec holds at most 8 requirements;
+  add a new capability rather than a ninth") and the rule to split into a new capability instead of
+  squeezing a clause. Splitting a capability escaped the cap and grew one repo to 41 capabilities. A
+  repo whose config still carries the old sentences keeps the old cap until `/cla:cla-setup` is re-run
+  and the owner agrees to its listed update.
+
 ## [2.3.0] — 2026-11-04
 
 ### Added

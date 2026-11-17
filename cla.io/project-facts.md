@@ -4,6 +4,13 @@ This repo's facts file, maintained by `/cla:cla-setup` and checked by
 `.claude/plugins/cla/skills/cla-setup/scripts/check_fact_paths.py`. This is the plugin's source
 repo: it has no product code.
 
+## Stakes
+
+- Users: every repo that installs the plugin, and the maintainer.
+- A bug costs: a guard that blocks or misses wrongly, or a skill that misleads, lands in other repos; a tag, once published, cannot be moved.
+- Protected areas: guard hooks, anything shipped to other repos, the user's own files (config, settings) that the plugin writes.
+- Change budget: protected
+
 ## Workspace shape
 
 - `.claude/plugins/cla/` — the shipped plugin: skills, agents, hooks, output styles, `lib/`, and `com.github.copilot/agents/` (Copilot copies of the agents).

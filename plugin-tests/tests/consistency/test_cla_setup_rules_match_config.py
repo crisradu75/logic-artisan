@@ -478,3 +478,92 @@ def test_the_skills_command_runs_the_script_and_says_so_when_the_plugin_root_is_
     lost = _run_item_5(tmp_path, "")
     assert lost.returncode != 0 and "NOT checked, seed script not found" in lost.stdout
     assert not (tmp_path / "openspec" / "config.yaml").exists()
+
+
+def _budget_item(text: str) -> str:
+    return next(line for line in text.splitlines() if "requirements across all its specs" in line)
+
+
+def _facts(root: Path, text: str) -> None:
+    (root / "cla.io").mkdir(exist_ok=True)
+    (root / "cla.io" / "project-facts.md").write_text(text, encoding="utf-8")
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_the_default_budget_is_the_protected_one_and_lean_swaps_in_its_numbers(tmp_path: Path):
+    protected = _budget_item(_shipped_block())
+    assert "at most 25 requirements across all its specs" in protected and "at most 6,000 words in total" in protected
+    (tmp_path / "openspec").mkdir()
+    _facts(tmp_path, "## Stakes\n\n- Change budget: lean\n")
+    assert "openspec/config.yaml: created" in _run_seed(tmp_path)
+    written = (tmp_path / "openspec" / "config.yaml").read_text(encoding="utf-8")
+    lean = _budget_item(written)
+    assert "at most 12 requirements across all its specs" in lean and "at most 3,000 words in total" in lean
+    assert protected not in written
+    # A protected line, or none, seeds the protected sentence.
+    other = tmp_path / "other"
+    (other / "openspec").mkdir(parents=True)
+    _facts(other, "- Change budget: protected\n")
+    _run_seed(other)
+    assert _budget_item((other / "openspec" / "config.yaml").read_text(encoding="utf-8")) == protected
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_a_config_with_edited_budget_numbers_is_reported_current(tmp_path: Path):
+    edited = _CONFIG.read_text(encoding="utf-8").replace("at most 25 requirements", "at most 40 requirements")
+    assert edited != _CONFIG.read_text(encoding="utf-8")
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(edited.encode("utf-8"))
+    assert "exists (skipped), rules current" in _run_seed(tmp_path)
+    assert cfg.read_bytes() == edited.encode("utf-8")
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_a_config_with_the_other_preset_is_reported_current_not_rewritten(tmp_path: Path):
+    _facts(tmp_path, "- Change budget: lean\n")
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes())
+    assert "rules current" in _run_seed(tmp_path)
+
+
+# requirement: cla-setup / OpenSpec authoring rules on setup
+def test_a_config_with_the_per_spec_cap_wordings_lists_them_out_and_the_budget_in(tmp_path: Path):
+    # The config as it stood before the change budget: both bloat rules and no budget or stakes line.
+    old = (
+        _CONFIG.read_text(encoding="utf-8")
+        .replace(_budget_item(_CONFIG.read_text(encoding="utf-8")) + "\n", "")
+    )
+    new45 = next(i for i in _rule_items() if "500 characters or fewer in plain words" in i)
+    new46 = next(i for i in _rule_items() if i.startswith('    - "One outcome per requirement'))
+    old45 = _retired("add a new capability rather than a ninth")
+    old46 = _retired("put the second outcome in a new capability")
+    assert new45 in old and new46 in old
+    old = old.replace(new45, "    " + old45).replace(new46, "    " + old46)
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(old.encode("utf-8"))
+    out = _run_seed(tmp_path).splitlines()
+    assert out == [
+        _HEADER.format("config.yaml"),
+        "+ proposal: " + _budget_item(_shipped_block()).strip(),
+        "+ specs: " + new45.strip(),
+        "+ specs: " + new46.strip(),
+        "- specs: " + old45,
+        "- specs: " + old46,
+    ]
+    assert cfg.read_bytes() == old.encode("utf-8")
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_the_two_bloat_rules_are_gone_from_the_shipped_block():
+    block = _shipped_block()
+    assert "ninth" not in block and "squeeze" not in block and "in a new capability" not in block
+    assert "at most 8 requirements" not in block
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_the_facts_reference_asks_for_stakes_and_names_the_budget_line():
+    text = (_SKILL.parent / "references" / "facts-file.md").read_text(encoding="utf-8")
+    assert "## Stakes" in text and "- Change budget: lean" in text and "- Change budget: protected" in text

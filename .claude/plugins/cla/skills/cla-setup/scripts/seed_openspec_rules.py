@@ -4,7 +4,7 @@
     python3 seed_openspec_rules.py <repo-root>
 
 Reads and writes only `<repo-root>/openspec/config.yaml` (or reads `config.yml`), and
-reads `<repo-root>/cla.io/project-facts.md` for its `Test proof granularity:` line:
+reads `<repo-root>/cla.io/project-facts.md` for its `Test proof granularity:` and `Change budget:` lines:
 
 - `openspec/` exists and neither config file does: writes `config.yaml` with `RULES`
   and prints `openspec/config.yaml: created`.
@@ -13,6 +13,11 @@ reads `<repo-root>/cla.io/project-facts.md` for its `Test proof granularity:` li
   `RULES` the file lacks (`+`) and each earlier wording in `RETIRED` it still carries
   (`-`), also when the file holds that wording inside one pair of quotes; or says the
   rules are current.
+
+`RULES` holds the `protected` change budget. When the facts file holds `- Change budget: lean`,
+`LEAN_BUDGET` takes its place. A config that carries any budget sentence ("at most N requirements
+across all its specs"), whatever its numbers, is not listed as missing it, so numbers an owner
+edited stay.
 
 `RULES` holds the requirement-level `tasks` rule. When `cla.io/project-facts.md` holds
 `- Test proof granularity: scenario`, `SCENARIO_TASK` takes its place and the requirement
@@ -36,14 +41,16 @@ from pathlib import Path
 RULES = r"""rules:
   proposal:
     - Keep it to about 400 words. Point to the specs and design instead of restating them.
+    - "Keep the whole change within its budget, counted over every .md file in its folder: at most 25 requirements across all its specs and at most 6,000 words in total. Over budget, cut; never split into more capabilities to get under it."
+    - "A change whose proposal.md carries the line `Budget: protected` is held to this budget instead: at most 25 requirements across all its specs and at most 6,000 words in total. Use it for a change that touches a protected area the Stakes section of cla.io/project-facts.md names."
   design:
     - Write design.md only when a stock trigger applies (a cross-cutting change, a new dependency or data model, security, performance or migration complexity, or real ambiguity), and name the trigger.
     - "Keep it to about 800 words: for each decision, the choice, one line of why, and one line per rejected alternative. No history or transcripts."
     - Never restate the proposal or the specs.
   specs:
     - "Specify only outcomes a user or owner would recognise, and interfaces others depend on: a CLI flag, a file or ledger format a consumer reads, an API contract. Leave implementation choices to the implementer; put a detail a reviewer must agree on, such as a security parameter or a data model, in design.md. Internal steps are not spec material."
-    - "Write each requirement, ADDED or MODIFIED, as one sentence of 500 characters or fewer in plain words, with at most 3 scenarios. No history, reasons, measurements, coined terms, file paths or code names, unless the name is the interface. A spec holds at most 8 requirements; when one is full, add a new capability rather than a ninth."
-    - "One outcome per requirement: a supporting SHALL clause that defines the outcome is fine, but a separate outcome becomes its own requirement or a scenario. Never squeeze a clause out to fit the limit; split the requirement instead, and when the spec already holds 8, put the second outcome in a new capability."
+    - "Write each requirement, ADDED or MODIFIED, as one sentence of 500 characters or fewer in plain words, with at most 3 scenarios. No history, reasons, measurements, coined terms, file paths or code names, unless the name is the interface."
+    - "One outcome per requirement: a supporting SHALL clause that defines the outcome is fine, but a separate outcome becomes its own requirement or a scenario."
     - "Money, security, personal data, honesty claims and accessibility are protected: a rewrite compresses their requirements and never drops them. A REMOVED entry paired with an ADDED rewrite of the same outcome is not a drop."
     - "The Purpose of a new spec is a `**Serves:**` line naming who or what the capability serves, plus one plain sentence, with no file paths; for example `**Serves:** maintainers who release the plugin.` This is advisory: only a checker note, and older specs keep their plain Purpose until someone edits it. A delta cannot change a Purpose, so edit an existing Purpose directly in the main spec after the change is archived."
     - "Name a configurable value by its config key, spelled exactly as it appears in the config file, never by a number; a default may appear in a scenario."
@@ -68,6 +75,8 @@ RETIRED = r"""rules:
     - State one behaviour per ADDED requirement in 500 characters or fewer, and put the detail in scenarios.
     - "State behaviour only, in plain words: one behaviour per ADDED requirement in 500 characters or fewer, with the detail in scenarios. No history, reasons, measurements or coined terms."
     - "A change with no externally visible behaviour change (a refactor, tooling, docs) sets `skip_specs: true` in its .openspec.yaml and writes no spec delta. Never invent a requirement to satisfy validation."
+    - "Write each requirement, ADDED or MODIFIED, as one sentence of 500 characters or fewer in plain words, with at most 3 scenarios. No history, reasons, measurements, coined terms, file paths or code names, unless the name is the interface. A spec holds at most 8 requirements; when one is full, add a new capability rather than a ninth."
+    - "One outcome per requirement: a supporting SHALL clause that defines the outcome is fine, but a separate outcome becomes its own requirement or a scenario. Never squeeze a clause out to fit the limit; split the requirement instead, and when the spec already holds 8, put the second outcome in a new capability."
     - "Keep every scenario heading unique within its spec, so `<spec> / <heading>` names exactly one scenario."
     - "Name a configurable value by its config key as configured, never by a number; a default may appear in a scenario."
   tasks:
@@ -83,25 +92,56 @@ RETIRED = r"""rules:
 # `RETIRED` for a requirement-level repo, where it is an earlier wording.
 SCENARIO_TASK = r'''    - "Give each scenario this change adds, or whose text it changes, a test task whose test carries a `scenario: <spec> / <heading>` comment line above it, or a line `manual: <heading>: <reason>`. A pure heading rename, or a scenario carried forward unchanged in a MODIFIED block, needs neither."'''
 
+# The change budget for a repo with no protected area. `RULES` carries the `protected` one.
+LEAN_BUDGET = (
+    '    - "Keep the whole change within its budget, counted over every .md file in its folder: '
+    'at most 12 requirements across all its specs and at most 3,000 words in total. '
+    'Over budget, cut; never split into more capabilities to get under it."'
+)
+# What `check_spec_proof.py` reads as the budget; a config line holding this counts as the rule.
+_BUDGET_LINE = re.compile(r"at most [\d,]+ requirements across all its specs")
+# The sentence for a change that opts in to the protected budget names this; the repo's own does not.
+_OVERRIDE_MARK = "Budget: protected"
+
+
+def _is_repo_budget(line: str) -> bool:
+    return bool(_BUDGET_LINE.search(line)) and _OVERRIDE_MARK not in line
+
+
+def _is_override_budget(line: str) -> bool:
+    return bool(_BUDGET_LINE.search(line)) and _OVERRIDE_MARK in line
+
 FACTS = Path("cla.io") / "project-facts.md"
+_BUDGET = re.compile(r"^- Change budget: (lean|protected)[ \t]*$", re.M)
 _GRANULARITY = re.compile(r"^- Test proof granularity: (requirement|scenario)[ \t]*$", re.M)
+
+
+def _facts_text(root: Path) -> str:
+    try:
+        return (root / FACTS).read_bytes().decode("utf-8-sig", errors="replace").replace("\r", "")
+    except OSError:
+        return ""
 
 
 def _granularity(root: Path) -> str:
     """`scenario` when the repo's facts file chose it, else `requirement` (the default, also when unreadable)."""
-    try:
-        text = (root / FACTS).read_bytes().decode("utf-8-sig", errors="replace").replace("\r", "")
-    except OSError:
-        return "requirement"
-    found = _GRANULARITY.findall(text)
+    found = _GRANULARITY.findall(_facts_text(root))
     return found[0] if found else "requirement"
 
 
-def _blocks(granularity: str) -> tuple[str, str]:
-    """The shipped and the earlier-wording blocks for a granularity."""
-    if granularity != "scenario":
-        return RULES, RETIRED
+def _budget(root: Path) -> str:
+    """`lean` when the repo's facts file chose it, else `protected` (the default, also when unreadable)."""
+    found = _BUDGET.findall(_facts_text(root))
+    return found[0] if found else "protected"
+
+
+def _blocks(granularity: str, budget: str = "protected") -> tuple[str, str]:
+    """The shipped and the earlier-wording blocks for a test proof granularity and a change budget."""
     rules, retired = RULES.split("\n"), RETIRED.split("\n")
+    if budget == "lean":
+        rules[next(i for i, line in enumerate(rules) if _is_repo_budget(line))] = LEAN_BUDGET
+    if granularity != "scenario":
+        return "\n".join(rules), RETIRED
     at = next(i for i, line in enumerate(rules) if "requirement: <spec> / <heading>" in line)
     requirement_task = rules[at]
     rules[at] = SCENARIO_TASK
@@ -125,12 +165,14 @@ def _unquote(rule: str) -> str:
 def _rule_lines(block: str, mark: str, want: bool, have: set[str], quoted: set[str]) -> list[str]:
     """`mark artifact: - rule` for each rule of `block` the file carries (want) or lacks (not want)."""
     found, key = [], ""
+    budget_held = any(_is_repo_budget(line) for line in have)
+    override_held = any(_is_override_budget(line) for line in have)
     for line in block.split("\n"):
         if re.fullmatch(r"  [a-z].*:", line):
             key = line[2:]
         elif line.startswith("    - "):
             rule = line[4:]
-            has = rule in have or (want and _unquote(rule) in quoted)
+            has = rule in have or (want and _unquote(rule) in quoted) or (budget_held and _is_repo_budget(rule)) or (override_held and _is_override_budget(rule))
             if has == want:
                 found.append(f"{mark} {key} {rule}")
     return found
@@ -164,7 +206,7 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2 or not argv[1]:
         sys.stderr.write("usage: seed_openspec_rules.py <repo-root>\n")
         return 2
-    rules, retired = _blocks(_granularity(Path(argv[1])))
+    rules, retired = _blocks(_granularity(Path(argv[1])), _budget(Path(argv[1])))
     spec = Path(argv[1]) / "openspec"
     cfg, yml = spec / "config.yaml", spec / "config.yml"
     if spec.is_dir() and not cfg.exists() and not yml.exists():

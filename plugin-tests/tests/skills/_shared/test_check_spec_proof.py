@@ -784,6 +784,25 @@ def _config(root: Path, chars: str = "500 characters or fewer", scn: str = "at m
     )
 
 
+_BUDGET_CONFIG = (
+    "rules:\n  proposal:\n    - \"Budget: at most {reqs} requirements across all its specs and at most {words} words in total.\"\n"
+    "  specs:\n    - \"One sentence of 500 characters or fewer, with at most 3 scenarios.\"\n"
+)
+
+
+def _budget_problems(root: Path, capsys) -> tuple[int, str]:
+    code, out, _ = run(root, capsys)
+    return code, "\n".join(line for line in out.splitlines() if line.startswith("PROBLEM budget"))
+
+
+def _change(root: Path, name: str, n_reqs: int, filler_words: int = 0) -> None:
+    adds = [(f"R{i}", "SHALL.\n\n" + _scn(f"S{i}")) for i in range(n_reqs)]
+    _write(root, f"openspec/changes/{name}/specs/beta/spec.md", _delta_text(added=adds))
+    _write(root, f"openspec/changes/{name}/tasks.md", "manual: beta / R0: ok\n" + "\n".join(f"manual: beta / R{i}: ok" for i in range(n_reqs)) + "\n")
+    if filler_words:
+        _write(root, f"openspec/changes/{name}/proposal.md", "word " * filler_words)
+
+
 def _fmt(root: Path, capsys) -> tuple[int, str]:
     code, out, _ = run(root, capsys)
     return code, "\n".join(line for line in out.splitlines() if line.startswith("PROBLEM format"))
@@ -843,12 +862,30 @@ def test_a_delta_is_held_to_the_requirement_limits_but_an_archived_delta_is_not(
 
 # requirement: spec-proof / A checker reports specs over the repo's format limits
 def test_a_limit_the_config_does_not_state_is_not_enforced_and_is_named(repo, capsys):
-    _config(repo, reqs="a modest number of requirements")
-    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), FOUR))
-    _write(repo, "tests/test_four.py", _marker("requirement", "alpha", "Four"))
+    _config(repo, scn="a modest number of scenarios")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Long", "word " * 200 + "\n\n" + _scn("B"))))
+    _write(repo, "tests/test_long.py", _marker("requirement", "alpha", "Long"))
     code, out, _ = run(repo, capsys)
-    assert code == 1 and "has 4 scenarios" in out
-    assert "not enforced, not found: requirements" in out
+    assert code == 1 and "'Long' states" in out
+    assert "not enforced, not found: scenarios" in out
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_config_with_no_per_spec_cap_names_none_as_missing(repo, capsys):
+    # The per-spec requirement cap is retired: a config without it is complete, not short of a limit.
+    _write(repo, CONFIG, _BUDGET_CONFIG.format(reqs=25, words="6,000"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "not enforced" not in out
+    assert csp.read_format_limits(repo) == ({"chars": 500, "scenarios": 3}, [])
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_the_budget_sentence_is_not_read_as_a_per_spec_cap(repo):
+    # Under `specs:` itself, where the per-spec reader looks, the budget still is not a per-spec cap.
+    _write(repo, CONFIG, "rules:\n  specs:\n    - \"500 characters or fewer, at most 3 scenarios, at most 1 requirements across all its specs.\"\n")
+    assert csp.read_format_limits(repo) == ({"chars": 500, "scenarios": 3}, [])
+    assert csp.read_change_budget(repo) == ({"requirements": 1}, {})
 
 
 # requirement: spec-proof / A checker reports specs over the repo's format limits
@@ -867,9 +904,9 @@ def test_limits_come_from_the_specs_rules_only(repo):
 
 
 # requirement: spec-proof / A checker reports specs over the repo's format limits
-def test_this_repos_config_states_all_three_limits_and_its_specs_meet_them():
+def test_this_repos_config_states_its_limits_and_its_specs_meet_them():
     limits, missing = csp.read_format_limits(_REPO)
-    assert set(limits) == {"chars", "scenarios", "requirements"} and not missing
+    assert set(limits) == {"chars", "scenarios"} and not missing
     files = csp._spec_files(_REPO, "requirement")
     assert csp.check_format(files, limits) == []
 
@@ -1082,6 +1119,197 @@ def test_exactly_the_allowed_scenarios_pass(repo, capsys):
     _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), FOUR))
     _write(repo, "tests/test_four.py", _marker("requirement", "alpha", "Four"))
     assert _fmt(repo, capsys) == (0, "")
+
+
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_a_change_over_the_requirement_budget_is_reported_across_its_specs(repo, capsys):
+    _write(repo, CONFIG, _BUDGET_CONFIG.format(reqs=3, words="6,000"))
+    _change(repo, "c1", 2)
+    _write(repo, "openspec/changes/c1/specs/gamma/spec.md", _delta_text(added=[("G1", "SHALL.\n\n" + _scn("G")), ("G2", "SHALL.\n\n" + _scn("H"))]))
+    _write(repo, "openspec/changes/c1/tasks.md", "".join(f"manual: {s} / {h}: ok\n" for s, h in [("beta", "R0"), ("beta", "R1"), ("gamma", "G1"), ("gamma", "G2")]))
+    code, problems = _budget_problems(repo, capsys)
+    assert code == 1 and "openspec/changes/c1: 4 requirements, the budget is 3" in problems
+
+
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_a_change_over_the_word_budget_is_reported_with_the_total_over_every_md_file(repo, capsys):
+    _write(repo, CONFIG, _BUDGET_CONFIG.format(reqs=25, words="1,000"))
+    _change(repo, "c1", 1, filler_words=990)
+    code, problems = _budget_problems(repo, capsys)
+    assert code == 1 and "openspec/changes/c1:" in problems and "words, the budget is 1000" in problems
+    # The same change under the budget passes: the words come from the folder, not one file.
+    _change(repo, "c1", 1, filler_words=100)
+    assert _budget_problems(repo, capsys)[1] == ""
+
+
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_a_change_exactly_at_the_budget_passes_and_one_over_is_reported(repo, capsys):
+    _change(repo, "c1", 2)
+    reqs, words = csp.change_totals(repo / "openspec" / "changes" / "c1")
+    assert reqs == 2
+    _write(repo, CONFIG, _BUDGET_CONFIG.format(reqs=reqs, words=f"{words:,}"))
+    assert _budget_problems(repo, capsys) == (0, "")
+    _write(repo, CONFIG, _BUDGET_CONFIG.format(reqs=reqs - 1, words=f"{words - 1:,}"))
+    problems = _budget_problems(repo, capsys)[1]
+    assert f"{reqs} requirements, the budget is {reqs - 1}" in problems and f"{words} words, the budget is {words - 1}" in problems
+
+
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_an_archived_change_is_not_held_to_the_budget(repo, capsys):
+    _write(repo, CONFIG, _BUDGET_CONFIG.format(reqs=1, words="10"))
+    _write(repo, "openspec/changes/archive/2026-01-01-c0/specs/beta/spec.md", _delta_text(added=[FOUR]))
+    _write(repo, "openspec/changes/archive/2026-01-01-c0/proposal.md", "word " * 500)
+    assert _budget_problems(repo, capsys)[1] == ""
+
+
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_a_config_with_no_budget_enforces_none_and_says_so(repo, capsys):
+    _config(repo)
+    _change(repo, "c1", 2, filler_words=50_000)
+    code, out, _ = run(repo, capsys)
+    assert "PROBLEM budget" not in out
+    assert "change budget (from openspec/config.yaml): none, not enforced" in out
+
+
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_the_run_prints_each_active_changes_totals(repo, capsys):
+    _write(repo, CONFIG, _BUDGET_CONFIG.format(reqs=25, words="6,000"))
+    _change(repo, "c1", 2)
+    out = run(repo, capsys)[1]
+    assert "change budget (from openspec/config.yaml): requirements 25, words 6000" in out
+    assert "change c1: 2 requirements," in out
+
+
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_this_repos_config_states_a_budget_and_its_active_changes_meet_it():
+    budget, override = csp.read_change_budget(_REPO)
+    assert set(budget) == {"requirements", "words"} and set(override) == {"requirements", "words"}
+    assert csp.check_change_budget(_REPO, budget, override)[0] == []
+
+
+_OVERRIDE_CONFIG = (
+    "rules:\n  proposal:\n"
+    "    - \"Keep the whole change within its budget: at most 2 requirements across all its specs and at most 100 words in total.\"\n"
+    "    - \"A change whose proposal.md carries the line `Budget: protected` is held to this budget instead: at most 4 requirements across all its specs and at most 100,000 words in total.\"\n"
+    "  specs:\n    - \"One sentence of 500 characters or fewer, with at most 3 scenarios.\"\n"
+)
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+def test_a_budget_protected_line_holds_that_change_to_the_protected_budget_only(repo, capsys):
+    _write(repo, CONFIG, _OVERRIDE_CONFIG)
+    _change(repo, "plain", 3)
+    _change(repo, "raised", 3)
+    _write(repo, "openspec/changes/raised/proposal.md", "Why.\n\nBudget: protected\n")
+    code, problems = _budget_problems(repo, capsys)
+    assert "changes/plain: 3 requirements, the budget is 2" in problems
+    assert "changes/raised" not in problems
+    assert "protected override: requirements 4, words 100000" in run(repo, capsys)[1]
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+def test_the_protected_budget_is_a_ceiling_a_change_can_still_exceed(repo, capsys):
+    _write(repo, CONFIG, _OVERRIDE_CONFIG)
+    _change(repo, "raised", 5)
+    _write(repo, "openspec/changes/raised/proposal.md", "Budget: protected\n")
+    assert "changes/raised: 5 requirements, the budget is 4" in _budget_problems(repo, capsys)[1]
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+@pytest.mark.parametrize("value", ["lean", "Protected", "none", ""])
+def test_a_budget_line_with_another_value_is_a_problem(repo, capsys, value):
+    _write(repo, CONFIG, _OVERRIDE_CONFIG)
+    _change(repo, "c1", 1)
+    _write(repo, "openspec/changes/c1/proposal.md", f"Budget: {value}\n")
+    code, problems = _budget_problems(repo, capsys)
+    assert code == 1 and f"'Budget: {value}' is not a budget" in problems
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+def test_budget_protected_with_no_override_sentence_is_a_problem(repo, capsys):
+    _write(repo, CONFIG, _BUDGET_CONFIG.format(reqs=25, words="6,000"))
+    _change(repo, "c1", 1)
+    _write(repo, "openspec/changes/c1/proposal.md", "Budget: protected\n")
+    code, problems = _budget_problems(repo, capsys)
+    assert code == 1 and "states no protected budget sentence" in problems
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "at most twenty-five requirements across all its specs and at most 6,000 words in total",
+        "at most 25 requirements across all its specs and at most 6 000 words in total",
+        "at most 25 requirements across all its specs and at most 6.000 words in total",
+        "25 requirements across all its specs and at most 6,000 words in total",
+    ],
+)
+def test_a_budget_in_wording_the_reader_does_not_know_is_an_error(repo, capsys, sentence):
+    _write(repo, CONFIG, f"rules:\n  proposal:\n    - \"Keep it within budget: {sentence}.\"\n  specs:\n    - \"500 characters or fewer, at most 3 scenarios.\"\n")
+    with pytest.raises(csp.CheckerError, match="does not read"):
+        csp.read_change_budget(repo)
+    assert csp.main(["--root", str(repo), "--base", "main"]) == 2
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+def test_the_override_sentence_alone_does_not_state_the_repo_budget(repo):
+    only = "\n".join(line for line in _OVERRIDE_CONFIG.splitlines() if "within its budget" not in line) + "\n"
+    _write(repo, CONFIG, only)
+    assert csp.read_change_budget(repo) == ({}, {"requirements": 4, "words": 100000})
+
+
+_WRAPPED_OVERRIDE = (
+    "    - \"A change whose proposal.md carries the line `Budget: protected` is held to this budget instead:\n"
+    "      at most 25 requirements across all its specs and at most 6,000 words in total.\"\n"
+)
+_REPO_SENTENCE = "    - \"Repo budget: at most 12 requirements across all its specs and at most 3,000 words in total.\"\n"
+_TAIL = "  specs:\n    - \"500 characters or fewer, at most 3 scenarios.\"\n"
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+@pytest.mark.parametrize("override_first", [True, False])
+def test_an_override_sentence_wrapped_onto_a_second_line_stays_the_override(repo, override_first):
+    body = _WRAPPED_OVERRIDE + _REPO_SENTENCE if override_first else _REPO_SENTENCE + _WRAPPED_OVERRIDE
+    _write(repo, CONFIG, "rules:\n  proposal:\n" + body + _TAIL)
+    assert csp.read_change_budget(repo) == (
+        {"requirements": 12, "words": 3000},
+        {"requirements": 25, "words": 6000},
+    )
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+def test_two_budget_phrases_for_one_budget_are_an_error(repo):
+    twice = "    - \"Also: at most 20 requirements across all its specs.\"\n"
+    _write(repo, CONFIG, "rules:\n  proposal:\n" + _REPO_SENTENCE + twice + _TAIL)
+    with pytest.raises(csp.CheckerError, match="more than once"):
+        csp.read_change_budget(repo)
+    _write(repo, CONFIG, "rules:\n  proposal:\n" + _WRAPPED_OVERRIDE + _WRAPPED_OVERRIDE.replace("25", "30") + _TAIL)
+    with pytest.raises(csp.CheckerError, match="more than once"):
+        csp.read_change_budget(repo)
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+def test_a_budget_missing_one_number_names_it_as_not_enforced(repo, capsys):
+    _write(repo, CONFIG, "rules:\n  proposal:\n    - \"At most 3 requirements across all its specs.\"\n  specs:\n    - \"500 characters or fewer, at most 3 scenarios.\"\n")
+    _change(repo, "c1", 2, filler_words=500)
+    code, out, _ = run(repo, capsys)
+    assert "requirements 3; not enforced, not found: words" in out and "PROBLEM budget" not in out
+
+
+# requirement: spec-proof / A change can opt in to the protected budget
+def test_a_budget_outside_the_rules_block_is_not_read(repo):
+    _write(
+        repo, CONFIG,
+        "context: |\n  Older guide said up to 2 requirements across all specs.\n  and at most 2 requirements across all its specs, at most 9 words in total.\n"
+        "rules:\n  specs:\n    - \"500 characters or fewer, at most 3 scenarios.\"\n",
+    )
+    assert csp.read_change_budget(repo) == ({}, {})
+    # Nor is one after the block, under the next top-level key.
+    _write(repo, CONFIG, "rules:\n  specs:\n    - \"500 characters or fewer, at most 3 scenarios.\"\ncontext: |\n  at most 2 requirements across all its specs and at most 9 words in total.\n")
+    assert csp.read_change_budget(repo) == ({}, {})
+    # A commented-out line inside rules: is not read either.
+    _write(repo, CONFIG, "rules:\n  proposal:\n    # - at most 2 requirements across all its specs and at most 9 words in total\n  specs:\n    - \"500 characters or fewer, at most 3 scenarios.\"\n")
+    assert csp.read_change_budget(repo) == ({}, {})
 
 
 # requirement: spec-proof / A checker reports proof that points at nothing
