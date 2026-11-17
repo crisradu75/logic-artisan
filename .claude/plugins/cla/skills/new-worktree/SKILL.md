@@ -31,8 +31,7 @@ fix the mistake until a verified copy exists elsewhere — copy first, confirm, 
 clean up. If a commit ever goes missing after a shared branch gets switched/deleted
 out from under it, check `git reflog` / `git fsck --unreachable` before assuming it's
 lost — worktrees share one object store, so `git checkout <sha> -- <path>` recovers
-files into a different worktree with no copy step needed. (Full incident writeup: see
-memory `worktree-isolation-file-paths`.)
+files into a different worktree with no copy step needed.
 
 ## Steps
 
@@ -87,12 +86,13 @@ memory `worktree-isolation-file-paths`.)
      rev-parse --git-common-dir` is the one that stays correct from inside a linked
      worktree: it always resolves to the shared `.git`, which lives in the main
      checkout, so its parent directory is the main checkout root regardless of which
-     worktree you're currently in):
+     worktree you're currently in). `--path-format=absolute` is needed because in the main
+     checkout the bare answer is the relative `.git`, whose `dirname` is `.`. The snippet is
+     Bash: run it in Git Bash on Windows.
      ```bash
-     cd <app-dir>
-     MAIN="$(dirname "$(git rev-parse --git-common-dir)")"
+     MAIN="$(dirname "$(git -C <app-dir> rev-parse --path-format=absolute --git-common-dir)")"
      if [ -f "$MAIN/<env-file-path>" ]; then
-       cp "$MAIN/<env-file-path>" ".env" && echo "copied .env"
+       cp "$MAIN/<env-file-path>" "<app-dir>/.env" && echo "copied .env"
      else
        echo "no <env-file-path> in main checkout — skipping"
      fi

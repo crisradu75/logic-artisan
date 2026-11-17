@@ -2,9 +2,8 @@
 
 `git_state.py` exits 2 when one of these is mid-flight. That exit is a detection,
 not a verdict — this file is the procedure it hands you. Four skills check that
-exit at every commit boundary (`spec-to-pr`, `lite-pr`, `multi-pr`, `multi-spec`)
-and, until this file existed, all four stopped at "halt and surface" with nothing
-to surface but the halt.
+exit at every commit boundary (`spec-to-pr`, `lite-pr`, `multi-pr`, `multi-spec`),
+and each follows this file instead of stopping at "halt and surface".
 
 **The rule the exit code implies: never `--abort` reflexively.** An abort throws
 away work someone was in the middle of — possibly another session's, possibly

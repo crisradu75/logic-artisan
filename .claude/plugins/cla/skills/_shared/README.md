@@ -7,11 +7,10 @@ directory that other skills point into.
 
 ## Why it exists
 
-These files were previously under `skills/spec-to-pr/references/`, where up to
-nine other skills reached for them. That made one skill's directory the plugin's
-de-facto common library: `spec-to-pr` could not be reorganised, renamed, or
-version-bumped without moving files half the plugin depends on, and a reader had
-no way to tell which of its references were its own and which were everyone's.
+Up to nine skills read these files. Kept in one skill's directory they would make
+that directory the plugin's de-facto common library: that skill could not be
+reorganised, renamed, or version-bumped without moving files half the plugin
+depends on, and a reader could not tell which references were its own.
 
 ## What belongs here
 

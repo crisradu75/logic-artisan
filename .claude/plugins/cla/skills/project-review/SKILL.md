@@ -39,7 +39,7 @@ Announce: `[Project Review] Launching 5 review agents...`
 - **Agent 1 (Vision & Clarity) and Agent 4 (Architecture & Design) → `model: "opus"`** — the two premise-level dimensions (does the product story hold; is the architecture sound), where a cheaper model's miss is the expensive "the whole design is wrong" class.
 - **Agents 2, 3, 5 (Structure, Requirements & Specs, Validation & QA) → `model: "sonnet"`** — structured-rubric application over layout/specs/tests, where sonnet is sufficient.
 
-Effort is not dialable on `Agent`-dispatched work (it inherits the session); only the model is set here. On a session already at Opus, routing Agents 2/3/5 down to sonnet is the real economy; on a sub-Opus session, routing Agents 1/4 up to opus protects the highest-leverage judgment. Apply the routing whenever the session model differs from a dimension's target tier.
+`Agent`-dispatched work inherits the session's effort here; only the model is set. On a session already at Opus, routing Agents 2/3/5 down to sonnet is the real economy; on a sub-Opus session, routing Agents 1/4 up to opus protects the highest-leverage judgment. Apply the routing whenever the session model differs from a dimension's target tier.
 
 ## Step 3: Aggregate, report, and log
 

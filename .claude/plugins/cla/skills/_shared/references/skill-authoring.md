@@ -1,6 +1,6 @@
 # Skill-authoring doctrine (plugin-wide)
 
-This is plugin-wide doctrine: it lives in `_shared/` because every skill is held to it, not because any one skill owns it. `spec-to-pr` is the largest worked example — its `references/{ship,revise,archive,handoff}.md` show the split in practice.
+This is plugin-wide doctrine: it lives in `_shared/` because every skill is held to it, not because any one skill owns it. `spec-to-pr` is the largest worked example — its `references/{revise,archive,handoff}.md` and `_shared/references/ship.md` show the split in practice.
 
 ## The transformation, in order
 

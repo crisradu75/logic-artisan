@@ -39,8 +39,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/new-worktree/scripts/manual_worktree.py --d
 ```
 
 On Windows — the platform this whole section exists for — `python3` is often
-absent; use `py` or `python` instead. (`hooks.json` carries the same
-`python3 || py || python` probe chain for exactly this reason.) It reports
+absent; use `py` or `python` instead. (`hooks/probe-python.sh` tries `python3`,
+then `py`, then `python` for exactly this reason.) It reports
 `case_only` for the refusal described here, `path_indirection` when the repo
 path resolves elsewhere through a symlink or junction (a different problem that
 can look the same), and `null` when the path is clean.

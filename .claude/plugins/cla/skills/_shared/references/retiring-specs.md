@@ -23,7 +23,7 @@ A `pending` row means the destination is written by another change in the same b
 
 ## Before archiving: format traps
 
-These were reproduced on OpenSpec 1.14.1. Each one makes the old spec text survive or blocks the retirement, and old specs written by hand often have them.
+These were reproduced on OpenSpec 1.14.1. Re-check the one you hit with `openspec validate` under the installed version before working around it. Each one makes the old spec text survive or blocks the retirement, and old specs written by hand often have them.
 
 - **Prose after the last scenario** blocks retiring that spec. Archive aborts, quoting the stray text. Prose before a scenario does not block.
 - **Bare `### Name` headings** (no `Requirement:` prefix) are not requirements. REMOVED matches nothing, only prints a "treating it as already removed" warning and exits 0, so the old text stays and the ADDED text is appended after it.
