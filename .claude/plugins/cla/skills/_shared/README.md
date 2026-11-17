@@ -40,6 +40,7 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `subagent-brief.md` | the five-slot brief every dispatched agent gets; `spec-to-pr`, `lite-pr` and `model-routing.md` all point at it |
 | `precheck.md` | the working-tree precheck (in-progress git op, then classify every dirty path); `spec-to-pr` runs it at start and `chain-merge.md` sends `multi-lite` and `multi-pr` to its Step 2 |
 | `review-sweeps.md` | the doc-staleness sweeps and "Applying a round's fixes" (the rejected-alternatives check); `spec-to-pr` reads it in Review and `multi-spec`'s `review-gate.md` points at its fix-round rule |
+| `blocking-findings.md` | the one stakes filter (what blocks a merge, what goes to TODO.md) and what a protected-area fix buys (round 2, the by-hand mutation check); `spec-to-pr`, `lite-pr`, `review-change`, `multi-lite` and `multi-spec` point at it |
 | `retiring-specs.md` | how to retire internal specs by folding their outcomes into product specs; `multi-spec` (authoring brief), `review-change` (checklist) and `spec-to-pr` (archive) all point at it |
 | `terminology-format.md` | the entry format for `cla.io/terminology.md`: `shape-decision` writes entries, `cla-setup` reconciles them |
 

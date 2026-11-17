@@ -96,12 +96,10 @@ diff as high risk. Say so in your report.
 On a prose-dominant diff, add the skill reviewer (`plugin-dev:skill-reviewer`, where installed) on
 Opus to the high-risk reviewers.
 
-**A second review pass** (round 2) runs only after round 1 fixed a Critical finding, or an Important
-one on a high-risk pull request, judged at round 1's final level, after any raise or missing-line default (or a re-entry for still-open
-findings), and only while the repo's limit on review passes allows it. A docs-currency fix (the fix of
-a stale-doc finding that the docs check, "Docs currency" in Revise and "Docs check" in the light path, reported) counts toward neither trigger: a round with other
-fixes is judged on those other fixes alone, and a Suggestion-level fix does not count as one of them. Round 2 reviews the
-fix diff with the same reviewers, at round 1's final level, never lower.
+**A second review pass** (round 2) runs only after round 1 applied a protected-area fix
+(a fix touching an area the Stakes section of `cla.io/project-facts.md` protects, or a guard hook; or a re-entry for still-open
+findings), and only while the repo's limit on review passes allows it. Round 2 reviews the
+fix diff with the same reviewers, at round 1's final level, never lower (judged after any raise or missing-line default).
 <!-- economy-rules-file:review-sizing:end -->
 
 ### Artifact-class override — a prose-dominant diff promotes the prose reviewer

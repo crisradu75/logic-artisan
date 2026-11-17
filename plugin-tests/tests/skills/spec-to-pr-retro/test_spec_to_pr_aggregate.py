@@ -399,22 +399,22 @@ def _triggered(change: str, *rounds: tuple[int, int, str]) -> dict:
 def test_round_2_yield_splits_by_what_started_the_round(tmp_path: Path) -> None:
     """Scenario: Second-round yield by what started the round."""
     out = _yield(tmp_path, [
-        _triggered("a", (2, 2, "critical")),
-        _triggered("b", (2, 1, "critical")),
-        _triggered("c", (2, 0, "high-important")),
-        _triggered("d", (2, 0, "high-important")),
+        _triggered("a", (2, 2, "protected")),
+        _triggered("b", (2, 1, "protected")),
+        _triggered("c", (2, 0, "reentry")),
+        _triggered("d", (2, 0, "reentry")),
     ])
     assert (out["changes_with_round_2"], out["surfaced_critical_or_important"]) == (4, 2)
     assert out["by_trigger"] == {
-        "critical": {"changes": 2, "surfaced": 2},
-        "high-important": {"changes": 2, "surfaced": 0},
+        "protected": {"changes": 2, "surfaced": 2},
+        "reentry": {"changes": 2, "surfaced": 0},
     }
 
 
 def test_a_change_counts_once_under_each_trigger_its_later_rounds_carry(tmp_path: Path) -> None:
-    out = _yield(tmp_path, [_triggered("a", (2, 0, "critical"), (3, 1, "reentry"))])
+    out = _yield(tmp_path, [_triggered("a", (2, 0, "protected"), (3, 1, "reentry"))])
     assert out["by_trigger"] == {
-        "critical": {"changes": 1, "surfaced": 0},
+        "protected": {"changes": 1, "surfaced": 0},
         "reentry": {"changes": 1, "surfaced": 1},
     }
     assert out["surfaced_critical_or_important"] == 1
@@ -422,10 +422,10 @@ def test_a_change_counts_once_under_each_trigger_its_later_rounds_carry(tmp_path
 
 @pytest.mark.parametrize("bad_value", [2, "", None])
 def test_a_trigger_that_is_not_a_non_empty_string_makes_the_record_unreadable(tmp_path: Path, bad_value) -> None:
-    bad = _triggered("a", (2, 1, "critical"))
+    bad = _triggered("a", (2, 1, "protected"))
     bad["phases"][0]["findings_by_round"][1]["trigger"] = bad_value
-    out, _ = _log(_write(tmp_path / "l.jsonl", [bad, _triggered("b", (2, 1, "critical"))]))
-    assert out["round_2_yield"]["by_trigger"] == {"critical": {"changes": 1, "surfaced": 1}}
+    out, _ = _log(_write(tmp_path / "l.jsonl", [bad, _triggered("b", (2, 1, "protected"))]))
+    assert out["round_2_yield"]["by_trigger"] == {"protected": {"changes": 1, "surfaced": 1}}
     assert out["ledgers"][0]["skipped"] == 1
 
 
@@ -438,30 +438,30 @@ def test_a_trigger_this_reader_does_not_list_keeps_the_record_under_its_own_arm(
 
 
 def test_a_change_with_one_triggered_and_one_untriggered_round_counts_in_both(tmp_path: Path) -> None:
-    rec = _triggered("a", (2, 1, "critical"))
+    rec = _triggered("a", (2, 1, "protected"))
     rec["phases"][0]["findings_by_round"].append({"round": 3, "found": 0})
     rec["phases"][0]["rounds_used"] = rec["phases"][0]["rounds_cap"] = 3
     out = _yield(tmp_path, [rec])
     assert out["by_trigger"] == {
-        "critical": {"changes": 1, "surfaced": 1},
+        "protected": {"changes": 1, "surfaced": 1},
         "unrecorded": {"changes": 1, "surfaced": 0},
     }
 
 
 def test_two_rounds_with_one_trigger_count_the_change_once(tmp_path: Path) -> None:
-    out = _yield(tmp_path, [_triggered("a", (2, 1, "critical"), (3, 0, "critical"))])
-    assert out["by_trigger"] == {"critical": {"changes": 1, "surfaced": 1}}
+    out = _yield(tmp_path, [_triggered("a", (2, 1, "protected"), (3, 0, "protected"))])
+    assert out["by_trigger"] == {"protected": {"changes": 1, "surfaced": 1}}
 
 
 def test_by_trigger_covers_the_window_like_the_totals(tmp_path: Path) -> None:
-    old = [_triggered(f"old{i}", (2, 1, "critical")) for i in range(2)]
+    old = [_triggered(f"old{i}", (2, 1, "protected")) for i in range(2)]
     for rec in old:
         rec["ts"] = "2026-09-01T00:00:00Z"
-    new = [_triggered(f"new{i}", (2, 0, "high-important")) for i in range(2)]
+    new = [_triggered(f"new{i}", (2, 0, "reentry")) for i in range(2)]
     assert _yield(tmp_path, old + new, limit=2)["by_trigger"] == {
-        "high-important": {"changes": 2, "surfaced": 0}}
+        "reentry": {"changes": 2, "surfaced": 0}}
     assert _yield(tmp_path, old + new, limit=0, name="all.jsonl")["by_trigger"] == {
-        "critical": {"changes": 2, "surfaced": 2}, "high-important": {"changes": 2, "surfaced": 0}}
+        "protected": {"changes": 2, "surfaced": 2}, "reentry": {"changes": 2, "surfaced": 0}}
 
 
 # requirement: run-ledgers / Summarising recent spec-to-pr runs and their second rounds

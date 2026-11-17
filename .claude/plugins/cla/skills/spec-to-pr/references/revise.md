@@ -2,7 +2,7 @@
 
 The Revise phase's procedure. Why its rules are shaped as they are: `design-tradeoffs.md` "Revise".
 
-Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it. A docs-currency fix (see "Docs currency" below) does not count toward either trigger. It is scoped to that fix diff (or a re-entry for still-open findings). `--pr-rounds 1` opts out, `0` skips Revise.
+Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 applied a protected-area fix (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`), and the cap allows it. It is scoped to that fix diff (or a re-entry for still-open findings). `--pr-rounds 1` opts out, `0` skips Revise.
 
 ## Dispatch mechanism by round (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`)
 
@@ -78,7 +78,7 @@ Only where the repo's `openspec/config.yaml` `rules.tasks` carries the docs rule
 2. List the names the diff alters: flags, commands, skill, script and file names, headings, counts, rules.
 3. Search every doc on that list (or the docs you picked) that the diff does not touch for those names, one search per doc; `doc-sweeper` (haiku) may run them from the doc list and the names. The tasks line adds no docs here; it tells you which ones its author excused with `none affected:`. A doc that still states the old behaviour is stale, including an excused one.
 
-Each stale doc is an Important finding (`docs: <path> still says <old>`) in this round's triage and in `findings_by_round`. Its fix is a doc edit with no test to break, so step 2b's mutation gate does not apply. Fixing one is a **docs-currency fix** (the fix of a stale-doc finding that this check reported; no other doc edit is one), and it does not count toward round 2's triggers: a round whose only fixes are docs-currency fixes does not trigger round 2, while a round with other fixes is judged by the normal rule on those other fixes alone, as if the doc edits were not there. Only a Critical or Important fix can trigger round 2, so a Suggestion-level fix does not count as one of those other fixes. List it in Handoff's Issues section. `--pr-rounds 0` and `--skip-review` skip this check with Revise.
+Each stale doc is an Important finding (`docs: <path> still says <old>`) in this round's triage and in `findings_by_round`. Its fix is a doc edit with no test to break, so step 2b's mutation gate does not apply. A doc edit triggers round 2 only when the doc is itself a protected area, as any other fix would. List it in Handoff's Issues section. `--pr-rounds 0` and `--skip-review` skip this check with Revise.
 
 ## Round N (N ≥ 2)
 
@@ -90,7 +90,7 @@ DIFF_FILE=<scratchpad>/review-round-N.diff   # the session scratchpad, as in rou
 git diff $PREV_FIX_SHA..HEAD > "$DIFF_FILE"   # NB: `git diff`, NOT `gh pr diff` — gh pr diff does not accept commit ranges
 ```
 
-On a resume, if you cannot tell whether the previous round fixed a Critical, or an Important one on a high-risk pull request (a docs-currency fix counts as neither), run the next round. Failing safe costs one round. Where the held SHA is lost, take `PREV_FIX_SHA` as the parent of the previous round's `fix: review round <N-1>` commit (`git rev-parse <that commit>^`). An empty `PREV_FIX_SHA` or an empty diff → a full PR review instead; never review nothing and call it clean.
+On a resume, if you cannot tell whether the previous round's fixes touched a protected area, run the next round. Failing safe costs one round. Where the held SHA is lost, take `PREV_FIX_SHA` as the parent of the previous round's `fix: review round <N-1>` commit (`git rev-parse <that commit>^`). An empty `PREV_FIX_SHA` or an empty diff → a full PR review instead; never review nothing and call it clean.
 
 **Ask this round its own question, in each agent's prompt:**
 
@@ -118,12 +118,14 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    **SEV-MAX:** the same underlying finding rated differently by two agents is triaged at the **higher** severity, always. A `Workflow` merge does this when both key it to the same `(file, line)`; apply it by hand when they describe one issue at different lines or with none.
 
-2. **Triage every Critical and Important finding into one of three buckets:**
+1b. **Filter: which findings block a merge?** Apply `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`. Dispatch one `Agent(model: sonnet)` with the Stakes section of `cla.io/project-facts.md` and the merged findings, each with its quoted evidence. It labels every finding `blocks` or `non-blocking`, with one line of why. Every `non-blocking` finding leaves triage and goes to Handoff's TODO.md section; none is fixed in this PR. You re-read each `non-blocking` row that names a protected area.
+
+2. **Triage every blocking finding into one of three buckets:**
    - **Applied** — the fix lands this round via Edit/Write. *Closed.*
    - **Deferred-Known-Issue** — out of scope (architectural, needs a separate change, blocked externally). One-line rationale each, listed under "Issues encountered" in Handoff and mirrored to the PR body. *Closed.*
    - **Remedy-Rejected** — a fix delegate returned `remedy-rejected` for it: a **successful** return that discharges this round's attempt. Whether the finding closes depends on what the rejection cites (below). **It raises no cap; its re-attempt is bounded per finding, not charged to the round budget** ("What a rejection costs").
 
-   A finding never exits "unaddressed". Suggestions flow to the optional `docs: TODO.md` commit.
+   A blocking finding never exits "unaddressed". Suggestions and non-blocking findings flow to the `docs: TODO.md` commit.
 
    **Route a rejection by what it cites:**
    - **The remedy** (the defect stands, the proposed fix is wrong) → **re-decide the remedy**; the finding stays **open** and is re-attempted.
@@ -165,13 +167,13 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
    **A remedy the ORCHESTRATOR specified gets one extra read**: re-reading its fix, also check it against the change's `design.md` rejected-alternatives content and confirm it reintroduces none.
    - **Capture the snapshot FIRST.** Before applying **any** fix this round, read `design.md`'s rejected-alternatives section and hold it in context for the round. Never `git show HEAD:<path>` — it fails wherever the change directory is not yet committed. A re-read after the fixes returns the post-edit file, which would judge a remedy that edited that section against itself. **A check with no snapshot has not run:** mark **Revise `warn`** and record under *Issues encountered* `rejected-alternatives check did not run (no snapshot captured) — N orchestrator-specified remedies unchecked`.
    - **No `design.md`** → no such document, so neither the check nor the marking binds; out of scope, not a breach.
-   - **A hit is a Critical on the fix itself.** Withdraw or re-specify the remedy; it does not stand on having resolved the original finding. Re-specifying a fix this way counts as fixing a Critical for the round-2 rule. Where the design's rejection is what now looks wrong, amend `design.md` explicitly.
+   - **A hit is a Critical on the fix itself.** Withdraw or re-specify the remedy; it does not stand on having resolved the original finding. Where the design's rejection is what now looks wrong, amend `design.md` explicitly.
    - **Mark it** `remedy: orchestrator-specified` on that finding's triage record. Where no later round reads the diff, the marks surface in the terminal report. **This control is weaker than an independent reader and raises no cap.**
 
    **Verify before applying any Critical claiming internal control flow** ("path X runs in context Y", "A happens before B", "Z is called from W"): read the surrounding flow first (1 Read) — agents build wrong mental models even from verbatim source. **A Critical claiming RUNTIME or DB semantics** (a race, constraint timing, an RPC return shape) checked by *running* a scratch harness needs a harness that structurally mirrors the real object — same columns and constraint shape, a genuinely non-unique grouping column where the real constraint is a partial/grouped unique index. When that is hard, defer to the change's own implementation test. See `review-change/references/checklist.md` "Empirical-verification fidelity".
 
-2b. **Mutation gate (by hand, not an automated mutation batch; required before the commit in step 3).** A fix for a Critical/Important
-   finding earns the same evidence the original code needed — "the reviewer's finding is now
+2b. **Mutation gate (by hand, not an automated mutation batch; required before the commit in step 3 for a protected-area fix, per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`).** Any other fix ships with a test that fails without it and no hand-mutation. A protected-area fix
+   earns the same evidence the original code needed — "the reviewer's finding is now
    handled" is not that evidence. Break **what the fix touches**, not only what it targets:
    correcting one return path routinely breaks another. Do each one by hand: edit the code so the
    defect is back, run the affected test, confirm it FAILS, then restore the edit exactly — a test
@@ -217,13 +219,13 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    **Run `git push` with `run_in_background`.** A slow pre-push hook can pass the 120 s foreground limit, and the harness then returns no exit code. Wait for the completion notice. Inspect the `git push` exit code in your own context (no `|| { ... }` compound). Then compare `git rev-parse HEAD` with `git ls-remote origin <branch>`, each value read in context (not piped through `grep`/`awk`). Non-zero, no exit code, or the two differing → Revise `warn`, the failure to Handoff Issues, and a prominent warning that round-N fixes are local-only. Do not retry the push blindly.
 
-4. **Record the round now:** append `{"round": N, "found": <this round's deduplicated Critical+Important count after triage>}` to Revise's `findings_by_round`. On a round after the first, add `"trigger"`, what started it, taking the first that applies: `critical` if the round before fixed any Critical; else `high-important` if it fixed an Important on a high-risk pull request (a docs-currency fix is not one); else `reentry` (a re-entry on still-open findings). Use `unknown` only when you cannot tell, for example on a resume. The retro splits round-2 yield by it, and `log_run.py` refuses a later round without one: never drop the field to clear a refusal. Handoff reads it; it is never reconstructed there.
+4. **Record the round now:** append `{"round": N, "found": <this round's deduplicated Critical+Important count after triage>}` to Revise's `findings_by_round`. On a round after the first, add `"trigger"`, what started it, taking the first that applies: `protected` if the round before applied a protected-area fix; else `reentry` (a re-entry on still-open findings). Use `unknown` only when you cannot tell, for example on a resume. The retro splits round-2 yield by it, and `log_run.py` refuses a later round without one: never drop the field to clear a refusal. Handoff reads it; it is never reconstructed there.
 
    **Exit gate — TWO counts, and both must be zero to exit clean.**
-   - **Untriaged** — Critical/Important findings in no bucket.
+   - **Untriaged** — blocking findings in no bucket.
    - **Open** — in a bucket but not closed. Applied and Deferred-Known-Issue are closed. **Remedy-Rejected citing the remedy is triaged and OPEN**; Remedy-Rejected citing a disproved defect is closed.
 
-   **Both 0** → status `ok` and exit the loop, **unless this round fixed a Critical, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows another round** — then run it, scoped to that fix diff. A docs-currency fix does not count here: a round whose only fixes were those does not trigger another, and a round with other fixes is judged on those other fixes alone (a Suggestion-level fix is not one of them). On a resume, if you cannot tell whether this round fixed such a finding, run the next round if the cap allows: failing safe costs one round. On a low-risk pull request, a round whose fixes were all Important or lower does not trigger another. When any round committed fixes and no later round reviewed them, Revise still ends `ok`, and the Handoff report says in one line that those fixes were not reviewed again.
+   **Both 0** → status `ok` and exit the loop, **unless this round applied a protected-area fix, and the cap allows another round** — then run it, scoped to that fix diff. On a resume, if you cannot tell whether this round's fixes touched a protected area, run the next round if the cap allows: failing safe costs one round. When any round committed fixes and no later round reviewed them, Revise still ends `ok`, and the Handoff report says in one line that those fixes were not reviewed again.
 
    **Open > 0** → decide by whether a re-attempt is still available:
    - **Some open finding still has its free re-attempt** AND the round budget allows → **re-enter the loop** with re-decided remedies for those findings.
@@ -231,4 +233,4 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    **The round budget decrements for any round that applied fixes**; only a round in which every finding was rejected is free. Both bounds are needed: the per-finding bound stops one finding looping forever, the round budget stops mixed rounds generating fresh findings forever. Suggestions are still recorded for the optional `docs:` commit.
 
-5. Otherwise decrement the budget. **Cap exhausted with Critical/Important still untriaged or still open** → status `warn` (the only cap outcome that warns); exit with both captured for Handoff — untriaged residue to "Deferred to TODO.md", open rejected findings to their own bucket.
+5. Otherwise decrement the budget. **Cap exhausted with blocking findings still untriaged or still open** → status `warn` (the only cap outcome that warns); exit with both captured for Handoff — untriaged residue to "Deferred to TODO.md", open rejected findings to their own bucket.

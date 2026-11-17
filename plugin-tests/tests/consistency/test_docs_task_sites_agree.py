@@ -108,36 +108,31 @@ def _round_2_sites() -> dict[str, str]:
         "revise.md exit gate": _line(revise, "**Both 0**"),
         "spec-to-pr SKILL.md Revise": stub,
         "model-routing.md second pass": sizing,
-        "lite-pr step 4": _line(_read(_SKILLS / "lite-pr" / "SKILL.md"), "**A second pass only for a high-risk fix.**"),
+        "lite-pr step 4": _line(_read(_SKILLS / "lite-pr" / "SKILL.md"), "**A second pass only for a protected-area fix.**"),
     }
 
 
 # requirement: docs-currency / A change keeps the repo's docs current
 @pytest.mark.parametrize("site", sorted(_round_2_sites()))
-def test_every_second_pass_rule_sets_a_docs_currency_fix_aside(site: str):
-    # Fixing a stale doc has no test to break and earns no second pass. The carve-out is stated where the
-    # decision is made, so a site that drops the term would send a docs-only round to a second review.
+def test_every_second_pass_rule_keys_on_a_protected_area_fix(site: str):
+    # A second pass follows a fix that touches a protected area, never a severity label.
+    # A site that goes back to naming severity would send a low-stakes round to a second review.
     text = _round_2_sites()[site]
-    assert "docs-currency fix" in text, f"{site} no longer names a docs-currency fix, so it does not set it aside"
+    assert "protected" in text, f"{site} no longer keys the second pass on a protected-area fix"
+    assert "high-risk" not in text and "Critical, or an Important" not in text, f"{site} states the retired severity trigger"
 
 
-# Where a site says what happens to a round that fixed a stale doc and something else, it names these.
-_MIXED_CASE = {
-    "revise.md docs currency": ("other fixes", "Suggestion-level"),
-    "revise.md exit gate": ("other fixes", "Suggestion-level"),
-    "model-routing.md second pass": ("other fixes", "Suggestion-level"),
-    "lite-pr step 4": ("other fixes",),
+# Where a site says what a doc edit does to the second pass, it names this condition.
+_DOC_EDIT_SITES = {
+    "revise.md docs currency": "only when the doc is itself a protected area",
 }
 
 
 # requirement: docs-currency / A change keeps the repo's docs current
-@pytest.mark.parametrize("site", sorted(_MIXED_CASE))
-def test_a_round_with_other_fixes_is_judged_on_those_fixes_alone(site: str):
-    # The mixed case: a docs-currency fix beside a real fix. Only the real fix may trigger a second pass, and a
-    # Suggestion-level fix is not a real one, since only Critical and Important fixes trigger a round.
+@pytest.mark.parametrize("site", sorted(_DOC_EDIT_SITES))
+def test_a_doc_edit_triggers_a_second_pass_only_when_the_doc_is_protected(site: str):
     text = " ".join(_round_2_sites()[site].split())
-    missing = _missing(text, _MIXED_CASE[site])
-    assert missing == [], f"{site} no longer says {missing}, so the mixed case is unguarded"
+    assert _DOC_EDIT_SITES[site] in text, f"{site} no longer says when a doc edit triggers a second pass"
 
 
 # requirement: docs-currency / A change keeps the repo's docs current
@@ -201,10 +196,10 @@ def test_the_site_check_is_not_vacuous():
     assert _missing(f"{TOKEN} and {HEADING}", (TOKEN, HEADING)) == []
 
 
-# The step names model-routing.md's second-pass paragraph cites, and the file each names a step in. Each must be
+# The docs-check steps the sites above name, and the file each names a step in. Each must be
 # that step's own heading there: a `##` heading in revise.md, the bold lead of a paragraph in lite-pr's SKILL.md.
 # Issue #434: the site test above checks only that the words appear somewhere, so a renamed heading left
-# model-routing.md pointing at nothing while the suite stayed green.
+# the docs sites pointing at nothing while the suite stayed green.
 _NAMED_STEPS = {
     "Docs currency": (_SKILLS / "spec-to-pr" / "references" / "revise.md", "heading"),
     "Docs check": (_SKILLS / "lite-pr" / "SKILL.md", "bold lead"),
@@ -221,11 +216,9 @@ def _is_step_heading(text: str, name: str, form: str) -> bool:
 
 
 # requirement: docs-currency / A change keeps the repo's docs current
-def test_the_step_names_model_routing_cites_are_headings_in_their_files():
-    routing = _read(_SKILLS / "_shared" / "references" / "model-routing.md")
+def test_the_docs_check_steps_are_headings_in_their_files():
     for name, (path, form) in _NAMED_STEPS.items():
-        assert f'"{name}"' in routing, f"model-routing.md no longer cites {name!r}; update _NAMED_STEPS"
-        assert _is_step_heading(_read(path), name, form), f"{path.name} has no {form} {name!r} that model-routing.md cites"
+        assert _is_step_heading(_read(path), name, form), f"{path.name} has no {form} {name!r}"
 
 
 # requirement: docs-currency / A change keeps the repo's docs current
