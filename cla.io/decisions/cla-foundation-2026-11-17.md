@@ -70,7 +70,7 @@ Left, in order:
   - Leftover review suggestions: the PR body (user-level file) or `TODO.md` (this repo).
   - Retire or keep each of the six never-invoked skills: annotate, codify-retro, diagnose,
     save-permissions, spec-to-pr-retro, sync-context.
-- [x] 4f. **Lite by default (principle 8).** (#PRNUM) lite-pr is the default path, and spec-to-pr is for a
+- [x] 4f. **Lite by default (principle 8).** (#515) lite-pr is the default path, and spec-to-pr is for a
   change that touches a protected area or behaviour shipped to other repos. shape-decision and
   multi-spec recommend a path per change from the Stakes, and the owner can override. Audit B F8
   and C H15. Done when merged after one review.
