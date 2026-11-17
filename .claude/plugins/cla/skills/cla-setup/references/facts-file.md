@@ -22,15 +22,18 @@ other repo-wide fact you find):
 
 - **Stakes** (a repo with `openspec/` only) — ask the owner three short questions and write the
   answers as bullets under a `## Stakes` heading: `- Users:` (who uses the repo), `- A bug costs:`
-  (what a bug costs them), `- Protected areas:` (any of money, personal data, the user's own files,
-  anything shipped to other repos; or `none`). Then offer the change budget the answers point to:
+  (what a bug costs them), `- Protected areas:` (any of money, personal data, accessibility, the user's
+  own files, anything shipped to other repos; or `none`). Then offer the change budget the answers point to:
   `protected` when any protected area is named or the repo ships to other repos (at most 25
   requirements and 6,000 words per change), else `lean` (at most 12 requirements and 3,000 words).
   The owner confirms or edits it; write the choice as exactly one line, `- Change budget: lean` or
   `- Change budget: protected`. `seed_openspec_rules.py` reads that line to pick the budget
   sentence it offers for `openspec/config.yaml`, so re-run the item 5 script after writing it. The
   owner may also edit the numbers in the config; the checker reads whatever sentence is there. A
-  reconcile keeps an existing section as written. No other skill reads this section yet.
+  reconcile keeps an existing section as written. This section is the one place a repo's protected
+  areas are defined. The multi-spec authoring brief reads it, and so does every skill that applies
+  `_shared/references/blocking-findings.md`, plus the three inline clauses that state its default list;
+  that file also holds the default list for a repo without the section, and the always-protected floor.
 - **Workspace shape** — the workspace member list (apps/packages/services and their one-line roles),
   derived from the repo's own workspace manifest (e.g. `pnpm-workspace.yaml` + each `package.json`
   name, a Cargo workspace's `Cargo.toml`, a Go module's `go.work`, or whatever this repo actually uses

@@ -567,3 +567,73 @@ def test_the_two_bloat_rules_are_gone_from_the_shipped_block():
 def test_the_facts_reference_asks_for_stakes_and_names_the_budget_line():
     text = (_SKILL.parent / "references" / "facts-file.md").read_text(encoding="utf-8")
     assert "## Stakes" in text and "- Change budget: lean" in text and "- Change budget: protected" in text
+
+
+_SHARED_DEFAULT = ("money", "personal data", "accessibility", "the user's own files", "anything shipped to other repos")
+
+
+def _skills_ref(*parts: str) -> str:
+    return (_SKILL.parents[1].joinpath(*parts)).read_text(encoding="utf-8")
+
+
+_FLOOR = ("security", "writes to a user's files", "honesty claims")
+
+
+def _areas(text: str, start: str, end: str) -> list[str]:
+    """The areas listed between two markers, split on commas and a closing "and" or "or"."""
+    body = " ".join(text.split()).split(start, 1)[1].split(end, 1)[0]
+    return [a.strip() for a in re.split(r",\s*(?:and |or )?|\s+(?:and|or)\s+", body) if a.strip()]
+
+
+def _protected_clauses() -> dict[str, tuple[str, str, str]]:
+    """The three places that state the protected list inline, because they are copied into other repos
+    (or read there) and cannot follow a pointer into the plugin: (text, start marker, end marker)."""
+    models = _skills_ref("_shared", "references", "model-routing.md")
+    sizing = models.split("A second review pass", 1)[1].split("economy-rules-file:review-sizing:end", 1)[0]
+    economy = next(
+        line for line in _skills_ref("_shared", "references", "economy-rules-file.md").splitlines()
+        if line.startswith("- Protected rules")
+    )
+    seeded = next(i for i in _rule_items() if "Protected areas are the ones" in i)
+    return {
+        "model-routing.md": (sizing, "with no such section ", ", and always security"),
+        "economy-rules-file.md": (economy, "with no such section ", "; always security"),
+        "seeded rule": (seeded, "the default is ", ". Security"),
+    }
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_every_inline_protected_clause_matches_blocking_findings_exactly():
+    shared = _skills_ref("_shared", "references", "blocking-findings.md")
+    default = _areas(shared, "has no Stakes section: ", ". It is the set")
+    assert default == list(_SHARED_DEFAULT), "blocking-findings.md default list changed: update every inline copy"
+    floor = " ".join(shared.split()).split("- **The floor", 1)[1]
+    for word in _FLOOR:
+        assert word in floor, f"blocking-findings.md floor lacks {word}"
+    for site, (text, start, end) in _protected_clauses().items():
+        assert "Stakes section of `cla.io/project-facts.md`" in text or "Stakes section of cla.io/project-facts.md" in text, site
+        assert _areas(text, start, end) == list(_SHARED_DEFAULT), f"{site}: default list differs from blocking-findings.md"
+        for word in _FLOOR:
+            assert word in text.lower(), f"{site} lacks the floor item {word}"
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_the_default_list_is_cla_setups_option_set():
+    shared = _skills_ref("_shared", "references", "blocking-findings.md")
+    facts = _skills_ref("cla-setup", "references", "facts-file.md")
+    options = _areas(facts, "`- Protected areas:` (any of ", "; or `none`)")
+    assert _areas(shared, "has no Stakes section: ", ". It is the set") == list(_SHARED_DEFAULT)
+    assert options == list(_SHARED_DEFAULT), f"cla-setup's Stakes options differ: {options}"
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_a_config_with_the_hard_coded_areas_lists_them_out_and_the_stakes_rule_in(tmp_path: Path):
+    old_line = _retired("are protected: a rewrite compresses")
+    new_line = next(i for i in _rule_items() if "Protected areas are the ones" in i).strip()
+    text = _CONFIG.read_text(encoding="utf-8")
+    assert "    " + new_line in text
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(text.replace("    " + new_line, "    " + old_line).encode("utf-8"))
+    out = _run_seed(tmp_path).splitlines()
+    assert out == [_HEADER.format("config.yaml"), "+ specs: " + new_line, "- specs: " + old_line]
