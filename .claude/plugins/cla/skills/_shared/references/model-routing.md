@@ -21,7 +21,7 @@ creative-writing-shaped work, so there's no fit for it here.)
 
 | Mechanism | Model knob | Effort knob | Used for |
 |---|---|---|---|
-| `Agent(subagent_type, model:)` | yes (per call) | optional `effort:` per call; the tool says to set it only when the user or a skill explicitly asks, so this plugin leaves it inherited | Implement delegate, Revise round 1 (default) and round ≥2, escalate-up dispatches, `fact-gatherer`/`doc-sweeper` dispatches |
+| `Agent(subagent_type, model:)` | yes (per call) | optional `effort:` per call; the tool says to set it only when the user or a skill explicitly asks, so this plugin leaves it inherited, except `/cla:right-model`, which passes the effort it recommends | Implement delegate, Revise round 1 (default) and round ≥2, escalate-up dispatches, `fact-gatherer`/`doc-sweeper` dispatches |
 | `Workflow` `agent(prompt, {model, effort, agentType, schema})` | yes | **yes** (per call) | Revise round 1 fan-out ONLY, and only when the user has opted into workflows |
 | `${CLAUDE_PLUGIN_ROOT}/agents/*.md` frontmatter | yes (`model:`) | yes (`effort:`); unused by our two agents | our own agents: `fact-gatherer`, `doc-sweeper` |
 
@@ -140,7 +140,7 @@ Rationale mirrors the high-risk bug-hunter economics (see "Why high-risk diffs k
 catch the expensive "the premise itself is wrong" class, where a cheaper model's miss ships a bad
 design; the task/spec/structure/validation reviewers apply a well-specified rubric where sonnet is
 sufficient. **These dispatches are `Agent`-based, and this plugin leaves effort inherited** (the session's —
-see the mechanism table above); only an opted-in Revise round-1 `Workflow` fan-out can set effort per call; on the default `Agent` path round 1 inherits the session effort, as round 2 onward does.
+see the mechanism table above); only an opted-in Revise round-1 `Workflow` fan-out sets effort per call (and `/cla:right-model` on its own dispatch); on the default `Agent` path round 1 inherits the session effort, as round 2 onward does.
 
 **Which branch is the normal path depends on how the session was started, so check rather than
 assume.** Every rule below phrased as "when the session is sub-Opus" applies only when it actually

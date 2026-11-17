@@ -86,9 +86,11 @@ files into a different worktree with no copy step needed.
      rev-parse --git-common-dir` is the one that stays correct from inside a linked
      worktree: it always resolves to the shared `.git`, which lives in the main
      checkout, so its parent directory is the main checkout root regardless of which
-     worktree you're currently in):
+     worktree you're currently in). `--path-format=absolute` is needed because in the main
+     checkout the bare answer is the relative `.git`, whose `dirname` is `.`. The snippet is
+     Bash: run it in Git Bash on Windows.
      ```bash
-     MAIN="$(dirname "$(git -C <app-dir> rev-parse --git-common-dir)")"
+     MAIN="$(dirname "$(git -C <app-dir> rev-parse --path-format=absolute --git-common-dir)")"
      if [ -f "$MAIN/<env-file-path>" ]; then
        cp "$MAIN/<env-file-path>" "<app-dir>/.env" && echo "copied .env"
      else
