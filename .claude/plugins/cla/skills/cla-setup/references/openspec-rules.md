@@ -37,6 +37,16 @@ python3 "$SEED" "$ROOT"
 The script reads the `Test proof granularity:` line of `cla.io/project-facts.md` and compares the `tasks`
 rule for that granularity (`requirement` when there is no line). When item 13 records a `scenario`
 choice, re-run the script after the facts file is written, so the `tasks` rule offered matches it.
+The same holds for the `Change budget:` line of the `## Stakes` section (`lean` or `protected`, the
+default): it picks which budget sentence is offered. A config that carries any budget sentence ("at most N
+requirements across all its specs ...") is never listed as missing it, so numbers the owner edited stay.
+
+**An older config.** A repo seeded before the change budget carries two earlier wordings: the
+requirement rule that ends with a per-spec cap and an instruction to add a new capability when a spec is
+full, and the one-outcome rule that ends with an instruction to put a second outcome in a new capability.
+The script lists each as `-` and the new wordings and the budget as `+`; on the user's yes, apply them like
+any other listed line. Until then the checker enforces the sentences the file holds, so the old per-spec
+cap keeps applying and no budget does.
 
 Each item in the script's `rules:` block that contains `: ` stays double-quoted, or YAML reads it as
 a mapping and OpenSpec drops that artifact's rules.

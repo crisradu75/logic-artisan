@@ -52,9 +52,15 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
   - ``format``: a live spec or active delta over the limits in the repo's
     ``openspec/config.yaml`` ``rules.specs`` (``read_format_limits`` reads the
     numbers from that text, so nothing is copied here): a requirement statement
-    over N characters, a requirement with more than N scenarios, a spec with more
-    than N requirements. A limit the config does not state is not enforced, and the
-    ``format limits`` output line names it. Archives are not edited and are skipped.
+    over N characters, a requirement with more than N scenarios, and (only while the
+    config still states it) a spec with more than N requirements. A limit the config does
+    not state is not enforced, and the ``format limits`` output line names it. Archives are
+    not edited and are skipped.
+  - ``budget``: an active change (``openspec/changes/<name>/``, not the archive) over the
+    whole-change budget in ``rules:`` ("at most N requirements across all its specs and at most
+    N words in total", read by ``read_change_budget``): the total words over every ``.md`` file
+    in its folder (what ``wc -w`` counts) and the total ``### Requirement:`` headings. A budget the
+    config does not state is not enforced, and the ``change budget`` output line says so.
   - ``empty``: a live spec with no unit, or an active delta whose requirements sit
     under no ADDED, MODIFIED, REMOVED or RENAMED heading; in scenario mode, also a
     requirement in a live spec or active delta with no ``#### Scenario:`` heading (a live spec
@@ -389,7 +395,15 @@ def _unclosed_fence(text: str) -> bool:
 _LIMIT_PATTERNS = {
     "chars": r"(\d+)\s+characters\s+or\s+(?:fewer|less)",
     "scenarios": r"(?:at\s+most|no\s+more\s+than|up\s+to)\s+(\d+)\s+scenarios",
-    "requirements": r"(?:at\s+most|no\s+more\s+than|up\s+to)\s+(\d+)\s+requirements",
+    # Per spec. Optional: a sentence about the whole change ("... requirements across all its specs") is not this limit.
+    "requirements": r"(?:at\s+most|no\s+more\s+than|up\s+to)\s+(\d+)\s+requirements(?!\s+across\b)",
+}
+_OPTIONAL_LIMITS = {"requirements"}
+# The whole-change budget, read from the same `rules:` text: "at most 25 requirements across all its specs
+# and at most 6,000 words in total".
+_BUDGET_PATTERNS = {
+    "requirements": r"(?:at\s+most|no\s+more\s+than|up\s+to)\s+(\d[\d,]*)\s+requirements\s+across\s+all\b",
+    "words": r"(?:at\s+most|no\s+more\s+than|up\s+to)\s+(\d[\d,]*)\s+words\s+in\s+total\b",
 }
 _LIMIT_WORDS = {"chars": "characters", "scenarios": "scenarios", "requirements": "requirements"}
 _NUMBER_WORDS = r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+"
@@ -449,6 +463,8 @@ def read_format_limits(root: Path) -> tuple[dict[str, int], list[str]]:
         hit = re.search(pat, block, re.I)
         if hit:
             found[name] = int(hit.group(1))
+        elif name in _OPTIONAL_LIMITS:
+            continue  # the per-spec cap is retired; a repo that states none simply has none
         else:
             missing.append(name)
             word = _LIMIT_WORDS[name]
@@ -457,6 +473,59 @@ def read_format_limits(root: Path) -> tuple[dict[str, int], list[str]]:
     if not found:
         raise CheckerError(f"rules.specs in {cfg.name} states none of the format limits this checker reads")
     return found, missing
+
+
+def read_change_budget(root: Path) -> dict[str, int]:
+    """The whole-change budget, read from the `rules:` text of openspec/config.yaml (or .yml).
+
+    Like `read_format_limits`, nothing is copied here: the numbers come from the sentence the repo
+    wrote ("at most 25 requirements across all its specs and at most 6,000 words in total").
+    Returns {"requirements": n, "words": n} for each one found; a budget the config does not state
+    is not enforced, and the output line says so."""
+    cfg = next((p for p in (root / "openspec" / "config.yaml", root / "openspec" / "config.yml") if p.is_file()), None)
+    try:
+        text = cfg.read_text(encoding="utf-8-sig") if cfg else ""
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CheckerError(f"cannot read {cfg.name}: {exc}") from exc
+    text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    found = {}
+    for name, pat in _BUDGET_PATTERNS.items():
+        hit = re.search(pat, text, re.I)
+        if hit:
+            found[name] = int(hit.group(1).replace(",", ""))
+    return found
+
+
+def change_totals(change_dir: Path) -> tuple[int, int]:
+    """(requirements, words) over every `.md` file under one change folder: the count `wc -w` and
+    `grep '### Requirement:'` give over the same files."""
+    requirements = words = 0
+    for md in sorted(change_dir.rglob("*.md")):
+        try:
+            text = md.read_bytes().decode("utf-8", errors="replace")
+        except OSError as exc:
+            raise CheckerError(f"cannot read {md}: {exc}") from exc
+        words += len(text.split())
+        requirements += len(re.findall(r"^### Requirement:", text, re.M))
+    return requirements, words
+
+
+def check_change_budget(root: Path, budget: dict[str, int]) -> tuple[list[str], list[str]]:
+    """(PROBLEM lines, one info line per active change) for the changes over the whole-change budget.
+
+    Active changes only: `openspec/changes/<name>/`, never `archive/`, which is not edited."""
+    changes = root / "openspec" / "changes"
+    problems, info = [], []
+    if not changes.is_dir():
+        return problems, info
+    for d in sorted(p for p in changes.iterdir() if p.is_dir() and p.name != "archive"):
+        reqs, words = change_totals(d)
+        info.append(f"change {d.name}: {reqs} requirements, {words} words")
+        if "requirements" in budget and reqs > budget["requirements"]:
+            problems.append(f"PROBLEM budget: openspec/changes/{d.name}: {reqs} requirements, the budget is {budget['requirements']}")
+        if "words" in budget and words > budget["words"]:
+            problems.append(f"PROBLEM budget: openspec/changes/{d.name}: {words} words, the budget is {budget['words']}")
+    return problems, info
 
 
 def _removed_headings(text: str) -> set[str]:
@@ -1658,6 +1727,9 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
 
     limits, unenforced = read_format_limits(root)
     problems += check_format(files, limits)
+    budget = read_change_budget(root)
+    budget_problems, change_info = check_change_budget(root, budget)
+    problems += budget_problems
 
     map_line = None
     map_notes: list[str] = []
@@ -1816,6 +1888,9 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         "format limits (from openspec/config.yaml): "
         + (", ".join(f"{k} {v}" for k, v in limits.items()) or "none")
         + (f"; not enforced, not found: {', '.join(unenforced)}" if unenforced else ""),
+        "change budget (from openspec/config.yaml): "
+        + (", ".join(f"{k} {v}" for k, v in budget.items()) or "none, not enforced"),
+        *change_info,
         *([map_line] if map_line else []),
         "purpose notes: "
         + (

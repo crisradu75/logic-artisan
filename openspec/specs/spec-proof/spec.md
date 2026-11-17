@@ -71,7 +71,7 @@ A requirement proven partly by a test and partly by a prompt SHALL carry a marke
 
 ### Requirement: A checker reports specs over the repo's format limits
 
-`check_spec_proof.py` SHALL report a requirement statement longer than, a requirement with more scenarios than, and a spec with more requirements than, the limits written in the repo's `openspec/config.yaml` spec rules, reading those numbers from that file, and SHALL say which limit it could not find and so did not enforce.
+`check_spec_proof.py` SHALL report a requirement statement longer than, a requirement with more scenarios than, and, only if the config still states one, a spec with more requirements than, the limits written in the repo's `openspec/config.yaml` spec rules, reading those numbers from that file, and SHALL say which limit it could not find and so did not enforce.
 
 #### Scenario: A requirement with too many scenarios
 
@@ -87,6 +87,25 @@ A requirement proven partly by a test and partly by a prompt SHALL carry a marke
 
 - **WHEN** the config states no requirement-count limit
 - **THEN** the checker enforces the other limits and says it did not enforce that one
+
+### Requirement: A checker reports a change over its whole-change budget
+
+`check_spec_proof.py` SHALL report each active change whose `.md` files hold more words in total, or whose specs hold more `### Requirement:` headings in total, than the budget the repo's `openspec/config.yaml` rules state, reading both numbers from that file, and SHALL say when the config states no budget and so none was enforced.
+
+#### Scenario: A change over its requirement budget
+
+- **WHEN** an active change holds more requirements across all its specs than the config allows
+- **THEN** the checker names the change and exits non-zero
+
+#### Scenario: A change over its word budget
+
+- **WHEN** the total words over every `.md` file of an active change exceed the config's word budget
+- **THEN** the checker names the change and exits non-zero
+
+#### Scenario: A config with no budget
+
+- **WHEN** the config states no change budget
+- **THEN** the checker enforces nothing for it and says no budget was enforced
 
 ### Requirement: A checker notes a touched spec's Purpose without failing the run
 

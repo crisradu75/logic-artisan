@@ -27,6 +27,20 @@ What `/cla:cla-setup` creates, proposes and asks when it sets a repo up.
 - **WHEN** `/cla:cla-setup` has listed missing or outdated rules and the user agrees to update them
 - **THEN** the listed rules are added to the existing config and the repo's own rules stay
 
+### Requirement: Stakes and change budget on setup
+
+`/cla:cla-setup` SHALL ask the owner for a short Stakes section of `cla.io/project-facts.md` (who uses the repo, what a bug costs, its protected areas) and offer a lean or a protected change budget from the answers, which the owner confirms or edits.
+
+#### Scenario: A repo with a protected area
+
+- **WHEN** the owner names a protected area or says the repo ships to other repos
+- **THEN** setup offers the protected budget, and the seeded rules carry its numbers
+
+#### Scenario: A repo with none
+
+- **WHEN** the facts file says `- Change budget: lean`
+- **THEN** the seeded rules carry the lean numbers
+
 ### Requirement: Retired ledgers on setup
 
 `/cla:cla-setup` SHALL list each retired run ledger present in the repo's `cla.io/retro/` and delete them only on the user's explicit yes, leaving every other file there untouched.
