@@ -35,7 +35,7 @@ plugin. No hunk touches request code (there is none), so there is no history-edi
  out from under it, check `git reflog` / `git fsck --unreachable` before assuming it's
  lost — worktrees share one object store, so `git checkout <sha> -- <path>` recovers
 -files into a different worktree with no copy step needed. (Full incident writeup: see
--memory `worktree-isolation-file-paths`.)
+-a per-user note.)
 +files into a different worktree with no copy step needed.
  
 ```
@@ -312,7 +312,7 @@ frontmatter docs before taking this hunk, then edit those three lines the same w
 --- a/skills/feedback/SKILL.md
 +++ b/skills/feedback/SKILL.md
 @@ -56 +56 @@
--- **Committing the deliverable is the user's call too.** The during-loop incremental write (Phase 0 step 3) protects against a crash *within the session*, but the file stays uncommitted — and the very incident this durability design guards against (`feedback-worktree-rmrf-junction-risk`) destroys *uncommitted* files. State that the dated doc is written but uncommitted, and leave committing/pushing it to the user (same non-ownership posture applied to `notes.md`); this skill does not run git, and its frontmatter grants no `Bash` to run it with.
+-- **Committing the deliverable is the user's call too.** The during-loop incremental write (Phase 0 step 3) protects against a crash *within the session*, but the file stays uncommitted — and the very incident this durability design guards against (an incident id) destroys *uncommitted* files. State that the dated doc is written but uncommitted, and leave committing/pushing it to the user (same non-ownership posture applied to `notes.md`); this skill does not run git, and its frontmatter grants no `Bash` to run it with.
 +- **Committing the deliverable is the user's call too.** The during-loop incremental write (Phase 0 step 3) protects against a crash *within the session*, but the file stays uncommitted, and the loss this durability design guards against destroys *uncommitted* files. State that the dated doc is written but uncommitted, and leave committing/pushing it to the user (same non-ownership posture applied to `notes.md`); this skill does not run git, and its frontmatter grants no `Bash` to run it with.
 @@ -61 +61 @@
 -- Does **not** edit source, run the app, or do a full root-cause investigation. Grounding is a few read-only greps producing a labeled hypothesis, not a confirmed diagnosis — it's a capture skill, not a debugging one. This is mechanically backed by the frontmatter `allowed-tools`, which withholds `Edit` — so the read-only promise does not rest on prose discipline alone. Read the frontmatter for the current list rather than trusting a copy here: a copy of it in this sentence once went stale in the commit that changed the list.

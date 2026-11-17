@@ -19,7 +19,7 @@ What the plugin promises when a batch of changes from one decisions doc is propo
 
 ### Requirement: Running a batch of OpenSpec changes in dependency order
 
-`/cla:multi-pr [change ...]` SHALL run each named change, or every open change when none is named, through `/cla:spec-to-pr` in dependency order, fixing every Critical and Important finding before a change counts as done and recording unfixed Suggestions in `TODO.md` unless the user chose to fix them too.
+`/cla:multi-pr [change ...]` SHALL run each named change, or every open change when none is named, through `/cla:spec-to-pr` in dependency order, fixing every blocking finding (`_shared/references/blocking-findings.md`) before a change counts as done and recording unfixed Suggestions and non-blocking findings in `TODO.md` unless the user chose to fix them too.
 
 #### Scenario: A change with only Suggestions left
 

@@ -28,7 +28,7 @@ Print the derived plan and confirm it once via `AskUserQuestion` before any `/cl
   - **`merge-each-clean` (Recommended)** — every candidate that passes the clean check in `candidate-loop.md` step 8 merges as soon as it passes. Each later candidate branches off a base that already holds the earlier merges, so its tests run on the combined tree. Expect open PRs at the end only for candidates that could not merge, each with its reason.
   - **`merge-dependencies-only`** — only a candidate that must merge before a later one does: a later candidate `depends_on` it, or its PR turns out to move shared environment state (step 8a checks the changed files). Every other PR is left open for the user to review and merge. Choose this when the user wants to read each PR before it lands.
 
-State in the question that both policies run the same pre-merge checks and never merge a candidate with an unresolved Critical/Important finding.
+State in the question that both policies run the same pre-merge checks and never merge a candidate with an unresolved blocking finding (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`).
 
 This is the user's chance to reorder, drop, fuse, or re-scope a candidate before anything ships. Do not proceed past this gate until both the plan and the policy are confirmed. Record the confirmed policy in the run-notes ledger header (`references/bootstrap-and-tracking.md`) as soon as it is created.
 

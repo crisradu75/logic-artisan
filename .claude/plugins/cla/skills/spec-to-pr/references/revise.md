@@ -118,7 +118,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    **SEV-MAX:** the same underlying finding rated differently by two agents is triaged at the **higher** severity, always. A `Workflow` merge does this when both key it to the same `(file, line)`; apply it by hand when they describe one issue at different lines or with none.
 
-1b. **Filter: which findings block a merge?** Apply `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`. Dispatch one `Agent(model: sonnet)` with the Stakes section of `cla.io/project-facts.md` and the merged findings, each with its quoted evidence. It labels every finding `blocks` or `non-blocking`, with one line of why. Every `non-blocking` finding leaves triage and goes to Handoff's TODO.md section; none is fixed in this PR. You re-read each `non-blocking` row that names a protected area.
+1b. **Filter: which findings block a merge?** Apply `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`. Dispatch one `Agent(model: sonnet)` that reads no files, so its prompt carries the text of `blocking-findings.md` (the three conditions, the floor and the default list), the Stakes section of `cla.io/project-facts.md` (or, when there is none, the line "no Stakes section: the default list applies"), and the merged findings, each with its quoted evidence. It labels every finding `blocks` or `non-blocking`, with one line of why. Every `non-blocking` finding leaves triage and goes to Handoff's TODO.md section; none is fixed in this PR. You re-read each `non-blocking` row that names a protected area.
 
 2. **Triage every blocking finding into one of three buckets:**
    - **Applied** — the fix lands this round via Edit/Write. *Closed.*

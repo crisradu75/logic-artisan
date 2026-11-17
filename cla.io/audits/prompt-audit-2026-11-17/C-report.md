@@ -95,9 +95,9 @@ Facts checked and found current: every `${CLAUDE_PLUGIN_ROOT}/skills/_shared/...
 - **Action:** rewrite. Hunk H3.
 
 **F4. Location:** `multi-spec/references/plan-schema.md:11`
-- **Evidence:** "...(see memory `feedback-worktree-rmrf-junction-risk`)."
+- **Evidence:** "...(see a per-user note)."
 - **Pattern:** Group 2, history narrative and a path outside the project.
-- **Why obsolete:** The file ships to every repo that installs the plugin. It cites a private memory file of one user that exists in no repo. The same slug also appears in `hooks/block-unsafe-recursive-delete.py` and `skills/feedback/SKILL.md`, outside this scope; raised here only because this copy sits in scope.
+- **Why obsolete:** The file ships to every repo that installs the plugin. It cites a private per-user note that exists in no repo. The same reference also appears in `hooks/block-unsafe-recursive-delete.py` and `skills/feedback/SKILL.md`, outside this scope; raised here only because this copy sits in scope.
 - **Confidence:** Medium.
 - **Action:** rewrite (drop the parenthetical; the incident sentence stays). Hunk H4.
 
@@ -146,7 +146,7 @@ Facts checked and found current: every `${CLAUDE_PLUGIN_ROOT}/skills/_shared/...
 **F11. Location:** `project-review/SKILL.md:48-55` and `project-review/references/review-criteria.md:119-126` (same table in both)
 - **Evidence:** EXEMPLARY all A/B; STRONG majority A/B, at most one C, no D; SOLID majority B/C, at most one D; NEEDS WORK two or more D, or majority C/D.
 - **Pattern:** Group 2, contract accuracy (a rubric the model must compute that is not total).
-- **Why obsolete:** Checked by enumeration over five grades. Grades with no matching row: A,A,A,A,D and A,A,A,C,D (one D, but A/B majority fails STRONG because of the D, B/C majority fails SOLID, and NEEDS WORK needs two Ds); A,A,A,C,C (two Cs fail STRONG, B/C is only two, C/D is only two). Rows that both match: A,B,C,C,C matches SOLID and NEEDS WORK. N/A dimensions (allowed by the plugin fallback section, `review-agents.md:58-61`) make "majority of five" undefined. The model resolves each by guessing. Proposed order-based rule below covers every case and keeps every verdict that was previously defined. It moves a score, so per the owner's rule it needs a before/after on real reports before it ships; it changes verdicts only for the ambiguous sets above.
+- **Why obsolete:** Checked by enumeration over five grades. Grades with no matching row: A,A,A,A,D and A,A,A,C,D (one D, but A/B majority fails STRONG because of the D, B/C majority fails SOLID, and NEEDS WORK needs two Ds); A,A,A,C,C (two Cs fail STRONG, B/C is only two, C/D is only two). Rows that both match: A,B,C,C,C matches SOLID and NEEDS WORK. N/A dimensions (allowed by the plugin fallback section, `review-agents.md:58-61`) make "majority of five" undefined. The model resolves each by guessing. Proposed order-based rule below covers every case and keeps every verdict that was previously defined. It moves a score, so it needs a before/after on real reports before it ships; it changes verdicts only for the ambiguous sets above.
 - **Confidence:** Medium.
 - **Action:** rewrite. Hunks H11a and H11b.
 
@@ -183,14 +183,14 @@ Facts checked and found current: every `${CLAUDE_PLUGIN_ROOT}/skills/_shared/...
 **F16. Location:** `multi-pr/SKILL.md:37`, `references/discover-and-gate.md:137`, `references/change-loop.md:58-64`
 - **Evidence:** "'No unresolved Critical or Important issue' is the default policy — stricter than `/cla:spec-to-pr`'s own default"; the Suggestions go to `TODO.md`.
 - **Pattern:** Group 2, possible conflict with D5 (filter by stakes) and a safety rule, so `flag`.
-- **Why flagged, not fixed:** The owner's global instructions say "Fix Critical and Important findings, and list Suggestions", which this matches, while D5 narrows "must fix" to findings that block a merge. The two owner statements disagree, and a stricter default is the safe direction; history cannot say which governs. The owner decides. If D5 wins, the Phase 1 gate's policy question gains a middle option "fix what blocks a merge, list the rest".
+- **Why flagged, not fixed:** A standing instruction outside the repo says to fix Critical and Important findings and list Suggestions, which this matches, while D5 narrows "must fix" to findings that block a merge. The two statements disagree, and a stricter default is the safe direction; history cannot say which governs. The owner decides. If D5 wins, the Phase 1 gate's policy question gains a middle option "fix what blocks a merge, list the rest".
 - **Confidence:** Low.
 - **Action:** flag.
 
 **F17. Location:** `multi-pr/references/discover-and-gate.md:155-160` (§1c), `change-loop.md:11, 121-125` (steps 2, 6, 7)
 - **Evidence:** the upfront chain-time estimate: complexity buckets, averages of prior run-notes timings by bucket, a range, per-change point estimates, and an actual-versus-predicted report after every change.
 - **Pattern:** Group 1c (arithmetic rubric the model computes), Group 1d (unenforced).
-- **Why flagged:** About 600 words of procedure for a number the text itself calls a rough ballpark; the sample is local gitignored run notes on one machine, usually under three records. Whether anyone reads the number is not visible in the repo; the owner's "prefer a lean plugin" memory points the same way, but I have no firing count, so this stays a flag.
+- **Why flagged:** About 600 words of procedure for a number the text itself calls a rough ballpark; the sample is local gitignored run notes on one machine, usually under three records. Whether anyone reads the number is not visible in the repo; a preference for a lean plugin points the same way, but I have no firing count, so this stays a flag.
 - **Confidence:** Low.
 - **Action:** flag.
 
@@ -205,7 +205,7 @@ Facts checked and found current: every `${CLAUDE_PLUGIN_ROOT}/skills/_shared/...
 
 - **authoring-brief.md (light audit):** no rewrite proposed. The "How to write it" section is the benchmark-tested text. Two small cross-file points, both low: the brief allows a behaviour-changing number's default "in a scenario or in design.md" while RULES line 56 says "a default may appear in a scenario" (the RULES line governs requirement text, so they do not clash); the brief says "Write design.md only when a real choice needs recording" while RULES and the post-check say "only when a stock trigger applies, and name the trigger" (the post-check enforces the trigger; the real-choice test is compatible). The 12-line turn-liveness paragraph at the end is a deliberate restatement.
 - **The turn-liveness copies:** agree; no change. The restated closing paragraphs in `change-loop.md:129-142` and `candidate-loop.md:86-100` carry an incident story, but D6 asks for origin on rules and keep-list item 10 protects a deliberate recap.
-- **Sonnet 5.5 literal-following:** the "Run thin ... read slices, `tail`/`head`" pointer in four SKILL.md files is a cost rule, not tool-use discouragement, and sits in `_shared/runtime-rules.md` (out of scope). Not flagged. (The owner's memory warns about `tail` on long-running commands; the shared file is where that belongs.)
+- **Sonnet 5.5 literal-following:** the "Run thin ... read slices, `tail`/`head`" pointer in four SKILL.md files is a cost rule, not tool-use discouragement, and sits in `_shared/runtime-rules.md` (out of scope). Not flagged. (A caution about `tail` on long-running commands belongs in the shared file.)
 - **Prefill, thinking, sampling, tool_choice, retired model names, graders and eval vocabulary, anti-formatting rules, instruction re-insertion cadence, visual-input scaffolding, frontend-design lists:** none present.
 - **Group 3:** frontmatter descriptions are routing text with plain trigger lists; none is a tool description. 0 findings.
 - **Group 4:** no request code. The only model pins are the aliases `opus` and `sonnet` in dispatch instructions; none is a dated model ID.

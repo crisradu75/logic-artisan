@@ -146,9 +146,9 @@ subshells, `pushd`/`popd`) and `skills/_shared/references/bash-discipline.md:7` 
 **Confidence:** High (repository contradiction). **Action:** rewrite (D: A1): use `git -C <app-dir>` and an absolute destination, no `cd`.
 
 **A2. Location:** `skills/new-worktree/SKILL.md:34-35`.
-**Evidence:** "(Full incident writeup: see memory `worktree-isolation-file-paths`.)"
+**Evidence:** "(Full incident writeup: see a per-user note.)"
 **Pattern:** Group 2, volatile specifics / history narratives (a path that resolves nowhere).
-**Why obsolete:** it names a per-user memory entry. The owner's memory index has no such entry (only `reference_agent_worktree_traps.md` mentions worktrees), and a consuming repo has no memory of this plugin's author. The rule above it already carries its reason.
+**Why obsolete:** it names a per-user note that no repo holds, and a consuming repo has no such note. The rule above it already carries its reason.
 **Confidence:** High (named path does not exist). **Action:** remove the sentence (A2).
 
 **A3. Location:** `skills/_shared/references/skill-authoring.md:3`.
@@ -205,7 +205,7 @@ subshells, `pushd`/`popd`) and `skills/_shared/references/bash-discipline.md:7` 
 **Evidence:** "Measured in one session (2026-08-23)... one sat at `>= 55` against a real 83 ... and is now `>= 80` ... Quote the *current* value when citing one".
 **Pattern:** Group 2, history narratives with a number that rots (CLAUDE.md check 3: a measurement holds only for the code it ran on).
 **Why obsolete:** the passage tells the reader not to repeat the numbers it then prints; "is now `>= 80`" is a source-repo fact a consuming repo cannot check. The lesson (derive the floor from the real count) is already stated in the paragraph above it.
-**Confidence:** Medium. **Action:** rewrite as an illustration (A11). The owner's incident-reason principle supports keeping the "why"; the dates and "is now" values are what goes.
+**Confidence:** Medium. **Action:** rewrite as an illustration (A11). The rule of keeping an incident's reason supports keeping the "why"; the dates and "is now" values are what goes.
 
 **A12. Location:** `skills/_shared/references/test-quality-gates.md:274-287`.
 **Evidence:** "Measured, in the source repo (`f0e8dd7`) ..." and "its message claimed ... covered that exact spelling since `865d366`".
@@ -246,7 +246,7 @@ subshells, `pushd`/`popd`) and `skills/_shared/references/bash-discipline.md:7` 
 **Confidence:** Medium. **Action:** rewrite (A18).
 
 **A19. Location:** `skills/feedback/SKILL.md:56` and `:61`.
-**Evidence:** "(`feedback-worktree-rmrf-junction-risk`)" and "a copy of it in this sentence once went stale in the commit that changed the list".
+**Evidence:** "(an incident id)" and "a copy of it in this sentence once went stale in the commit that changed the list".
 **Pattern:** Group 2, history narratives (incident id; a note about the file's own edit history).
 **Why obsolete:** the named incident file is not in `cla.io/feedback/` (only `field-guide-audit-2026-08-05.md`, `harness-observations-2026-08-14.md`, `notes.md`); grep finds it cited only in this skill and in `multi-spec/references/plan-schema.md`. The reason ("uncommitted files are what get lost") survives without the id.
 **Confidence:** Medium. **Action:** rewrite (A19).
@@ -277,12 +277,12 @@ subshells, `pushd`/`popd`) and `skills/_shared/references/bash-discipline.md:7` 
 
 ### Low (flag only, no hunk)
 
-**L1. Location:** `output-styles/CLA.md:57-81` against the owner's user-level memory `feedback_run_independently` ("act and report, do not end turns with [y/n]").
+**L1. Location:** `output-styles/CLA.md:57-81` against a per-user preference for finishing a turn without a confirmation question.
 **Evidence:** the style makes every finished interactive piece of work end with a "What's next ... offered as a `[y/n]`" line, which blame shows was tightened 2026-10-26 and 2026-11-02.
-**Pattern:** Group 2, instruction files that contradict each other. The memory file is outside the project and carries no date in the index, so the direction cannot be set from blame, and the fix would loosen a prompt rule.
+**Pattern:** Group 2, instruction files that contradict each other. The preference lives outside the project and carries no date, so the direction cannot be set from blame, and the fix would loosen a prompt rule.
 **Confidence:** Low. **Action:** flag. The owner decides which governs interactive finishes.
 
-**L2. Location:** `skills/_shared/references/runtime-rules.md:18`. "Pipe verbose command output through `head`/`tail`" against the owner's memory `feedback_no_tail_on_long_running_commands`. Different cases (the memory is about long-running commands); only a risk of misreading. Low. Flag.
+**L2. Location:** `skills/_shared/references/runtime-rules.md:18`. "Pipe verbose command output through `head`/`tail`" against a per-user preference about long-running commands. Different cases; only a risk of misreading. Low. Flag.
 
 **L3. Location:** `skills/shape-decision/SKILL.md:26-55`. Eight checklist axes plus six outside-service sub-axes, three levels with quoted evidence, Noted lines, a cold check. Pattern: Group 1c step-by-step choreography and patch accretion (blame shows additions across 2026-10 and 2026-11). It is an owner-tuned protocol that makes decisions auditable; no incident or measurement says it should shrink. Low. Flag.
 
@@ -290,7 +290,7 @@ subshells, `pushd`/`popd`) and `skills/_shared/references/bash-discipline.md:7` 
 
 **L5. Location:** `skills/annotate/SKILL.md:188-190`. "Those percentages come from `scripts/sweep_changes.py` over 355 real changes" (51% not checkable, 22% covered). The command is named, which satisfies check 3, but `openspec/changes/archive` holds 60 directories today, so "355" cannot be re-run here. Low. Flag. Never invoked.
 
-**L6. Location:** `skills/spec-to-pr-retro/SKILL.md:42` ("Under 40 lines"), `skills/codify-learnings/SKILL.md:101` ("at most 150 words"), `skills/_shared/references/orchestration-economy.md:8` ("about 300 words"). Numeric report caps (Group 1f). The 300-word figure is also the owner's global rule, so it is protected policy; the other two are report shapes with listed contents. Low. Flag.
+**L6. Location:** `skills/spec-to-pr-retro/SKILL.md:42` ("Under 40 lines"), `skills/codify-learnings/SKILL.md:101` ("at most 150 words"), `skills/_shared/references/orchestration-economy.md:8` ("about 300 words"). Numeric report caps (Group 1f). The 300-word figure is a standing report limit, so it is protected policy; the other two are report shapes with listed contents. Low. Flag.
 
 Total: 5 High, 18 Medium, 6 Low = 29 findings (L1-L6). Each finding is counted once, in the group of its main pattern.
 

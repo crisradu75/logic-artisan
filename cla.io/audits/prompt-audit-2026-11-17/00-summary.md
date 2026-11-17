@@ -41,9 +41,7 @@
    - The release section of `CLAUDE.md` restates the `/release` skill, and it loads every session.
    - The release skill carries version-incident stories and a stale "tag 0.10.0" trigger example.
 6. **Flag only (conflicts across layers):**
-   - The `/release` skill tags and pushes with no approval step, against the user-level approval rule.
-   - The repo's `-n auto` against the memory cap of `-n 2`.
-   - Suggestions in the PR body (user file) against TODO.md (project file).
+   - Three conflicts between this repo's rules and rules kept outside it (release approval, test parallelism, where leftover suggestions go); detail kept out of the repo with Part D.
    - (D)
 
 Copies of the review-sizing and never-end-a-turn rules agree across files. They are protected by keep-list item 8 and not reported as findings.
