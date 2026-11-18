@@ -20,6 +20,13 @@ the skills fall back to the default list of protected areas.
 
 ### Added
 
+- **A `setup_guard.py` script** checks that `/cla:cla-setup` left alone the files it promises to:
+  `snapshot` records them before the run writes anything, and `verify` at the end reports each
+  instruction file, settings file, rules file of the repo's own, existing `notes.md`, `*.local.md`
+  file, terminology file or overlay changed, created or deleted without the owner's yes, and every
+  overlay or terminology file created. On a problem the skill reports every line the check printed
+  and does not call the run clean. Exit 0 passes, 1 is a problem, 2 means it could not check (an
+  unreadable file, or a missing, corrupt or stale snapshot) and is never a pass (#534).
 - **A `chain_check.py` script** replaces the comparisons `multi-pr` and `multi-lite` made by eye before
   they merge or resume a pull request: `before-merge` (the recorded head against the PR, the remote
   branch and the checkout; a clean tree; the PR open, on the recorded branch, not a fork, against the
