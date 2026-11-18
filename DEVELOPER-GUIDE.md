@@ -261,9 +261,9 @@ stale absolute path sneaks into a prompt.
 
 The hooks wire themselves from `hooks/hooks.json` when the plugin loads; there is no
 `settings.json` step. Two dispatchers each run several leaf hooks in one Python process (8 on the
-Bash/PowerShell matcher, 3 on Edit/Write); `warn-wholesale-rewrite` runs on its own after a Write,
+Bash/PowerShell matcher, 4 on Edit/Write); `warn-wholesale-rewrite` runs on its own after a Write,
 and `warn-agent-dispatch` and `warn-agent-reply-format` on their own before and after an Agent call:
-**14 leaf hooks**, in three severities.
+**15 leaf hooks**, in three severities.
 
 | Severity | Hook | Fires on |
 |---|---|---|
@@ -271,8 +271,9 @@ and `warn-agent-dispatch` and `warn-agent-reply-format` on their own before and 
 | | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a Write or Edit outside the current worktree (section 7) |
 | | `guard-bash-text` | in a Bash or PowerShell command's text: **blocks** a `${CLAUDE_PLUGIN_ROOT}/` or `$CLAUDE_PLUGIN_ROOT/` path the shell would expand (the Bash tool's shell never has the variable, so it becomes `/...`); **asks** before a redirect, `tee`, `mkdir` or `cp`/`mv` destination that starts with `..` and lands outside the checkout; **warns** on a multi-line `git commit -m` or `gh pr|issue --body` (newline or `$(cat <<...)`). Enforcing, at no budget cost: one linear pass over the text, no subprocess |
-| **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, and a saving `git stash` during a merge, cherry-pick or revert; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
+| **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, a saving `git stash` during a merge, cherry-pick or revert, a `git rebase` (or a rebasing `git pull`) that would rewrite commits already on a remote-tracking ref (it sees this clone's remote-tracking refs only, so a stale or missing one, as in a single-branch clone or a push to a URL, is a known miss), a `switch -C`/`checkout -B` that would orphan commits, and a merging switch (`-m`) over staged work; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
 | | `ask-plugin-cache-edit` | a Write or Edit whose resolved target is inside an installed plugin copy: `cache/` or `marketplaces/` under the plugins directory (`~/.claude/plugins`, or where `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_PLUGIN_CACHE_DIR` puts it), or `$CLAUDE_PLUGIN_ROOT` when that root is in there; silent for a `--plugin-dir` working tree (this repo), for `data/` and on bad input. Enforcing, at no budget cost: it runs no subprocess, and if it fails to load the dispatcher asks on every Edit and Write |
+| | `ask-secret-in-checkpoint` | a Write or Edit under `cla.io/checkpoints/`, `decisions/`, `feedback/` or `lessons-learned/` whose new text holds a secret-shaped string (AWS, GitHub, Anthropic, OpenAI, Slack, Google or Stripe live key, a `PRIVATE KEY` header, a JWT, or a URL with a real `user:password@`); the ask names the kind and line, not the value. Silent for placeholders, prose and bad input. Enforcing, at no budget cost: it runs no subprocess, and if it fails to load or its scan crashes the dispatcher asks. |
 | | `ask-broad-git-add` | a `git add` of the current directory, the repo root or a bare `openspec/` (`-A`, `--all`, `.`, `:/`, `*`) that would stage untracked files (it names up to ten); silent for `-u`, named paths and tracked-only changes, and best-effort: silent when it cannot check, and skipped like a warning when the handler budget is spent |
 | **Warn**: a caution, and the call runs | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
 | | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |

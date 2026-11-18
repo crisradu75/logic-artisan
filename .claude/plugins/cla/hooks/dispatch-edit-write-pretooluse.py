@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """PreToolUse dispatcher for the Edit|Write matcher.
 
-Runs warn-comment-dates, ask-plugin-cache-edit and block-worktree-path-escape
-in ONE Python process instead of three. See dispatch-bash-pretooluse.py (the
+Runs warn-comment-dates, ask-plugin-cache-edit, ask-secret-in-checkpoint and
+block-worktree-path-escape in ONE Python process instead of four. See dispatch-bash-pretooluse.py (the
 sibling on the Bash matcher) and the shared `_dispatch_lib` both use.
 
 One of these hooks (warn-comment-dates) emits a non-blocking JSON warning on
@@ -19,8 +19,8 @@ Order and semantics preserved exactly:
     only carries stderr back to Claude, per the documented hook contract, so
     an earlier hook's stdout-JSON warning is folded into stderr as plain text
     here rather than lost), then this process exits 2.
-  - If none block but one requests an `ask` (ask-plugin-cache-edit.py returns
-    0 and escalates via stdout), the ask is re-emitted as this process's own
+  - If none block but one requests an `ask` (ask-plugin-cache-edit.py and
+    ask-secret-in-checkpoint.py return 0 and escalate via stdout), the ask is re-emitted as this process's own
     stdout JSON, with the advisory context beside it. Only one process's stdout
     is read per call, so a child's ask that is not re-emitted here is silently
     downgraded to an allow. Precedence is deny > ask > allow.
@@ -66,18 +66,21 @@ else:
 _HOOK_FILES = [
     "warn-comment-dates.py",
     "ask-plugin-cache-edit.py",
+    "ask-secret-in-checkpoint.py",
     "block-worktree-path-escape.py",
 ]
 
 # Skippable when the handler budget is spent. Note what is NOT here:
 # `block-worktree-path-escape.py` can return 2, and `ask-plugin-cache-edit.py`
-# escalates to an ask. Unlike the Bash dispatcher, the blocking hook sits LAST in
+# and `ask-secret-in-checkpoint.py` escalate to an ask. Unlike the Bash dispatcher, the blocking hook sits LAST in
 # `_HOOK_FILES` here, so membership of this set is the only thing protecting it;
 # order is not a backstop.
 #
 # `ask-plugin-cache-edit.py` is enforcing rather than best-effort (the Bash
 # dispatcher's `_BEST_EFFORT_HOOKS`): it runs no subprocess, so it costs nothing
 # against the budget, and an install-copy edit it misses is lost with no trace.
+# `ask-secret-in-checkpoint.py` is enforcing for the same two reasons: it is pure
+# text inspection, and a secret it misses is committed into git history.
 _ADVISORY_HOOKS = frozenset({
     "warn-comment-dates.py",
 })
