@@ -87,11 +87,11 @@ Left, in order:
   - the 4e answers that change files
 
   The owner sees the output style before and after. Done when merged after one review. (#517)
-- [ ] 4i. **Tag each kept rule (principle 6).** (#519: every rule tagged in `docs/rule-ledger.md`; the removal list of 9 awaits the owner) Every absolute rule in the shipped skills (never,
+- [x] 4i. **Tag each kept rule (principle 6).** (#519: every rule tagged in `docs/rule-ledger.md`; the owner approved all 9 removals and softenings on 2026-11-18, applied in the PR that ticks this) Every absolute rule in the shipped skills (never,
   always, must) gets one line: the incident it came from and the protected area it covers. A rule
   with no protected area becomes guidance or goes on a removal list, and the owner approves each
   removal. Done when every such rule is tagged and the removal list is decided.
-- [ ] 4j. **Benchmark the finished plugin.** (run and blind judge in `plugin-tests/benchmarks/mnemo/baseline/plugin-2026-11-18/score.md`; awaits the owner's acceptance) Run `/cla:multi-spec` from this repo's main on the
+- [x] 4j. **Benchmark the finished plugin.** (#521: run and blind judge in `plugin-tests/benchmarks/mnemo/baseline/plugin-2026-11-18/score.md`; owner accepted 2026-11-18) Run `/cla:multi-spec` from this repo's main on the
   mnemo benchmark and judge it blind against the step-3 baseline. Done when the owner accepts the
   before/after.
 - [x] 5a. **Changelog.** (#520) `CHANGELOG.md` `[Unreleased]` covers every merged change since

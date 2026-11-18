@@ -34,7 +34,7 @@ Names used below:
    name. Non-zero → stop.
 4. **Start on a clean, current `<base-branch>`, in the primary clone.** If HEAD is on another
    branch that carries local commits unrelated to this run, leave that branch alone. Then
-   `git checkout <base-branch>`, then `git pull` — two commands, never `&&`. A failed pull halts
+   `git checkout <base-branch>`, then `git pull`. A failed pull halts
    the run: every item would branch off a stale base.
 
 **Primary clone by default.** A linked worktree cannot check out `<base-branch>`, because the

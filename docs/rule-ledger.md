@@ -97,7 +97,6 @@ benchmark run.
 ## skills/codify-learnings/SKILL.md
 - not-a-rule | - | - | # always-loaded skill listing. Nothing invokes it programmatically.
 - guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | Grep with the failure's keywords; a whole read of the long log costs tokens:
-- remove? | none | d09b63d5 #332 2026-10-12; restates the line-41 grep rule, and the grep already covers the archive | live; never read either file whole.
 - guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | not a made-up slug no file has.
 - keep | shipped to other repos | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | **Never propose edits to** a skill's bundled scripts
 - guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | The user has decided: leave a rejected fix off the list.
@@ -210,7 +209,6 @@ benchmark run.
 
 ## skills/_shared/references/chain-merge.md
 - keep | user's files | 6df50092 2026-10-08 shared chain-merge reference (head-commit guards) | Never a re-derived branch name or an in-context number.
-- remove? | none | ee4034ad 2026-07-23 extract; duplicates bash-discipline.md's compound-bash shape, and `&&` here only affects allowlist matching | two commands, never `&&`
 - keep | user's files | 6df50092 2026-10-08; ask-destructive-git incident: two unrequested merges shipped (line 166) | **It never widens merging.**
 - keep | user's files | 751bed9e 2026-09-16 review findings; shared environment state (migration, seeded data) | **The shared-state answer is never pre-answered.**
 - not-a-rule | - | - | what else the override skips and what it never skips
@@ -324,7 +322,7 @@ benchmark run.
 - keep | shipped to other repos | ee4034ad 2026-07-23 extract; check_no_project_tokens.py | Never let a repo token land
 - keep | shipped to other repos | ee4034ad 2026-07-23 extract; a skipped read must not lose a gate | Each stub MUST be **self-sufficient for its own invariant**
 - not-a-rule | - | - | a skipped read loses the procedure, never the gate
-- remove? | none | soften: a stub that restates its reference only costs words, no protected area; "need not restate" says it. text since 9cd5f32f 2026-10-08 | **Beyond those one-liners a stub never restates its reference**
+- guidance | none | a stub that restates its reference only costs words, no protected area; "need not restate" says it. text since 9cd5f32f 2026-10-08 (owner approved softening 2026-11-18) | **Beyond those one-liners a stub need not restate its reference**
 - keep | shipped to other repos | ee4034ad 2026-07-23 extract | **Always stays inline:**
 - keep | user's files | ee4034ad 2026-07-23 extract; git_state check dropped in a restructure, caught by review | this MUST be a hoisted one-liner
 - keep | user's files | ee4034ad 2026-07-23 extract; repeat-offender list | never `git add -A` / path-scoped staging
@@ -453,7 +451,7 @@ benchmark run.
 - guidance | none | none found (predates extraction ee4034ad, 2026-07-23); Archive already ran the command | Leave out `openspec archive`: Archive already ran it.
 - keep | honesty | design-tradeoffs "Built from the example, not memory": a reconstruction gives the plausible number | from the entries written as each round closed — never reconstructed here
 - keep | honesty | #511 (dec3edcb, 2026-11-17); a guessed or dropped round falsifies the retro's yield | never guess `protected`, and never drop the round
-- remove? | none | soften: a run-log failure leaves the run status alone; state it as a plain fact, no protected area. text since 9cd5f32f 2026-10-08 | the run finishes; it never marks the run `warn`
+- guidance | none | a run-log failure leaves the run status alone; state it as a plain fact, no protected area. text since 9cd5f32f 2026-10-08 (owner approved softening 2026-11-18) | the run finishes, and its status stays as it was.
 - not-a-rule | - | - | It never fails, never blocks, and changes nothing about the run's status.
 
 ## skills/spec-to-pr/references/implement-delegate.md
@@ -464,7 +462,6 @@ benchmark run.
 ## skills/spec-to-pr/references/revise.md
 - keep | money | #485 (0781b607, 2026-11-10), issue 484: a `Workflow` spends tokens the user never agreed to; one run was rejected for it | never start a `Workflow` without it
 - keep | shipped to other repos | #324 (2ecdbdfd, 2026-10-11) risk-sized review; a lower level weakens the review of a high-risk fix | A later round never uses a lower level than round 1.
-- remove? | none | duplicates SKILL.md's hoisted "No `Skill()` hops" rule, which names this hop; predates extraction (ee4034ad) | Never chain through `Skill(pr-review-toolkit:review-pr)`; dispatch its agents yourself.
 - not-a-rule | - | - | record a Handoff Issue, which `handoff.md` always lists
 - guidance | none | e8c8fc7b 2026-10-08, narrower comment-analyzer; cost of a reviewer with nothing to read | not when no comment, docstring or `.md` hunk changed: it would have nothing to read
 - keep | shipped to other repos | #426 (a43f5ca1, 2026-10-26): the toolkit file names `inherit`, so a reviewer would run below its sized model | Pass `model:` on EVERY dispatch, never relying on the toolkit file
@@ -515,7 +512,6 @@ benchmark run.
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); same contract as spec-to-pr's git_state rule | never infer "probably fine" on a non-zero exit
 - keep | user's files | #426 (a43f5ca1, 2026-10-26) and #420 (775fa0b9): reviewers hold Bash and Edit in the user's checkout | run no git command (not `git diff`, and never `git checkout`
 - keep | honesty | 775fa0b9 2026-10-25, Reviewer agents: say which line number the line field means (#420) | never a line counted inside the diff file
-- remove? | none | duplicates the intro's "A path the user states wins" a few sections up; #515 (94280abd, 2026-11-17) | a path the user states always wins
 - not-a-rule | - | - | one pass, plus one pass over the fix diff of a protected-area fix; never a third.
 
 ## skills/lite-pr/references/diagnose-escalation.md
@@ -796,7 +792,7 @@ benchmark run.
 - keep | honesty | pre-extract (ee4034ad) | ### High-yield checks (always do — these catch the vast majority of real issues)
 - keep | honesty | #291 (2.0.0), lighter OpenSpec packages | ### Weight and proof checks (always do, on both size-gate paths)
 - keep | honesty | #516 (audit B/C); exit 2 means the budget was not checked | so report an `[Open]` line saying so and never write "no breach"
-- remove? | none | soften: budget remedy is reviewer guidance, no protected area; "prefer the cut over a split" says it. 86f13b82 2026-11-17 (#516) | the remedy is the cut, never a split into more capabilities
+- guidance | none | budget remedy is reviewer guidance, no protected area; "prefer the cut over a split" says it. 86f13b82 2026-11-17 (#516) (owner approved softening 2026-11-18) | prefer cutting to splitting into more capabilities.
 - keep | honesty | #378, marker-honesty rules | it never means "no test yet"
 - keep | honesty | pre-extract (ee4034ad), a stand-in that is already unique hides the collision | the harness MUST structurally mirror the real object
 - keep | honesty | pre-extract (ee4034ad), phantom findings survived into Revise | MUST resolve to one of exactly two things
@@ -825,7 +821,7 @@ benchmark run.
 - not-a-rule | - | - | a dispatched agent never loads the skill or reads those files
 - keep | user's files | #164, a review agent's "temporary" revert destroyed uncommitted work | > **Read only — never write to the working tree.**
 - keep | shipped to other repos | #511 (principle 5); a brief never says nothing is protected | never `(none recorded)`
-- remove? | none | soften: scope guidance for a non-protected edge case; "usually a Risks line, not a requirement" says it. dec3edcb 2026-11-17 (#511) | in proposal.md, never a new requirement
+- guidance | none | scope guidance for a non-protected edge case; "usually a Risks line, not a requirement" says it. dec3edcb 2026-11-17 (#511) (owner approved softening 2026-11-18) | in proposal.md, not as a new requirement.
 - keep | honesty | pre-extract (ee4034ad), lockstep formula docs | and must update the load-bearing spec/doc files for that formula together
 - not-a-rule | - | - | the exact formulas that calculation must preserve
 - keep | honesty | #158 (grounding-contract-claim-shapes); a relabelled question manufactures a finding | > An `[Open]` line is NOT a finding and carries no severity. Never relabel one
@@ -846,7 +842,6 @@ benchmark run.
 - keep | honesty | text since ee4034ad 2026-07-23 (extraction) | its evidence MUST cite a specific path + line or grep result
 - guidance | none | #511/#516, grading rubric | is reported N/A with one line of why, not graded down for absence.
 - guidance | none | #75, plugin-repo review fallback | "no product code" is this repo's design, not a Vision gap;
-- remove? | none | #75, plugin-repo review fallback; duplicates the standard "Not applicable" instruction every agent already gets ("everything else ... is unchanged") | never graded D for absence.
 - not-a-rule | - | - | (which must stay platform-safe, which may depend on which)
 - not-a-rule | - | - | the exact formula set + invariants that calculation must preserve
 

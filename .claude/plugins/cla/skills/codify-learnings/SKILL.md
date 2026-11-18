@@ -45,7 +45,7 @@ grep -rn -i '<keyword>' cla.io/lessons-learned/
 ```
 
 This one grep also searches `cla.io/lessons-learned/lessons-learned-archive.md`, where older entries
-live; never read either file whole.
+live.
 
 - **A hit is a re-offense**: the rule existed and did not hold. Key it by that artifact's path or
   hook name (an instruction file, `hooks/block-cd-in-bash.py`), not a made-up slug no file has. In the

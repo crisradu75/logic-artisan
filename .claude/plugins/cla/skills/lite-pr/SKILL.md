@@ -184,7 +184,7 @@ Continuous — no "confirm to proceed?" prompts between phases, matching `/cla:s
 
 ## Scope
 
-Which workflow to use follows the stakes (see the intro); `shape-decision` and `multi-spec` recommend one per change, and a path the user states always wins. The rename/docs-only tier in Test sizes the checking inside lite-pr. It does not choose the workflow. Reassess mid-run if a change outgrows "lite": stop, then re-plan or switch to `/cla:spec-to-pr` rather than forcing it through here.
+Which workflow to use follows the stakes (see the intro); `shape-decision` and `multi-spec` recommend one per change. The rename/docs-only tier in Test sizes the checking inside lite-pr. It does not choose the workflow. Reassess mid-run if a change outgrows "lite": stop, then re-plan or switch to `/cla:spec-to-pr` rather than forcing it through here.
 
 ## What this skill deliberately does not do
 
