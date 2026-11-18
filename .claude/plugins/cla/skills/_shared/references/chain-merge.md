@@ -26,6 +26,12 @@ from the item's row itself, so it takes the notes path and the item's id, not a 
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" <subcommand> --notes <run notes> --id <id>
 ```
 
+`--notes` takes the skill's notes file, or a quoted glob over its dated files when the skill says so
+(`multi-pr` resumes on a later date into a new file, so a change's row can sit in an older one; a
+row for the id in two files exits 2). A relative path is read from the primary clone, where the run
+notes live. In a worktree pivot, run the command from the worktree holding `<branch>`, or pass
+`--root <worktree>`: the git checks look at that checkout, and the notes path stays the same.
+
 - Exit 0 → the check passed. The first line says what holds.
 - Exit 1 → do not take the step it guards. The first line is `FAIL <subcommand>: <reason>`;
   `<reason>` is the item's reason, written exactly as printed.
@@ -83,11 +89,12 @@ in the run notes. That is the first hand-back, and every later call to that skil
 since the skill may have pushed.
 
 **Before calling the skill again on an item that already has a `head_sha`** (a resume), run
-`python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" resume --notes <run notes> --id <id>` first. Only `OK resume open` (exit 0, the PR
+`python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" resume --notes <run notes> --id <id> --base <base-branch>` first. Only `OK resume open` (exit 0, the PR
 open on the recorded head) lets the skill run again. A different head means someone else pushed: do
 not call the skill, and the reason is `head moved since review`, as exit 1 prints it. Its other
 outcomes (`OK resume merged`, `PR closed without merging`, `recorded PR not found`, `not opened by
-this chain`, exit 2) also stop the call; the skill's own resume step says what each means.
+this chain`, `wrong base (<base>)`, `merged at a head this run did not check`, exit 2) also stop
+the call; the skill's own resume step says what each means.
 
 `head_sha` is the commit the item's review and full test gate must cover. **Between hand-backs,
 nothing updates it except a fix the orchestrator itself commits to `<branch>`,** and only once all
@@ -100,7 +107,7 @@ three checks below pass. After the push, run
 - `git rev-parse HEAD` must equal `git ls-remote origin <branch>`.
 
 The first two failing → the reason is `fix not committed`. The third failing → `push not verified`.
-Exit 1 prints that reason; exit 2 is `chain check could not run`. All three pass (exit 0) → write
+Exit 1 prints that reason; exit 2 is `chain check could not run: <first line>`. All three pass (exit 0) → write
 the commit its first line names as the new `head_sha`.
 
 A commit anyone else pushes — the user, a bot, another session — leaves `head_sha` behind, so the
@@ -120,7 +127,7 @@ of its own before these.
 1. **The PR is this chain's and open on the recorded head, and so is the checkout.** Run
    `python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" before-merge --notes <run notes> --id <id> --base <base-branch>`. Exit 0 →
    continue. Exit 1 → do not merge; the reason is the one its first line prints. Exit 2 → do not
-   merge; the reason is `chain check could not run`. It checks, and names the first that fails:
+   merge; the reason is `chain check could not run: <first line>`. It checks, and names the first that fails:
    - The row records a `head_sha`. None → `head unverifiable (ledger lost)`.
    - The PR's head branch is `<branch>` on this repository, not a fork, since the chain only
      merges a PR it opened and recorded: otherwise `not opened by this chain`. Its base is
@@ -201,9 +208,9 @@ branch-force-delete checks. Export neither; prefixing this one command keeps the
 
 **An exit code of 0 does not prove a merge.** On a branch that requires a merge queue, `gh pr merge` exits 0 after only adding the PR to the queue, or after turning on auto-merge while required checks are pending. Confirm it:
 
-1. Run `python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" after-merge --notes <run notes> --id <id>`, which reads `gh pr view <pr> --json state,mergeCommit,autoMergeRequest`. `state` must be `MERGED` (exit 0). Otherwise:
+1. Run `python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" after-merge --notes <run notes> --id <id> --base <base-branch>`, which reads `gh pr view <pr>`. `state` must be `MERGED` (exit 0), into `<base-branch>` at `head_sha`: a merge of any other head or into any other base is not this run's merge, and exit 1 names it (`merged at a head this run did not check`, `wrong base (<base>)`). A merged PR with no merge commit exits 2. Otherwise:
    - `autoMergeRequest` is set (exit 1 prints this reason), or `gh pr merge` said it added the PR to a merge queue → the reason is `queued: merges later outside this run`. It is not merged now, so it does not count as merged; the skill's final report says plainly that it will merge on its own. Do not disable it: the repo chose it.
-   - Anything else → the reason is `merge not confirmed (state <state>)`, as exit 1 prints it. Exit 2 → `chain check could not run`, and the item does not count as merged.
+   - Anything else → the reason is `merge not confirmed (state <state>)`, as exit 1 prints it. Exit 2 → `chain check could not run: <first line>`, and the item does not count as merged.
 2. `MERGED` is the fact. Write `status: merged` and `merge_commit: <the commit the first line names>` to the row now.
 3. Bring the local base up to date. In the primary clone: `git checkout <base-branch>`, then
    `git pull`, then confirm `git log --oneline -1` shows `merge_commit`. In a worktree, which cannot
@@ -224,7 +231,7 @@ design. Never set `ALLOW_DESTRUCTIVE_GIT=1` to get one through.
 
 ### If `gh pr merge` exits non-zero
 
-Check the PR before reading the error: `python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" after-merge --notes <run notes> --id <id>`. Exit 0 (`MERGED`)
+Check the PR before reading the error: `python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" after-merge --notes <run notes> --id <id> --base <base-branch>`. Exit 0 (`MERGED`)
 means the merge happened and only a later part failed — `--delete-branch` fails this way when
 `<base-branch>` is checked out in another worktree. Take the confirmation steps above; if the remote
 branch survived, delete it with `git push origin --delete <branch>`. Otherwise, take the first arm

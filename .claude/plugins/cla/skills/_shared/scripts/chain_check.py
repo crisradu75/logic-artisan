@@ -8,15 +8,23 @@ is the step that fails, and here a missed one merges commits nobody tested. This
 comparison and states the verdict in its exit code::
 
     python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" before-merge --notes <run-notes> --id <id> --base <base-branch>
-    python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" after-merge --notes <run-notes> --id <id>
+    python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" after-merge --notes <run-notes> --id <id> --base <base-branch>
     python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" fix-pushed --notes <run-notes> --id <id>
-    python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" resume --notes <run-notes> --id <id>
+    python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" resume --notes <run-notes> --id <id> --base <base-branch>
     python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" deps --notes <run-notes> --ids <id> [<id> ...] [--against <rev>]
 
 It reads git and GitHub state only, and never writes the run notes: the agent writes what the
 first line reports. Every subcommand takes ``--root <dir>`` (default: the working directory), the
-checkout it checks against the remote ``origin``. ``gh`` runs there too. ``--notes`` is read as
-given, relative to the working directory.
+checkout it checks against the remote ``origin``. ``gh`` runs there too. The clean-tree checks
+cover the whole working tree of that checkout, whatever subdirectory ``--root`` names.
+
+``--notes`` takes one or more files or quoted globs (``'cla.io/retro/multi-pr-run-notes-*.md'``),
+which the script expands itself. A relative one is read from the PRIMARY checkout of ``--root``
+(the folder that holds the shared ``.git``), because the run notes live there: from a linked
+worktree, the same relative path still finds them. A chain that resumes on a later date writes a
+new dated file, so an item's row may sit in an older one; the script looks in every file given,
+and a row for the id in more than one file is ambiguous and exits 2. A globbed file with no
+run-notes table is skipped; no table in any file exits 2.
 
 THE RUN NOTES. The chain's own file, ``cla.io/retro/<skill>-run-notes-<date>.md``, read as it is.
 The script reads the markdown table whose header names ``branch``, ``pr_number`` and ``head_sha``
@@ -56,12 +64,18 @@ before-merge (``--base`` is the repo's default branch, resolved). Reasons, in pr
   head moved                       the PR's ``headRefOid``, or ``origin``'s ``refs/heads/<branch>``
                                    (``git ls-remote``, exact name), is not ``head_sha``
   local head mismatch              ``git rev-parse HEAD`` is not ``head_sha``
-  uncommitted changes              ``git status --porcelain -- . ':(exclude)cla.io/retro'`` lists
-                                   anything; the run notes live under ``cla.io/retro`` uncommitted
+  uncommitted changes              ``git status --porcelain -- ':(top)' ':(top,exclude)cla.io/retro'``
+                                   lists anything; the run notes live under ``cla.io/retro``
+                                   uncommitted
 
-after-merge. ``state`` must be ``MERGED``; the first line then names the merge commit. Otherwise:
-  queued: merges later outside this run   ``autoMergeRequest`` is set
-  merge not confirmed (state <STATE>)     anything else
+after-merge (``--base`` as in before-merge). ``state`` must be ``MERGED``, into ``--base``, at the
+recorded ``head_sha``; the first line then names the merge commit, and a merged PR with no merge
+commit exits 2. Otherwise, in precedence order:
+  head unverifiable (ledger lost)            the row has no ``head_sha``
+  wrong base (<name>)                        merged into another base
+  merged at a head this run did not check    merged, but ``headRefOid`` is not ``head_sha``
+  queued: merges later outside this run      not merged and ``autoMergeRequest`` is set
+  merge not confirmed (state <STATE>)        not merged otherwise
 
 fix-pushed (after the orchestrator commits and pushes its own fix to the row's branch):
   fix not committed   ``HEAD`` still equals the row's ``head_sha`` (no commit was made), or the
@@ -69,14 +83,18 @@ fix-pushed (after the orchestrator commits and pushes its own fix to the row's b
   push not verified   ``origin`` has no ``refs/heads/<branch>``, or it is not ``HEAD``
   On a pass the first line names ``HEAD``: the new ``head_sha`` to write.
 
-resume (before an item that already has a PR is handed back to the skill or merged):
-  recorded PR not found            ``gh`` reports no PR with the row's number
-  head unverifiable (ledger lost)  ``state`` is ``OPEN`` and the row has no ``head_sha``
-  not opened by this chain         as in before-merge, whatever the state
-  PR closed without merging        ``state`` is ``CLOSED``
-  head moved since review          ``state`` is ``OPEN`` and ``headRefOid`` is not ``head_sha``
+resume (``--base`` as in before-merge; before an item that already has a PR is handed back to
+the skill or merged):
+  recorded PR not found                      ``gh`` reports no PR with the row's number
+  head unverifiable (ledger lost)            open or merged, and the row has no ``head_sha``
+  not opened by this chain                   as in before-merge, whatever the state
+  wrong base (<name>)                        the PR's base is not ``--base``, whatever the state
+  PR closed without merging                  ``state`` is ``CLOSED``
+  merged at a head this run did not check    merged, but ``headRefOid`` is not ``head_sha``
+  head moved since review                    open, but ``headRefOid`` is not ``head_sha``
   A pass has a mode: ``OK resume open:`` (open, on the recorded head) or ``OK resume merged:``
-  (merged, with the merge commit to record).
+  (merged into the base at the recorded head, with the merge commit to record; a merged PR with no
+  merge commit exits 2).
 
 deps (before a dependent item runs). For each id in ``--ids``: its row must exist, its ``status``
 must start with the word ``merged``, its ``merge_commit`` must be set, and
@@ -88,6 +106,7 @@ dependency that fails: ``not merged into <against>: <id>, ...``.
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import re
@@ -125,7 +144,7 @@ _RANK = {
     kind: n
     for n, kind in enumerate([
         "not-found", "head-unverifiable", "not-chain-pr", "wrong-base", "not-open", "closed",
-        "pr-head", "remote-head", "local-head", "dirty",
+        "pr-head", "merged-head", "remote-head", "local-head", "dirty",
         "queued", "not-merged", "no-commit", "remote-missing", "remote-differs",
         "dep-missing", "dep-not-merged", "dep-no-merge-commit", "dep-not-in-base",
     ])
@@ -223,45 +242,88 @@ def _tables(text: str) -> list[tuple[list[str], list[tuple[int, list[str]]]]]:
 
 
 def _ledger(notes: Path) -> list[tuple[list[str], list[tuple[int, list[str]]]]]:
+    """The run-notes tables in one file; [] when it has none."""
     try:
         text = notes.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         raise Unchecked("notes", f"{notes} does not exist") from None
     except (OSError, UnicodeDecodeError) as exc:
         raise Unchecked("notes", f"{notes} could not be read: {exc}") from None
-    tables = [t for t in _tables(text) if {"branch", "pr_number", "head_sha"} <= set(t[0])]
-    if not tables:
-        raise Unchecked("notes", f"{notes} has no table with branch, pr_number and head_sha columns")
-    return tables
+    return [t for t in _tables(text) if {"branch", "pr_number", "head_sha"} <= set(t[0])]
 
 
-def find_row(notes: Path, item: str, need: tuple[str, ...] = ()) -> Row | None:
-    """The row whose first cell is ``item``; None when no row names it. A malformed one raises."""
-    matches = []
-    for header, rows in _ledger(notes):
-        missing = [c for c in need if c not in header]
-        if missing:
-            raise Unchecked("notes", f"{notes}: the run-notes table has no {', '.join(missing)} column")
-        for lineno, cells in rows:
-            if _clean(cells[0]) != item:
-                continue
-            if len(cells) != len(header):
-                raise Unchecked(
-                    "notes", f"{notes}:{lineno}: row {item!r} has {len(cells)} cells, the header has {len(header)}",
-                )
-            values = {name: _clean(cell) for name, cell in zip(header, cells)}
-            if values.get("pr_number", "").startswith("#"):
-                values["pr_number"] = values["pr_number"][1:]
-            matches.append(Row(item, values))
-    if len(matches) > 1:
-        raise Unchecked("notes", f"{notes} has {len(matches)} rows for {item!r}")
-    return matches[0] if matches else None
+def _primary(root: Path) -> Path:
+    """The primary checkout of ``root``: the folder holding the shared ``.git`` directory."""
+    r = _git(root, "rev-parse", "--git-common-dir")
+    if r.returncode != 0 or not r.stdout.strip():
+        raise Unchecked("repo", f"git rev-parse --git-common-dir failed: {_first_err(r)}")
+    common = (root / r.stdout.strip()).resolve()
+    if common.name != ".git":
+        raise Unchecked("repo", f"cannot tell the primary checkout from the git directory {common}")
+    return common.parent
 
 
-def row_for(notes: Path, item: str) -> Row:
-    row = find_row(notes, item)
+def notes_files(root: Path, specs: list[str]) -> list[Path]:
+    """The files ``--notes`` names: relative ones from the primary checkout, globs expanded."""
+    base = _primary(root)
+    files: list[Path] = []
+    for spec in specs:
+        path = Path(spec) if Path(spec).is_absolute() else base / spec
+        if any(c in spec for c in "*?["):
+            found = sorted(Path(f) for f in glob.glob(str(path)))
+            if not found:
+                raise Unchecked("notes", f"no file matches {path}")
+            files += found
+        else:
+            files.append(path)
+    unique: list[Path] = []
+    for f in files:
+        if f.resolve() not in [u.resolve() for u in unique]:
+            unique.append(f)
+    return unique
+
+
+def find_row(files: list[Path], item: str, need: tuple[str, ...] = ()) -> Row | None:
+    """The row whose first cell is ``item``, across ``files``; None when no row names it.
+
+    A malformed row, two rows in one file, or rows in two files raise: a chain that resumed on a
+    later date writes a new file, and the script cannot tell which row is the item's.
+    """
+    found: dict[Path, list[Row]] = {}
+    tables_seen = 0
+    for notes in files:
+        tables = _ledger(notes)
+        tables_seen += len(tables)
+        for header, rows in tables:
+            missing = [c for c in need if c not in header]
+            if missing:
+                raise Unchecked("notes", f"{notes}: the run-notes table has no {', '.join(missing)} column")
+            for lineno, cells in rows:
+                if _clean(cells[0]) != item:
+                    continue
+                if len(cells) != len(header):
+                    raise Unchecked(
+                        "notes", f"{notes}:{lineno}: row {item!r} has {len(cells)} cells, the header has {len(header)}",
+                    )
+                values = {name: _clean(cell) for name, cell in zip(header, cells)}
+                if values.get("pr_number", "").startswith("#"):
+                    values["pr_number"] = values["pr_number"][1:]
+                found.setdefault(notes, []).append(Row(item, values))
+    if not tables_seen:
+        names = ", ".join(str(f) for f in files)
+        raise Unchecked("notes", f"{names}: no table with branch, pr_number and head_sha columns")
+    for notes, rows in found.items():
+        if len(rows) > 1:
+            raise Unchecked("notes", f"{notes} has {len(rows)} rows for {item!r}")
+    if len(found) > 1:
+        raise Unchecked("notes", f"rows for {item!r} in {len(found)} files: {', '.join(str(f) for f in found)}")
+    return next(iter(found.values()))[0] if found else None
+
+
+def row_for(files: list[Path], item: str) -> Row:
+    row = find_row(files, item)
     if row is None:
-        raise Unchecked("notes", f"{notes} has no row for {item!r}")
+        raise Unchecked("notes", f"{', '.join(str(f) for f in files)}: no row for {item!r}")
     # Every subcommand that reads a row checks all three cells, so a malformed row is never half-read.
     row.pr(), row.branch(), row.head()
     return row
@@ -313,13 +375,16 @@ def pr_view(root: Path, number: int) -> PR:
         state = data["state"]
         head_oid = str(data["headRefOid"]).lower()
         merge = data.get("mergeCommit")
+        cross = data["isCrossRepository"]
+        if not isinstance(cross, bool):
+            raise TypeError(f"isCrossRepository is {cross!r}, not true or false")
         pr = PR(
             number=int(data.get("number", number)),
             state=state,
             head_oid=head_oid,
             head_ref=str(data["headRefName"]),
             base_ref=str(data["baseRefName"]),
-            cross_repo=bool(data.get("isCrossRepository", False)),
+            cross_repo=cross,
             merge_commit=str(merge["oid"]).lower() if isinstance(merge, dict) and merge.get("oid") else None,
             auto_merge=bool(data.get("autoMergeRequest")),
         )
@@ -335,7 +400,7 @@ def pr_view(root: Path, number: int) -> PR:
 
 
 def _dirty(root: Path) -> list[str]:
-    r = _git(root, "status", "--porcelain", "--", ".", f":(exclude){NOTES_DIR}")
+    r = _git(root, "status", "--porcelain", "--", ":(top)", f":(top,exclude){NOTES_DIR}")
     if r.returncode != 0:
         raise Unchecked("status", f"git status failed: {_first_err(r)}")
     return [line for line in r.stdout.splitlines() if line.strip()]
@@ -395,14 +460,30 @@ def before_merge(root: Path, row: Row, base: str, out: Out) -> str:
     return f"OK before-merge: #{number} open on {branch} at {head}, checkout clean"
 
 
-def after_merge(root: Path, row: Row, out: Out) -> str:
+def _merged_here(pr: PR, row: Row, base: str, out: Out) -> str | None:
+    """For a merged PR: its merge commit when it merged into ``base`` at the recorded head."""
+    head = row.head()
+    if pr.base_ref != base:
+        out.fail("wrong-base", f"#{pr.number} merged into {pr.base_ref}, not {base}", f"wrong base ({pr.base_ref})")
+    if head is None:
+        out.fail("head-unverifiable", f"#{pr.number} merged and row {row.item!r} records no head_sha",
+                 "head unverifiable (ledger lost)")
+    elif pr.head_oid != head:
+        out.fail("merged-head", f"#{pr.number} merged at {pr.head_oid}, head_sha is {head}",
+                 "merged at a head this run did not check")
+    if pr.merge_commit is None:
+        raise Unchecked("gh", f"#{pr.number} is MERGED but gh names no merge commit")
+    return pr.merge_commit
+
+
+def after_merge(root: Path, row: Row, base: str, out: Out) -> str:
     number = row.pr()
     try:
         pr = pr_view(root, number)
     except NotFound as exc:
         raise Unchecked("gh", str(exc)) from None
     if pr.state == "MERGED":
-        return f"OK after-merge: #{number} merged as {pr.merge_commit or '(no merge commit reported)'}"
+        return f"OK after-merge: #{number} merged as {_merged_here(pr, row, base, out)}"
     if pr.auto_merge:
         out.fail("queued", f"#{number} is {pr.state} with auto-merge pending", "queued: merges later outside this run")
     else:
@@ -433,7 +514,7 @@ def fix_pushed(root: Path, row: Row, out: Out) -> str:
     return f"OK fix-pushed: new head_sha {local}"
 
 
-def resume(root: Path, row: Row, out: Out) -> str:
+def resume(root: Path, row: Row, base: str, out: Out) -> str:
     number, branch, head = row.pr(), row.branch(), row.head()
     try:
         pr = pr_view(root, number)
@@ -442,7 +523,9 @@ def resume(root: Path, row: Row, out: Out) -> str:
         return ""
     _not_chain_pr(pr, branch, out)
     if pr.state == "MERGED":
-        return f"OK resume merged: #{number} as {pr.merge_commit or '(no merge commit reported)'}"
+        return f"OK resume merged: #{number} as {_merged_here(pr, row, base, out)}"
+    if pr.base_ref != base:
+        out.fail("wrong-base", f"#{number} is opened against {pr.base_ref}, not {base}", f"wrong base ({pr.base_ref})")
     if pr.state == "CLOSED":
         out.fail("closed", f"#{number} was closed without merging", "PR closed without merging")
     elif head is None:
@@ -453,11 +536,21 @@ def resume(root: Path, row: Row, out: Out) -> str:
     return f"OK resume open: #{number} at {head}"
 
 
-def deps(root: Path, notes: Path, ids: list[str], against: str, out: Out) -> str:
+def deps(root: Path, notes: list[Path], ids: list[str], against: str, out: Out) -> str:
     target = _rev(root, against)
     if target is None:
         raise Unchecked("against", f"{against!r} names no commit")
     unmet: list[str] = []
+    try:
+        _deps(root, notes, ids, against, target, unmet, out)
+    finally:
+        # Also when a later row could not be read: the first line names what was found unmet.
+        if unmet:
+            out.reasons = [(0, f"not merged into {against}: {', '.join(unmet)}")]
+    return f"OK deps: {', '.join(ids)} merged into {against}"
+
+
+def _deps(root: Path, notes: list[Path], ids: list[str], against: str, target: str, unmet: list[str], out: Out) -> None:
     for dep in ids:
         row = find_row(notes, dep, need=("status", "merge_commit"))
         if row is None:
@@ -484,9 +577,6 @@ def deps(root: Path, notes: Path, ids: list[str], against: str, out: Out) -> str
             unmet.append(dep)
             continue
         raise Unchecked("ancestry", f"'git merge-base --is-ancestor {commit} {against}' failed: {_first_err(r)}")
-    if unmet:
-        out.reasons = [(0, f"not merged into {against}: {', '.join(unmet)}")]
-    return f"OK deps: {', '.join(ids)} merged into {against}"
 
 
 # ---------------------------------------------------------------- main
@@ -495,7 +585,8 @@ def deps(root: Path, notes: Path, ids: list[str], against: str, out: Out) -> str
 def main(argv: list[str] | None = None) -> int:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--root", default=".", help="the checkout to check (default: the working directory)")
-    common.add_argument("--notes", required=True, help="the chain's run-notes file")
+    common.add_argument("--notes", nargs="+", required=True,
+                        help="the chain's run-notes files or quoted globs; relative ones from the primary checkout")
     ap = argparse.ArgumentParser(
         description="Check a chain item's recorded head. Exit 0 pass, 1 problem, 2 could not check.",
     )
@@ -508,7 +599,7 @@ def main(argv: list[str] | None = None) -> int:
     ):
         p = sub.add_parser(name, parents=[common], help=text)
         p.add_argument("--id", required=True, help="the item's id: the first cell of its run-notes row")
-        if name == "before-merge":
+        if name in ("before-merge", "after-merge", "resume"):
             p.add_argument("--base", required=True, help="the repo's default branch, resolved")
     p = sub.add_parser("deps", parents=[common], help="before a dependent runs: every dependency merged")
     p.add_argument("--ids", nargs="+", required=True, help="the ids the item depends on")
@@ -516,10 +607,10 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     root = Path(args.root).resolve()
-    notes = Path(args.notes)
     out = Out()
     try:
         _require_repo(root)
+        notes = notes_files(root, args.notes)
         if args.cmd == "deps":
             ok = deps(root, notes, args.ids, args.against, out)
         else:
@@ -527,11 +618,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.cmd == "before-merge":
                 ok = before_merge(root, row, args.base, out)
             elif args.cmd == "after-merge":
-                ok = after_merge(root, row, out)
+                ok = after_merge(root, row, args.base, out)
             elif args.cmd == "fix-pushed":
                 ok = fix_pushed(root, row, out)
             else:
-                ok = resume(root, row, out)
+                ok = resume(root, row, args.base, out)
     except Unchecked as exc:
         out.unchecked.append(f"UNCHECKED {exc.kind}: {exc.detail}")
         ok = ""

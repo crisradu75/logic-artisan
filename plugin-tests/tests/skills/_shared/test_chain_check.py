@@ -75,14 +75,15 @@ class Chain:
 
     # -- the run notes
 
-    def write_notes(self, rows, header: str = _LITE, raw: str | None = None) -> None:
-        self.notes.parent.mkdir(parents=True, exist_ok=True)
+    def write_notes(self, rows, header: str = _LITE, raw: str | None = None, to: Path | None = None) -> None:
+        target = to or self.notes
+        target.parent.mkdir(parents=True, exist_ok=True)
         if raw is None:
             lines = ["docs/decisions/x.md", "policy: merge-each-clean", "", f"| {header} |",
                      "|" + "---|" * len(header.split("|"))]
             lines += ["| " + " | ".join(r) + " |" for r in rows]
             raw = "\n".join(lines) + "\n\n## Deferred findings\n"
-        self.notes.write_text(raw, encoding="utf-8")
+        target.write_text(raw, encoding="utf-8")
 
     # -- the fake gh
 
@@ -133,7 +134,7 @@ class Chain:
     def check(self, cmd: str, *extra: str, item: str = "a", **kw) -> subprocess.CompletedProcess[str]:
         if cmd == "deps":
             return self.run(cmd, "--notes", str(self.notes), *extra, **kw)
-        base = ("--base", "main") if cmd == "before-merge" else ()
+        base = ("--base", "main") if cmd in ("before-merge", "after-merge", "resume") else ()
         return self.run(cmd, "--notes", str(self.notes), "--id", item, *base, *extra, **kw)
 
     def commit(self, name: str = "b.txt", msg: str = "b") -> str:
@@ -341,7 +342,7 @@ def test_before_merge_cannot_check_an_unreachable_remote(chain: Chain):
     (("a", "open", "feature/a", "", "HEAD", "0", "clean", ""), "records no pr_number"),
     (("a", "open", "", "7", "HEAD", "0", "clean", ""), "records no branch"),
     (("a", "open", "feature/a", "7", "HEAD", "0", "clean"), "has 7 cells, the header has 8"),
-    (("b", "open", "feature/a", "7", "HEAD", "0", "clean", ""), "has no row for 'a'"),
+    (("b", "open", "feature/a", "7", "HEAD", "0", "clean", ""), "no row for 'a'"),
 ])
 # requirement: change-chains / A chain checks a pull request's head before it merges it
 def test_a_malformed_notes_row_cannot_be_checked(chain: Chain, row, expected: str):
@@ -485,7 +486,7 @@ def test_resume_passes_on_an_open_pr_at_the_recorded_head(chain: Chain):
 
 # requirement: change-chains / A resumed chain acts only on its own pull request at the recorded head
 def test_resume_reports_a_merged_pr_with_its_merge_commit(chain: Chain):
-    chain.gh_pr(state="MERGED", headRefOid="e" * 40, mergeCommit={"oid": "f" * 40})
+    chain.gh_pr(state="MERGED", mergeCommit={"oid": "f" * 40})
     r = chain.check("resume")
     assert r.returncode == 0, r.stdout
     assert _first(r) == f"OK resume merged: #7 as {'f' * 40}"
@@ -616,6 +617,159 @@ def test_deps_need_the_status_and_merge_commit_columns(merged):
 
 def test_a_notes_path_that_cannot_be_read_cannot_be_checked(chain: Chain, tmp_path: Path):
     # A directory raises inside read_text (IsADirectoryError on POSIX, PermissionError on Windows).
-    r = chain.run("resume", "--notes", str(tmp_path), "--id", "a")
+    r = chain.run("resume", "--notes", str(tmp_path), "--id", "a", "--base", "main")
     assert r.returncode == 2
     assert _first(r).startswith("UNCHECKED notes:")
+
+
+# ---------------------------------------------------------------- review round 1
+
+
+def _pr_row(chain: Chain, change: str = "add-x", head: str | None = None) -> tuple[str, ...]:
+    return (change, "feature/a", "7", chain.head if head is None else head, "enforced", "", "")
+
+
+# requirement: change-chains / A chain checks a pull request's head before it merges it
+def test_a_row_only_in_an_older_dated_file_is_found_through_a_glob(chain: Chain):
+    """multi-pr writes a new dated notes file when it resumes on a later date; the row stays in the old one."""
+    retro = chain.notes.parent
+    chain.notes.unlink()
+    chain.write_notes([_pr_row(chain)], header=_PR, to=retro / "multi-pr-run-notes-2026-11-17.md")
+    chain.write_notes([("other-change", "feature/o", "9", "", "running", "", "")], header=_PR,
+                      to=retro / "multi-pr-run-notes-2026-11-18.md")
+    (retro / "multi-pr-run-notes-2026-11-16.md").write_text("an early file with no table\n", encoding="utf-8")
+    r = chain.run("before-merge", "--notes", "cla.io/retro/multi-pr-run-notes-*.md", "--id", "add-x", "--base", "main")
+    assert r.returncode == 0, r.stdout
+    # Today's file alone has no row for it: that is a could-not-check, never a pass.
+    r = chain.run("before-merge", "--notes", str(retro / "multi-pr-run-notes-2026-11-18.md"), "--id", "add-x",
+                  "--base", "main")
+    assert r.returncode == 2
+
+
+# requirement: change-chains / A chain checks a pull request's head before it merges it
+def test_rows_for_one_item_in_two_files_cannot_be_checked(chain: Chain):
+    retro = chain.notes.parent
+    chain.notes.unlink()
+    for day in ("17", "18"):
+        chain.write_notes([_pr_row(chain)], header=_PR, to=retro / f"multi-pr-run-notes-2026-11-{day}.md")
+    r = chain.run("resume", "--notes", "cla.io/retro/multi-pr-run-notes-*.md", "--id", "add-x", "--base", "main")
+    assert r.returncode == 2
+    assert _first(r).startswith("UNCHECKED notes: rows for 'add-x' in 2 files")
+
+
+def test_a_glob_that_matches_nothing_cannot_be_checked(chain: Chain):
+    r = chain.run("resume", "--notes", "cla.io/retro/nothing-*.md", "--id", "a", "--base", "main")
+    assert r.returncode == 2
+    assert _first(r).startswith("UNCHECKED notes: no file matches")
+
+
+# requirement: change-chains / A chain checks a pull request's head before it merges it
+def test_a_relative_notes_path_is_read_from_the_primary_checkout_in_a_worktree(chain: Chain):
+    _git(chain.work, "checkout", "-q", "main")
+    tree = chain.tmp / "wt"
+    _git(chain.work, "worktree", "add", "-q", str(tree), "feature/a")
+    env = dict(os.environ, PATH=str(chain.bin) + os.pathsep + os.environ.get("PATH", ""))
+    r = subprocess.run(
+        [sys.executable, str(_SCRIPT), "before-merge", "--notes", "cla.io/retro/multi-lite-run-notes-2026-11-18.md",
+         "--id", "a", "--base", "main", "--root", str(tree)],
+        cwd=Path(__file__).parent, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+    )
+    assert r.returncode == 0, r.stdout
+    (tree / "README.md").write_text("# dirty in the worktree\n", encoding="utf-8")
+    r = subprocess.run(
+        [sys.executable, str(_SCRIPT), "fix-pushed", "--notes", "cla.io/retro/multi-lite-run-notes-2026-11-18.md",
+         "--id", "a", "--root", str(tree)],
+        cwd=Path(__file__).parent, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+    )
+    assert r.returncode == 1 and "PROBLEM dirty" in r.stdout
+
+
+# requirement: change-chains / A chain checks a pull request's head before it merges it
+def test_a_root_below_the_top_still_sees_a_dirty_tree_above_it(chain: Chain):
+    sub = chain.work / "sub"
+    sub.mkdir()
+    (sub / "s.txt").write_text("s\n", encoding="utf-8")
+    _git(chain.work, "add", "sub/s.txt")
+    _git(chain.work, "commit", "-q", "-m", "sub")
+    _git(chain.work, "push", "-q", "origin", "feature/a")
+    chain.head = _git(chain.work, "rev-parse", "HEAD").stdout.strip()
+    chain.write_notes([("a", "open", "feature/a", "7", chain.head, "0", "clean", "")])
+    chain.gh_pr()
+    chain.work, top = sub, chain.work
+    r = chain.check("before-merge")
+    assert r.returncode == 0, r.stdout  # the run notes at the top are still not dirt
+    (top / "README.md").write_text("# changed above the root\n", encoding="utf-8")
+    r = chain.check("before-merge")
+    assert r.returncode == 1
+    assert _first(r) == "FAIL before-merge: uncommitted changes"
+
+
+@pytest.mark.parametrize("value", ["missing", None, "false"])
+def test_an_unreadable_cross_repository_flag_cannot_be_checked(chain: Chain, value):
+    pr = {"number": 7, "state": "OPEN", "headRefOid": chain.head, "headRefName": "feature/a",
+          "baseRefName": "main", "mergeCommit": None, "autoMergeRequest": None}
+    if value != "missing":
+        pr["isCrossRepository"] = value
+    chain.gh(json.dumps(pr))
+    r = chain.check("before-merge")
+    assert r.returncode == 2
+    assert _first(r).startswith("UNCHECKED gh:") and "isCrossRepository" in _first(r)
+
+
+# requirement: change-chains / A chain counts a merge only when the host reports it merged
+@pytest.mark.parametrize("fields,reason", [
+    ({"headRefOid": "e" * 40}, "merged at a head this run did not check"),
+    ({"baseRefName": "develop"}, "wrong base (develop)"),
+])
+def test_after_merge_refuses_a_merge_of_another_head_or_base(chain: Chain, fields: dict, reason: str):
+    chain.gh_pr(state="MERGED", mergeCommit={"oid": "d" * 40}, **fields)
+    r = chain.check("after-merge")
+    assert r.returncode == 1
+    assert _first(r) == f"FAIL after-merge: {reason}"
+
+
+def test_after_merge_with_no_recorded_head_is_unverifiable(chain: Chain):
+    chain.write_notes([("a", "open", "feature/a", "7", "", "0", "clean", "")])
+    chain.gh_pr(state="MERGED", mergeCommit={"oid": "d" * 40})
+    r = chain.check("after-merge")
+    assert r.returncode == 1
+    assert _first(r) == "FAIL after-merge: head unverifiable (ledger lost)"
+
+
+# requirement: change-chains / A chain counts a merge only when the host reports it merged
+@pytest.mark.parametrize("cmd", ["after-merge", "resume"])
+def test_a_merge_with_no_merge_commit_cannot_be_recorded(chain: Chain, cmd: str):
+    chain.gh_pr(state="MERGED", mergeCommit=None)
+    r = chain.check(cmd)
+    assert r.returncode == 2
+    assert _first(r) == "UNCHECKED gh: #7 is MERGED but gh names no merge commit"
+
+
+# requirement: change-chains / A resumed chain acts only on its own pull request at the recorded head
+@pytest.mark.parametrize("fields,reason", [
+    ({"state": "MERGED", "headRefOid": "e" * 40}, "merged at a head this run did not check"),
+    ({"state": "MERGED", "baseRefName": "develop"}, "wrong base (develop)"),
+    ({"baseRefName": "develop"}, "wrong base (develop)"),
+])
+def test_resume_passes_a_merge_only_into_the_base_at_the_recorded_head(chain: Chain, fields: dict, reason: str):
+    chain.gh_pr(mergeCommit={"oid": "f" * 40}, **fields)
+    r = chain.check("resume")
+    assert r.returncode == 1
+    assert _first(r) == f"FAIL resume: {reason}"
+
+
+def test_resume_of_a_merged_pr_with_no_recorded_head_is_unverifiable(chain: Chain):
+    chain.write_notes([("a", "open", "feature/a", "7", "", "", "", "")])
+    chain.gh_pr(state="MERGED", mergeCommit={"oid": "f" * 40})
+    r = chain.check("resume")
+    assert r.returncode == 1
+    assert _first(r) == "FAIL resume: head unverifiable (ledger lost)"
+
+
+def test_deps_name_the_unmet_dependency_when_a_later_row_cannot_be_read(merged):
+    chain, merge, _ = merged
+    _ledger(chain, ("a", "open", ""), ("b", "merged", "not-a-sha"))
+    r = chain.check("deps", "--ids", "a", "b")
+    assert r.returncode == 1
+    assert _first(r) == "FAIL deps: not merged into HEAD: a"
+    assert r.stdout.splitlines()[-1].startswith("UNCHECKED notes:")

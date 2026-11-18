@@ -23,12 +23,17 @@ Before a chain merges a pull request, the chain check's `before-merge` SHALL exi
 
 ### Requirement: A chain counts a merge only when the host reports it merged
 
-After a chain's merge command, the chain check's `after-merge` SHALL exit 0, naming the merge commit, only when the host reports the pull request merged, and SHALL exit 1 with `queued: merges later outside this run` when an automatic merge is pending, or with `merge not confirmed` otherwise.
+After a chain's merge command, the chain check's `after-merge` SHALL exit 0, naming the merge commit, only when the host reports the pull request merged into the base at the recorded head, SHALL exit 1 with the reason otherwise, `queued: merges later outside this run` when an automatic merge is pending, and SHALL exit 2 when the host names no merge commit.
 
 #### Scenario: Auto-merge turned on instead of a merge
 
 - **WHEN** the merge command exits 0 but the pull request is still open with auto-merge pending
 - **THEN** `after-merge` exits 1 with `queued: merges later outside this run` and the item does not count as merged
+
+#### Scenario: Someone else merged other commits
+
+- **WHEN** the pull request is merged but at a head other than the one the run notes recorded
+- **THEN** `after-merge` exits 1 with `merged at a head this run did not check` and the item does not count as merged
 
 ### Requirement: A chain's own fix becomes the recorded head only once it is committed and pushed
 
@@ -46,7 +51,7 @@ After a chain commits and pushes its own fix, the chain check's `fix-pushed` SHA
 
 ### Requirement: A resumed chain acts only on its own pull request at the recorded head
 
-When a chain resumes an item whose pull request it recorded, the chain check's `resume` SHALL exit 0 only when that pull request is open on the recorded head or already merged, and SHALL exit 1 with `head moved since review`, `head unverifiable (ledger lost)`, `PR closed without merging`, `recorded PR not found` or `not opened by this chain` otherwise.
+When a chain resumes an item whose pull request it recorded, the chain check's `resume` SHALL exit 0 only when that pull request is open on the recorded head or already merged into the base at that head, and SHALL exit 1 with the reason otherwise, such as `head moved since review`, `head unverifiable (ledger lost)`, `PR closed without merging`, `recorded PR not found` or `not opened by this chain`.
 
 #### Scenario: Commits pushed while the run was stopped
 
@@ -55,5 +60,5 @@ When a chain resumes an item whose pull request it recorded, the chain check's `
 
 #### Scenario: Merged while the run was stopped
 
-- **WHEN** a resumed item's pull request was merged in the meantime
+- **WHEN** a resumed item's pull request was merged into the base at the recorded head in the meantime
 - **THEN** `resume` exits 0 and names the merge commit for the run notes

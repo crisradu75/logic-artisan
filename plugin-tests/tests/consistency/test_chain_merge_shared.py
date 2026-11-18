@@ -235,6 +235,7 @@ _SCRIPT_REASONS = (
     "head moved", "local head mismatch", "uncommitted changes", "queued: merges later outside this run",
     "merge not confirmed (state ", "fix not committed", "push not verified", "recorded PR not found",
     "PR closed without merging", "head moved since review", "not merged into ",
+    "merged at a head this run did not check",
 )
 
 
@@ -255,7 +256,7 @@ def test_chain_merge_runs_the_script_at_each_comparison() -> None:
     assert "`chain check could not run: <first line>`" in names
     assert "Do not run it again hoping for 0" in names
     record = _between(shared, "## Record the head", "## Pre-merge checks (every merge)")
-    assert _CALL + "resume --notes <run notes> --id <id>" in record
+    assert _CALL + "resume --notes <run notes> --id <id> --base <base-branch>" in record
     assert _CALL + "fix-pushed --notes <run notes> --id <id>" in record
     assert "Only `OK resume open`" in record
     assert "compared in context" not in record, "the by-eye instruction is back"
@@ -263,14 +264,20 @@ def test_chain_merge_runs_the_script_at_each_comparison() -> None:
     assert _CALL + "before-merge --notes <run notes> --id <id> --base <base-branch>" in checks
     assert "gh pr view <pr> --json state,headRefOid" not in checks, "step 1 reads the PR by eye again"
     landed = _between(shared, "## Merge, then confirm it landed", "## A fix needed after a merge")
-    assert landed.count(_CALL + "after-merge --notes <run notes> --id <id>") == 2
+    assert landed.count(_CALL + "after-merge --notes <run notes> --id <id> --base <base-branch>") == 2
+    # One spelling of the exit-2 reason in every chain file.
+    for path in (_SHARED, *_chain_files()):
+        text = _read(path)
+        assert "`chain check could not run`" not in text, f"{path.name} drops `: <first line>`"
+    assert "a relative path is read from the primary clone" in names.lower()
+    assert "`--root <worktree>`" in names
 
 
 # requirement: small-change-chains / A small change runs only after the changes it depends on merged
 def test_multi_lite_runs_the_script_at_resume_dependencies_and_its_fix() -> None:
     loop = _read(_LITE_LOOP)
     step_2 = _between(loop, "2. **Resume check", "3. **Ensure the right base.**")
-    assert _CALL + "resume --notes cla.io/retro/multi-lite-run-notes-<date>.md --id <id>" in step_2
+    assert _CALL + "resume --notes cla.io/retro/multi-lite-run-notes-<date>.md --id <id> --base <base-branch>" in step_2
     assert "gh pr view <recorded-pr-number>" not in step_2
     assert "or exit 2** →" in step_2, "exit 2 at resume must leave the PR unmerged"
     step_3 = _between(loop, "3. **Ensure the right base.**", "4. **Run `/cla:lite-pr`")
@@ -287,7 +294,12 @@ def test_multi_lite_runs_the_script_at_resume_dependencies_and_its_fix() -> None
 def test_multi_pr_runs_the_script_at_resume_and_its_fix() -> None:
     loop = _read(_PR_LOOP)
     step_1 = _between(loop, "1. **Resume check.**", "2. **Capture a real start timestamp**")
-    assert _CALL + "resume --notes cla.io/retro/multi-pr-run-notes-<date>.md --id <name>" in step_1
-    assert "`chain check could not run` on exit 2 are each a Tier A halt" in step_1
+    # A resume on a later date writes a new dated file; the change's row stays in the older one.
+    notes = "--notes 'cla.io/retro/multi-pr-run-notes-*.md'"
+    assert _CALL + f"resume {notes} --id <name> --base <base-branch>" in step_1
+    assert "`chain check could not run: <first line>` on exit 2 are each a Tier A halt" in step_1
+    step_5 = _between(loop, "5. **Merge", "6. **Capture a real end timestamp**")
+    assert f"takes `{notes}` as its `<run notes>`" in step_5
+    assert "goes on updating the row in the file that already holds it" in _read(_PR / "SKILL.md")
     step_4 = _between(loop, "4. **No-unresolved-issues enforcement", "4a. **Record the obligations")
-    assert _CALL + "fix-pushed --notes cla.io/retro/multi-pr-run-notes-<date>.md --id <name>" in step_4
+    assert _CALL + f"fix-pushed {notes} --id <name>" in step_4

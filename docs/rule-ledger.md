@@ -225,7 +225,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | "Never end a turn with nothing in flight" says why `python3`
 - not-a-rule | - | - | so the merged tree was never tested as a whole
 - keep | user's files | 6df50092 2026-10-08 (from multi-lite, cdf0795e 2026-08-06 #18); rewrites tested and reviewed code | Never rebase or force-push to clear it
-- keep | honesty | 751bed9e 2026-09-16 review findings; exit 0 can mean only queued; `chain_check.py after-merge` holds the comparison since add-chain-check-script 2026-11-18 | `state` must be `MERGED` (exit 0). Otherwise:
+- keep | honesty | 751bed9e 2026-09-16 review findings; exit 0 can mean only queued; `chain_check.py after-merge` holds the comparison since add-chain-check-script 2026-11-18 ; add-chain-check-script review 2026-11-18: a merge of another head or base is not this run's | `state` must be `MERGED` (exit 0), into `<base-branch>` at `head_sha`
 - keep | honesty | 6df50092 2026-10-08; a stale local ref pads a diff with earlier items' files | after a fetch, never the local ref
 - keep | security | 65eb2a15 2026-09-28 multi-pr never runs branch -D mid-chain | Never set `ALLOW_DESTRUCTIVE_GIT=1` to get one through.
 - keep | user's files | ee4034ad 2026-07-23 extract; pre-push guard on the default branch | Never push a fix to `<base-branch>`.
