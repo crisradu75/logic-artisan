@@ -19,6 +19,13 @@ It proposes; nothing here is built. Which checks to build is the owner's decisio
 Counted with `grep -oE '^- (judgement|hook|script|enforced|repo-test)'` over the three detail lists.
 Many of the 146 hook and script rules restate one mechanism, so they reduce to the 12 checks below.
 
+## Status (2026-11-18)
+
+- Built: checks 1 (#527), 2 (#531), 3 (#530), 4 (#529), 5 (#534), 10 (#535), 11 (#537), plus the rebase/switch gap (#539).
+- In progress: checks 7 and 8.
+- Check 9 closed by the owner: largest remaining check, lowest value per hour; its rules stay in prose.
+- Checks 6 and 12 skipped: high false-positive risk, and low value.
+
 ## Proposed checks, ranked by protected area, then by rules covered
 
 The rule counts are rough: the three lists overlap and were merged by hand.

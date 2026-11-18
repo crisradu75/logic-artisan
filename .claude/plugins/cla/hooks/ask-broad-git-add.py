@@ -49,7 +49,7 @@ entries count too, since `-f` adds them. No such entry: silent. Otherwise: ask,
 naming up to ten files and the total.
 
 Best-effort, like the warn hooks. Unparseable input, no git, not a repository,
-`--git-dir`/`--work-tree`/`GIT_DIR=` (the repository cannot be named), a
+`--git-dir`/`--work-tree`/`GIT_DIR=` in the add's own command segment (the repository cannot be named), a
 directory that does not exist, a git error or timeout, or any exception: exit 0
 silently. The hook never blocks on its own failure, so the dispatcher may also
 skip it when the handler budget is spent (`_BEST_EFFORT_HOOKS` there).
@@ -224,6 +224,10 @@ def _parse_add(args: list[str]) -> tuple[list[str], bool] | None:
     excludes = [s for s in specs if _is_exclude(s)]
     broad = [s for s in positive if _is_broad_pathspec(s)]
     if broad:
+        if any(s.endswith("*/") for s in broad):
+            # `*/` reaches git as a literal that matches nothing: probe the
+            # whole effective directory instead.
+            return excludes, force
         return broad + excludes, force
     if positive:
         return None  # named paths only, with or without -A
@@ -242,10 +246,10 @@ def _broad_invocations(command: str, cwd: str) -> list[_Invocation]:
     scanned = strip_quoted_spans(command)
     if "git" not in scanned.lower():
         return []
-    if _GIT_ENV_REPO.search(scanned):
-        return []
     found: list[_Invocation] = []
     for spans in _segments(scanned):
+        if spans and _GIT_ENV_REPO.search(scanned[spans[0][0]:spans[-1][1]]):
+            continue  # this segment names its repository by environment
         tokens = [command[a:b] for a, b in spans]
         scanned_tokens = [scanned[a:b] for a, b in spans]
         i = 0
@@ -314,7 +318,7 @@ def _status_entries(directory: str, specs: list[str], force: bool, timeout: floa
         if len(entry) < 4:
             continue
         code = entry[:2]
-        if code[0] in "RC":
+        if code[0] in "RC" or code[1] in "RC":
             index += 1  # a rename or copy carries its source path as the next field
         if code in wanted:
             paths.append(entry[3:])
@@ -347,8 +351,19 @@ def _swept_files(invocations: list[_Invocation]) -> list[str]:
     return swept
 
 
+def _quote_name(path: str) -> str:
+    """A file name with whitespace and control characters escaped.
+
+    The Copilot adapter turns an ask whose reason contains "did not run" or
+    "could not run" into a deny; an escaped space (`\\x20`) keeps a file name
+    from spelling either phrase.
+    """
+    escaped = path[:200].encode("unicode_escape").decode("ascii", "replace")
+    return escaped.replace(" ", "\\x20")
+
+
 def _ask_reason(swept: list[str]) -> str:
-    shown = ", ".join(f"`{p[:200]}`" for p in swept[:MAX_NAMED])
+    shown = ", ".join(f"`{_quote_name(p)}`" for p in swept[:MAX_NAMED])
     more = f", and {len(swept) - MAX_NAMED} more" if len(swept) > MAX_NAMED else ""
     return (
         f"a broad `git add` that would stage {len(swept)} untracked file(s) that may not "
@@ -378,7 +393,10 @@ def _decide(stdin_text: str) -> str | None:
 def main() -> int:
     try:
         reason = _decide(sys.stdin.read())
-    except Exception:  # noqa: BLE001 -- best-effort: a failure to check is silence
+    except json.JSONDecodeError:
+        return 0  # not our input to judge: stay silent
+    except Exception as exc:  # noqa: BLE001 -- best-effort: a failure to check is silence
+        print(f"ask-broad-git-add.py: skipped, {type(exc).__name__}", file=sys.stderr)
         return 0
     if reason:
         print(json.dumps({
