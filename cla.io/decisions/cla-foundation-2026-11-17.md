@@ -91,7 +91,7 @@ Left, in order:
   always, must) gets one line: the incident it came from and the protected area it covers. A rule
   with no protected area becomes guidance or goes on a removal list, and the owner approves each
   removal. Done when every such rule is tagged and the removal list is decided.
-- [ ] 4j. **Benchmark the finished plugin.** Run `/cla:multi-spec` from this repo's main on the
+- [ ] 4j. **Benchmark the finished plugin.** (run and blind judge in `plugin-tests/benchmarks/mnemo/baseline/plugin-2026-11-18/score.md`; awaits the owner's acceptance) Run `/cla:multi-spec` from this repo's main on the
   mnemo benchmark and judge it blind against the step-3 baseline. Done when the owner accepts the
   before/after.
 - [ ] 5a. **Changelog.** `CHANGELOG.md` `[Unreleased]` covers every merged change since
