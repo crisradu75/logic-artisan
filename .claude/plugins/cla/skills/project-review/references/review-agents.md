@@ -60,7 +60,7 @@ about the dispatch (five agents, one message, the model routing, the caps) is un
 Two rules that survive the substitution: **grade the repo in front of you, not the
 application it is missing** — "no product code" is this repo's design, not a Vision gap;
 and a dimension whose subject genuinely does not exist here (a datastore, an i18n layer)
-is reported as **N/A with one line of why**, never graded D for absence.
+is reported as **N/A with one line of why**.
 
 ### Agent 1: Vision & Clarity
 

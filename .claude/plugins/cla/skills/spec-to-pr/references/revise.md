@@ -9,8 +9,6 @@ Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 applied a pr
 - **Round 1** dispatches its reviewers in parallel: one message, one `Agent` call per reviewer. A `Workflow` fan-out (per-call effort, schema-forced findings) only when the user has opted into workflows (said so, or workflow mode is on). A skill run is not that opt-in; never start a `Workflow` without it.
 - **Round N ≥ 2** dispatches directly via `Agent`, with the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for round 1's final level. A later round never uses a lower level than round 1.
 
-Never chain through `Skill(pr-review-toolkit:review-pr)`; dispatch its agents yourself.
-
 ## Round 1 — agent selection + routing
 
 Read the `Risk:` line Ship wrote in the PR body. Dispatch the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for that level. If the diff shows a risk signal the line missed, raise the level to high. If you raised it, rewrite the PR body's `Risk:` clause to the raised level (`gh pr edit --body`, keeping the rest of the one-liner). If the line is missing, unreadable or names an unknown level, treat the diff as high risk ("A missing line means high" in that section). In that case record a Handoff Issue, which `handoff.md` always lists. The rows below add the narrow agents. The **diff slice** column is what each agent is given — the main reviewers get the full diff, the narrow agents a filtered slice:
