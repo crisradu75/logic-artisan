@@ -7,8 +7,8 @@ every session does not grow. This test is what keeps the ledger true: a prose li
 failed in every repo that had one (the same decision's evidence base).
 
 What it checks:
-- every line of a shipped `.md` file holding the whole word `never`, `always` or `must` contains the
-  fragment of one of that file's ledger entries;
+- every whole word `never`, `always` or `must` in a shipped `.md` file sits inside the fragment of
+  one of that file's ledger entries, so each rule on a line needs its own entry;
 - every fragment occurs in its file as many times as it has entries (once, unless the file repeats a
   rule word for word), so a reworded or deleted rule makes its entry fail;
 - verdicts and areas agree: a `keep` names a protected area, `guidance` and `remove?` name `none`.
@@ -113,19 +113,40 @@ def test_every_fragment_occurs_once_per_entry_in_its_file(ledger):
     assert not bad, "\n".join(bad)
 
 
-def test_every_absolute_rule_line_in_the_shipped_text_has_an_entry(ledger):
+def uncovered_keywords(line: str, fragments: list[str]) -> list[str]:
+    """The never/always/must occurrences in `line` that no fragment found in `line` spans.
+
+    Per word, not per line: a second rule added to a line that already has an entry needs its own
+    entry, so one fragment cannot stand in for every rule on its line."""
+    spans = []
+    for f in fragments:
+        start = line.find(f)
+        while start != -1:
+            spans.append((start, start + len(f)))
+            start = line.find(f, start + 1)
+    return [m.group(0) for m in KEYWORD.finditer(line)
+            if not any(a <= m.start() and m.end() <= b for a, b in spans)]
+
+
+def test_every_absolute_rule_in_the_shipped_text_has_an_entry(ledger):
     """A new never/always/must in a shipped `.md` file needs its ledger line in the same change."""
     missing = []
     for md in shipped_md():
         rel = md.relative_to(_PLUGIN).as_posix()
         fragments = [e[3] for e in ledger.get(rel, [])]
         for n, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
-            if KEYWORD.search(line) and not any(f in line for f in fragments):
-                missing.append(f"{rel}:{n}: {line.strip()}")
+            if words := uncovered_keywords(line, fragments):
+                missing.append(f"{rel}:{n}: {', '.join(words)} not inside a fragment: {line.strip()}")
     assert not missing, (
         "lines with never/always/must and no entry in docs/rule-ledger.md "
         "(add `- verdict | area | origin | fragment` under the file's heading):\n" + "\n".join(missing)
     )
+
+
+def test_a_second_rule_on_an_entered_line_is_still_reported():
+    line = "Never push to main, and the check must run first."
+    assert uncovered_keywords(line, ["Never push to main"]) == ["must"]
+    assert uncovered_keywords(line, ["Never push to main", "the check must run first"]) == []
 
 
 def test_the_parser_rejects_a_malformed_entry():
