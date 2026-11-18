@@ -94,7 +94,7 @@ Left, in order:
 - [ ] 4j. **Benchmark the finished plugin.** Run `/cla:multi-spec` from this repo's main on the
   mnemo benchmark and judge it blind against the step-3 baseline. Done when the owner accepts the
   before/after.
-- [ ] 5a. **Changelog.** `CHANGELOG.md` `[Unreleased]` covers every merged change since
+- [x] 5a. **Changelog.** (#520) `CHANGELOG.md` `[Unreleased]` covers every merged change since
   `cla--v2.3.0`, and says how an already set-up repo adopts the new seeded rules (re-run
   `/cla:cla-setup` and accept its listed update). Done when merged after one docs review.
 - [ ] 5b. **Trial in mnemo before tagging.** Run this repo's main in mnemo, as `--plugin-dir`, on
