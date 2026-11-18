@@ -20,6 +20,15 @@ the skills fall back to the default list of protected areas.
 
 ### Added
 
+- **`ask-destructive-git` asks before three more history changes**, each only when work is at
+  stake: a `git rebase`, or a `git pull` that rebases, that would rewrite a commit already on a
+  remote-tracking ref (a rebase of local-only commits, one that replays nothing, and a rebase action
+  such as `--continue` stay silent; a stale or missing remote-tracking ref is a known miss);
+  `git switch -C` or `git checkout -B` over an existing branch whose commits no other branch, tag,
+  remote-tracking branch or the start point reaches; and a merging switch (`-m`, `--merge`,
+  `--conflict`) while changes are staged. All three fail open with a note on stderr, pass no
+  command text to git as an option, and their git calls spend only what the hook's other checks
+  left of its time budget (#539).
 - **An `ask-secret-in-checkpoint` guard hook:** an Edit or Write under `cla.io/checkpoints/`,
   `cla.io/decisions/`, `cla.io/feedback/` or `cla.io/lessons-learned/` asks first when its new text
   holds a secret-shaped string: an AWS, GitHub, Anthropic, OpenAI, Slack, Google or Stripe live key,
