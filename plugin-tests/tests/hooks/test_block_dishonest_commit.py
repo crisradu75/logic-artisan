@@ -362,3 +362,41 @@ def test_read_add_names_what_it_stages():
     assert adds("git add --chmod +x a.py") == [(["a.py"], False, False)]
     for nothing in ("git add", "git add -n a.py", "git add -p", "git add --pathspec-from-file=f", "git add --bogus a"):
         assert adds(nothing) == [], nothing
+
+
+# --------------------------------------------------------------------------- #
+# Review fixes
+# --------------------------------------------------------------------------- #
+
+# requirement: git-guards / A commit message carrying Measured-by none is refused
+@pytest.mark.parametrize("command", [
+    'git commit -F - <<EOF\nfix: x\n\nNever write\nMeasured-by: none\nin a commit.\nEOF\n',
+    'git commit -F - <<EOF\nfix: x\n\nbody\n\n    Measured-by: none\n\nmore prose\nEOF\n',
+])
+def test_a_body_mention_of_the_trailer_is_not_a_trailer(command, monkeypatch, capsys):
+    _silent(command, monkeypatch, capsys)
+
+
+def test_a_real_final_trailer_after_a_body_is_blocked(monkeypatch, capsys):
+    _blocked('git commit -F - <<EOF\nfix: x\n\nbody\n\nMeasured-by: none\nEOF\n', monkeypatch, capsys)
+
+
+@pytest.mark.parametrize("command", [
+    'gh pr create --body "$(cat <<\'EOF\'\n    git commit --allow-empty -m "fix: review round 2"\nEOF\n)"',
+    'cat > f.md <<\'EOF\'\ngit commit --allow-empty -m "fix: review round 2"\nEOF\n',
+])
+def test_a_commit_written_inside_another_commands_heredoc_is_data(command, monkeypatch, capsys):
+    _silent(command, monkeypatch, capsys)
+
+
+def test_a_commit_after_a_heredoc_is_still_read(monkeypatch, capsys):
+    _blocked('cat <<EOF\nx\nEOF\ngit commit --allow-empty -m "fix: review round 2"', monkeypatch, capsys)
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "mkfifo"), reason="no FIFOs on Windows")
+def test_a_fifo_given_to_dash_f_does_not_hang(tmp_path, monkeypatch, capsys):
+    import os
+    os.mkfifo(tmp_path / "pipe")
+    started = time.perf_counter()
+    _silent("git commit -F pipe", monkeypatch, capsys, cwd=tmp_path)
+    assert time.perf_counter() - started < 3.0

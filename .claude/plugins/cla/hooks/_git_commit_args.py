@@ -469,6 +469,8 @@ def _read_message_file(path: str, directory: str | None) -> str | None:
         return None
     try:
         full = os.path.join(directory, os.path.expanduser(path))
+        if not os.path.isfile(full):  # a FIFO or device would block the read
+            return None
         with open(full, "rb") as handle:
             data = handle.read(MAX_MESSAGE_FILE_BYTES)
     except (OSError, ValueError):
@@ -648,6 +650,28 @@ def read_add(command: str, match_start: int, match_end: int, opts_text: str, cwd
     return add
 
 
+def _heredoc_spans(command: str) -> list[tuple[int, int]]:
+    """The `(start, end)` of every heredoc body in `command`, in order. An
+    operator inside an earlier body is skipped, which keeps this linear."""
+    spans: list[tuple[int, int]] = []
+    if "<<" not in command:
+        return spans
+    covered = 0
+    for op in _HEREDOC_IN_SUBST.finditer(command):
+        if op.start() < covered or command.startswith("<<<", op.start()):
+            continue
+        delim = next((g for g in op.groups()[1:] if g is not None), None)
+        if not delim:
+            continue
+        nl = command.find("\n", op.end())
+        if nl < 0:
+            continue
+        _body, end = _heredoc_body(command, nl + 1, delim, op.group(1) == "-")
+        spans.append((nl + 1, end))
+        covered = end
+    return spans
+
+
 def find_invocations(command: str, scanned: str, matcher, cwd: str) -> list:
     """Every readable `git commit` and `git add` in `command`, in order.
 
@@ -663,9 +687,15 @@ def find_invocations(command: str, scanned: str, matcher, cwd: str) -> list:
     # Once per command, not per invocation: a scan of the whole text for each
     # of many invocations is quadratic.
     base: str | None = None if _GIT_ENV_REPO.search(command) else cwd
+    bodies = _heredoc_spans(command)
+    b = 0
     for match in matcher.finditer(scanned):
         if match.start() < consumed:
             continue
+        while b < len(bodies) and bodies[b][1] <= match.start():
+            b += 1
+        if b < len(bodies) and bodies[b][0] <= match.start():
+            continue  # text inside a heredoc body is data, not a command
         opts_text = command[match.start(1):match.end(1)]
         reader = read_commit if match.group(2) == "commit" else read_add
         try:

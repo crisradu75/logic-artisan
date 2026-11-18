@@ -72,7 +72,7 @@ _MATCHER = GitInvocation(COMMIT_OR_ADD, capture_opts=True)
 # key without regard to case; the value is `none`, alone or before a remark
 # (`none (docs)`, `none - docs`, `none` and a dash), never a longer word.
 _NONE_VALUE = r"none(?=[ \t]*$|[ \t]*[(\[.,;:\u2013\u2014]|[ \t]+-)"
-_NONE_LINE = re.compile(r"^[ \t]*measured-by[ \t]*:[ \t]*" + _NONE_VALUE, re.I | re.M)
+_NONE_LINE = re.compile(r"^measured-by[ \t]*:[ \t]*" + _NONE_VALUE, re.I | re.M)
 # A `--trailer` value also takes `=` as its separator.
 _NONE_TRAILER = re.compile(r"^[ \t]*measured-by[ \t]*[:=][ \t]*" + _NONE_VALUE, re.I)
 # Kept identical to `skills/spec-to-pr/scripts/probe_state.py`'s round counter;
@@ -81,7 +81,13 @@ _ROUND_SUBJECT = re.compile(r"^fix: review round (\d+)\b")
 
 
 def _measured_by_none(commit: Commit) -> bool:
-    return any(_NONE_LINE.search(m) for m in commit.messages) or any(
+    # Only the trailer block counts, as git parses it: the last paragraph of
+    # the message, a line starting at column 0. A body line that mentions it,
+    # or an indented example, is prose.
+    last = re.split(r"\n[ \t]*\n", "\n\n".join(commit.messages).strip("\r\n \t"))[-1]
+    lines = [ln for ln in last.splitlines() if ln.strip()]
+    block = all(re.match(r"[A-Za-z0-9-]+[ \t]*:|[ \t]", ln) for ln in lines)
+    return (block and _NONE_LINE.search(last) is not None) or any(
         _NONE_TRAILER.match(t) for t in commit.trailers
     )
 
