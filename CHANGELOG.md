@@ -162,21 +162,21 @@ the skills fall back to the default list of protected areas.
   user accepts it; `new-worktree`'s manual teardown skips a worktree that holds such files (#485).
 - **`/cla:cla-setup` reads the change budget sentence as the checker does.** A config that
   capitalises "At most N requirements" is no longer listed as missing the budget, and a
-  commented-out budget line no longer counts as carrying it (#PR).
+  commented-out budget line no longer counts as carrying it (#536).
 - **`check_spec_proof.py` budget counts.** A `Budget: protected` line inside a code fence in
   `proposal.md` no longer selects the protected budget, and a byte-order mark no longer adds a word
   or hides a requirement heading on line 1. It still checks every active change whatever `--base`
-  or `--tests` says, and now says why (#PR).
+  or `--tests` says, and now says why (#536).
 - **Proposal size in review and authoring.** The review checklist's ~400-word proposal Suggestion
   leaves out the `## Open questions` and `## Risks noted` sections the `multi-spec` authoring brief
-  asks for, and the brief keeps `## Risks noted` to about 5 lines; the seeded rule is unchanged (#PR).
+  asks for, and the brief keeps `## Risks noted` to about 5 lines; the seeded rule is unchanged (#536).
 - **The design snapshot is never read with `git show HEAD:<path>`** in the shared review sweeps,
-  which had softened it to "avoid"; all three snapshot sites now agree (#PR).
+  which had softened it to "avoid"; all three snapshot sites now agree (#536).
 - **`multi-spec` finds an existing `docs/propose-<slug>` branch by its exact name**, through
-  `ship_check.py preflight`; `git ls-remote --heads` also matched a longer name ending in it (#PR).
+  `ship_check.py preflight`; `git ls-remote --heads` also matched a longer name ending in it (#536).
 - **`chain_check.py` finds a submodule's run notes** from a relative `--notes`; a bare-repository
   layout still exits 2 and now says to pass an absolute path. The chain merge steps name the fork
-  workflow as a known limitation: every merge there stops as `not opened by this chain` (#PR).
+  workflow as a known limitation: every merge there stops as `not opened by this chain` (#536).
 
 ### Development
 
@@ -191,7 +191,7 @@ specs); the repo's own OpenSpec skills regenerated for OpenSpec 2.0, with the ol
 a "Don't release" option, before any edit (#517), and runs the test gate at `-n 4` (#518). The
 rule ledger re-tags its catch-all `shipped to other repos` entries to their real areas, and its
 test catches `mustn't`, scans shipped JSON comments and fails on a not-a-rule fragment that spans a
-rule (#PR).
+rule (#536).
 
 ## [2.3.0] — 2026-11-04
 
