@@ -165,6 +165,9 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # Scans the command string for heredoc bodies carrying an eaten backslash
     # escape. Line-oriented regex over one string, no git and no filesystem.
     "warn-heredoc-escape-mangling.py": 0.0,
+    # Resolves the write target and the plugins roots with `realpath`; no
+    # subprocess, so it is enforcing in the Edit/Write dispatcher at no cost.
+    "ask-plugin-cache-edit.py": 0.0,
     # 3 x run_git(3s): one `git status --porcelain` for the checkout/restore/
     # switch paths, one for the `git clean` paths, and one memoised pathless
     # fallback both fall back to when git refuses a merged pathspec batch. Every
