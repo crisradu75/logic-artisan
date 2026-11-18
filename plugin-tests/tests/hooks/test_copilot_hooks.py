@@ -11,6 +11,8 @@ import shutil
 import subprocess
 import sys
 
+import pytest
+
 _PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 _COPILOT_HOOKS = _PLUGIN / "com.github.copilot" / "hooks" / "hooks.json"
 _CLAUDE_HOOKS = _PLUGIN / "hooks" / "hooks.json"
@@ -570,6 +572,7 @@ def test_failure_wording_of_every_dispatcher_matches_the_adapter_markers(tmp_pat
         ("dispatch-bash-pretooluse.py", bash_event, "block-cd-in-bash.py"),
         ("dispatch-edit-write-pretooluse.py", edit_event, "block-worktree-path-escape.py"),
         ("dispatch-edit-write-pretooluse.py", edit_event, "ask-plugin-cache-edit.py"),
+        ("dispatch-edit-write-pretooluse.py", edit_event, "ask-secret-in-checkpoint.py"),
     ]
     for index, (dispatcher, event, guard) in enumerate(cases):
         # An enforcing guard that is missing: the escalation inside main().
@@ -1011,6 +1014,44 @@ def test_copilot_pretooluse_asks_before_an_edit_inside_an_installed_plugin_copy(
     assert decision["permissionDecision"] == "ask", decision
     assert "ask-plugin-cache-edit.py" in decision["permissionDecisionReason"]
     _silent(_edit(tmp_path, tmp_path / "README.md", extra_env=env))
+
+
+# requirement: guard-hooks / A secret written into a committed briefing asks first
+def test_copilot_pretooluse_asks_before_a_secret_lands_in_a_checkpoint(tmp_path):
+    # A real ask, so Copilot keeps it an ask rather than turning it into a deny.
+    target = tmp_path / "cla.io" / "checkpoints" / "x.md"
+    secret = "".join(("postgres://app:", "s3cr3t", "Passw0rd", "@db.internal/app"))
+    result = _run_hook(_ADAPTER, _pre_event("Write", {"file_path": str(target), "content": secret}, tmp_path),
+                       tmp_path)
+    assert result.returncode == 0, result.stderr
+    decision = json.loads(result.stdout)
+    assert decision["permissionDecision"] == "ask", decision
+    assert "ask-secret-in-checkpoint.py" in decision["permissionDecisionReason"]
+    assert secret not in result.stdout
+    _silent(_run_hook(_ADAPTER, _pre_event("Write", {"file_path": str(target), "content": "clean"}, tmp_path),
+                      tmp_path))
+
+
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
+@pytest.mark.parametrize(
+    "tool, tool_input, key",
+    [
+        ("Write", {"text": "x"}, "content"),
+        ("Write", {"content": None}, "content"),
+        ("Edit", {"old_string": "a", "replacement": "b"}, "new_string"),
+        ("Edit", {"old_string": "a", "new_string": 7}, "new_string"),
+    ],
+)
+def test_copilot_pretooluse_denies_a_write_whose_new_text_is_missing(tmp_path, tool, tool_input, key):
+    # A payload that names the new text under another key would be scanned as
+    # empty by the Edit/Write guards, so it is denied like a missing file_path.
+    event = _pre_event(tool, {"file_path": str(tmp_path / "x.md"), **tool_input}, tmp_path)
+    _denied(_run_hook(_ADAPTER, event, tmp_path), f"no `{key}` to check")
+
+
+def test_copilot_pretooluse_allows_an_empty_write(tmp_path):
+    event = _pre_event("Write", {"file_path": str(tmp_path / "empty.md"), "content": ""}, tmp_path)
+    _silent(_run_hook(_ADAPTER, event, tmp_path))
 
 
 def test_copilot_pretooluse_allows_a_clean_edit_with_no_dates(tmp_path):

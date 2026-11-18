@@ -885,6 +885,46 @@ def test_an_errored_plugin_cache_hook_escalates_as_enforcing(monkeypatch):
     assert "ask-plugin-cache-edit.py" in nested.get("permissionDecisionReason", "")
 
 
+def _secret_url() -> str:
+    """A connection string with a real-looking password, joined at runtime so no
+    secret-shaped literal sits in this file."""
+    return "".join(("postgres://app:", "s3cr3t", "Passw0rd", "@db.internal/app"))
+
+
+# requirement: guard-hooks / A secret written into a committed briefing asks first
+def test_edit_write_dispatch_still_asks_about_a_checkpoint_secret_after_the_budget_is_spent(
+    monkeypatch, capsys, tmp_path
+):
+    """The secret guard is enforcing, not best-effort: a spent budget skips only
+    the date warning, and the ask still leaves the dispatcher."""
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    assert "ask-secret-in-checkpoint.py" not in mod._ADVISORY_HOOKS
+    target = tmp_path / "cla.io" / "checkpoints" / "x.md"
+    rc = _run_in_process(
+        mod,
+        {"tool_input": {"file_path": str(target), "content": _secret_url()}, "cwd": str(tmp_path)},
+        monkeypatch,
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    nested = json.loads(captured.out)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert "ask-secret-in-checkpoint.py" in nested["permissionDecisionReason"]
+    assert _secret_url() not in captured.out
+    assert "warn-comment-dates.py" in captured.err  # the advisory hook was the one skipped
+
+
+def test_an_errored_checkpoint_secret_hook_escalates_as_enforcing(monkeypatch):
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "ask-secret-in-checkpoint.py",
+        {"tool_name": "Write", "tool_input": {"file_path": "cla.io/checkpoints/x.md", "content": "y"}},
+    )
+    assert rc == 0
+    assert nested.get("permissionDecision") == "ask"
+    assert "ask-secret-in-checkpoint.py" in nested.get("permissionDecisionReason", "")
+
+
 def test_the_edit_write_dispatcher_ignores_a_non_ask_decision(monkeypatch):
     """Only `ask` is re-emitted; an `allow` or a malformed payload from a hook is not a prompt."""
     mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")

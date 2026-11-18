@@ -148,6 +148,12 @@ A prose edit here ships like code, and nothing compiles it. Each check comes fro
   the files are correct. If no correct file can tell the real check from the broken one, add a bad
   input file instead of breaking the check. Never leave a planted bug no test can catch in a batch.
 
+**Weigh cost against value before every check, review round or fix** (owner decision 2026-11-18).
+If a step costs more than it can plausibly catch, skip it and say why in one line; when the call is
+close, ask. Fix only blocking findings (`blocking-findings.md`); close the rest with a one-line reason
+instead of coding them. A green or killed result is not re-run: a mutant already checked by hand is
+not planted again, and a second review round runs only when a fix touched a guard's decision logic.
+
 **Match the checking to the change, and run each gate once.** The five checks are sized for a fix
 or a new component. A small addition to something already built and tested does not need them. A
 green run is not more true for being repeated: re-run only to test for a flake, and then fix the

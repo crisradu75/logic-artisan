@@ -638,6 +638,19 @@ def test_the_edit_write_dispatcher_runs_the_plugin_cache_hook_as_enforcing():
     assert _load_dispatch_lib().HOOK_WORST_CASE_SECONDS["ask-plugin-cache-edit.py"] == 0.0
 
 
+def test_the_edit_write_dispatcher_runs_the_checkpoint_secret_hook_as_enforcing():
+    # Enforcing, not best-effort: it is pure text inspection (no subprocess), and
+    # a secret it misses is committed into git history.
+    dispatcher_path = _HOOKS_DIR / "dispatch-edit-write-pretooluse.py"
+    order = _hook_files_list(dispatcher_path)
+    assert "ask-secret-in-checkpoint.py" in order
+    assert order[-1] == "block-worktree-path-escape.py"
+    assert "ask-secret-in-checkpoint.py" not in _named_collection(dispatcher_path, "_ADVISORY_HOOKS")
+    assert _best_effort(dispatcher_path) == set()
+    assert _changes_the_outcome((_HOOKS_DIR / "ask-secret-in-checkpoint.py").read_text(encoding="utf-8"))
+    assert _load_dispatch_lib().HOOK_WORST_CASE_SECONDS["ask-secret-in-checkpoint.py"] == 0.0
+
+
 def test_the_outcome_detector_is_not_vacuous():
     # A structural guard that matches nothing passes forever. Pin that the
     # detector actually recognizes both shapes it claims to cover, so a future
