@@ -60,17 +60,20 @@ def test_the_fixture_helper_emits_exactly_what_it_is_asked_for():
         assert len(_words(n).split()) == n, n
 
 
+def _build_repo(root: Path) -> None:
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "t@example.invalid")
+    _git(root, "config", "user.name", "T")
+    (root / "docs").mkdir()
+    (root / REL).write_text(_words(400), encoding="utf-8")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "add guide")
+
+
 @pytest.fixture
-def repo(tmp_path: Path) -> Path:
+def repo(tmp_path: Path, cached_git_repo) -> Path:
     """Throwaway repo with one committed 400-word file, nested under docs/."""
-    _git(tmp_path, "init", "-q")
-    _git(tmp_path, "config", "user.email", "t@example.invalid")
-    _git(tmp_path, "config", "user.name", "T")
-    (tmp_path / "docs").mkdir()
-    (tmp_path / REL).write_text(_words(400), encoding="utf-8")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-qm", "add guide")
-    return tmp_path
+    return cached_git_repo("warn_wholesale_rewrite", _build_repo, tmp_path)
 
 
 def _payload(path: str = REL, tool: str = "Write") -> dict:

@@ -114,9 +114,22 @@ def run_temp_dir(tmp_path_factory):
 # Under xdist each worker builds its own copy.
 
 
+def _snapshot(root: Path) -> dict:
+    return {str(f.relative_to(root)): f.read_bytes()
+            for f in sorted(root.rglob("*")) if f.is_file() and not f.is_symlink()}
+
+
 @pytest.fixture(scope="session")
 def _git_repo_templates(tmp_path_factory):
-    return {}
+    """key -> (template dir, snapshot taken right after it was built).
+
+    At session end each template must be unchanged: a test that wrote into it
+    (through a path the repo records, such as a remote URL) would make every
+    later test start from a different repo."""
+    templates = {}
+    yield templates
+    changed = [key for key, (root, snap) in templates.items() if _snapshot(root) != snap]
+    assert not changed, f"a test wrote into the shared template repo(s): {changed}"
 
 
 @pytest.fixture
@@ -127,12 +140,13 @@ def cached_git_repo(_git_repo_templates, tmp_path_factory):
     import shutil
 
     def make(key: str, build, dest: Path) -> Path:
-        template = _git_repo_templates.get(key)
-        if template is None:
+        entry = _git_repo_templates.get(key)
+        if entry is None:
             template = tmp_path_factory.mktemp("repo-template") / "repo"
             template.mkdir()
             build(template)
-            _git_repo_templates[key] = template
+            entry = _git_repo_templates[key] = (template, _snapshot(template))
+        template = entry[0]
         shutil.copytree(template, dest, symlinks=True, dirs_exist_ok=True)
         return dest
 

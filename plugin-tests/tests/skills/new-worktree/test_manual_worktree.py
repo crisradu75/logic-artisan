@@ -27,16 +27,7 @@ def _git(cwd, *args):
     )
 
 
-@pytest.fixture
-def repo(tmp_path):
-    """A repo with one commit on `main` and an `origin` pointing at itself.
-
-    Self-remote rather than a second clone: the script only needs
-    `refs/remotes/origin/*` to resolve, and a fetch from itself produces that
-    with far less setup than a real pair.
-    """
-    r = tmp_path / "repo"
-    r.mkdir()
+def _build_repo(r):
     _git(r, "init", "-q", "-b", "main")
     _git(r, "config", "user.email", "a@b.c")
     _git(r, "config", "user.name", "a")
@@ -45,6 +36,19 @@ def repo(tmp_path):
     _git(r, "commit", "-q", "-m", "seed")
     _git(r, "remote", "add", "origin", str(r))
     _git(r, "fetch", "-q", "origin")
+
+
+@pytest.fixture
+def repo(tmp_path, cached_git_repo):
+    """A repo with one commit on `main` and an `origin` pointing at itself.
+
+    Self-remote rather than a second clone: the script only needs
+    `refs/remotes/origin/*` to resolve, and a fetch from itself produces that
+    with far less setup than a real pair.
+    """
+    r = cached_git_repo("manual_worktree", _build_repo, tmp_path / "repo")
+    # The copy's origin still names the template; point it back at this repo.
+    _git(r, "remote", "set-url", "origin", str(r))
     return r
 
 
