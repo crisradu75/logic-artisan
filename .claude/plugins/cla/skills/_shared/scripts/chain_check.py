@@ -47,11 +47,12 @@ EXIT CODES (the same for every subcommand, and the same as ``ship_check.py``):
       or failing, the remote not answering, not a repository). Never a pass.
 
 before-merge (``--base`` is the repo's default branch, resolved). Reasons, in precedence order:
+  recorded PR not found            ``gh`` reports no PR with the row's number
   head unverifiable (ledger lost)  the row has no ``head_sha``
-  not open (state <STATE>)         the PR's ``state`` is not ``OPEN``
   not opened by this chain         the PR's head branch is not the row's ``branch``, or it comes
                                    from a fork
   wrong base (<name>)              the PR's base is not ``--base``
+  not open (state <STATE>)         the PR's ``state`` is not ``OPEN``
   head moved                       the PR's ``headRefOid``, or ``origin``'s ``refs/heads/<branch>``
                                    (``git ls-remote``, exact name), is not ``head_sha``
   local head mismatch              ``git rev-parse HEAD`` is not ``head_sha``
@@ -70,9 +71,9 @@ fix-pushed (after the orchestrator commits and pushes its own fix to the row's b
 
 resume (before an item that already has a PR is handed back to the skill or merged):
   recorded PR not found            ``gh`` reports no PR with the row's number
-  not opened by this chain         as in before-merge
-  PR closed without merging        ``state`` is ``CLOSED``
   head unverifiable (ledger lost)  ``state`` is ``OPEN`` and the row has no ``head_sha``
+  not opened by this chain         as in before-merge, whatever the state
+  PR closed without merging        ``state`` is ``CLOSED``
   head moved since review          ``state`` is ``OPEN`` and ``headRefOid`` is not ``head_sha``
   A pass has a mode: ``OK resume open:`` (open, on the recorded head) or ``OK resume merged:``
   (merged, with the merge commit to record).
@@ -123,8 +124,8 @@ _NOT_FOUND = "Could not resolve to a PullRequest"
 _RANK = {
     kind: n
     for n, kind in enumerate([
-        "not-found", "head-unverifiable", "not-chain-pr", "not-open", "merged", "closed",
-        "wrong-base", "pr-head", "remote-head", "local-head", "dirty",
+        "not-found", "head-unverifiable", "not-chain-pr", "wrong-base", "not-open", "closed",
+        "pr-head", "remote-head", "local-head", "dirty",
         "queued", "not-merged", "no-commit", "remote-missing", "remote-differs",
         "dep-missing", "dep-not-merged", "dep-no-merge-commit", "dep-not-in-base",
     ])

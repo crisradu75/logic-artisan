@@ -107,5 +107,6 @@ Re-invoking `/cla:multi-pr` after an interruption picks up cleanly — full mech
 - `references/change-loop.md` — Phase 3's full per-change procedure (resume check, timestamps, invoking `/cla:spec-to-pr`, the deferred-finding fix recipe, the merge commands, the actual-vs-predicted timing report) and the Resume-behavior mechanics (mandatory-read from the Phase 3 stub and the Resume-behavior stub)
 - `references/cleanup.md` — Phase 4's full verify/delete/prune/confirm/report sequence (mandatory-read from the Phase 4 stub)
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/chain-merge.md` — the merge mechanics shared with `multi-lite`: bootstrap, the autonomy override's limits on merging, recording the head, the pre-merge checks, the merge command and its confirmation, a host refusal, and a fix after a merge (mandatory-read from Phase 0 and change-loop step 5)
+- `${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py` — the head and PR-state checks of change-loop steps 1, 4 and 5, run as `chain-merge.md` says
 - `cla.io/overlays/multi-pr.md`, if present — rules specific to this skill in this repo, such as a measured default that overrides one below
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/base-branch-resolution.md` — the `<base-branch>` resolution rule, shared verbatim with `multi-lite`/`multi-spec`.

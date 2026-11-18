@@ -219,3 +219,75 @@ def test_the_ci_wait_is_one_background_watch_under_a_watchdog_everywhere() -> No
     docs = [*_SKILLS.rglob("*.md"), _README, _GUIDE, *(_ROOT / "docs").glob("*.md"), *(_ROOT / "openspec" / "specs").rglob("*.md")]
     stale_hits = [str(p.relative_to(_ROOT)) for p in docs if stale.search(_read(p))]
     assert not stale_hits, f"these files still state the old foreground two-call CI wait: {stale_hits}"
+
+
+# ---------------------------------------------------------------- chain_check.py wiring
+#
+# The comparisons themselves are `chain_check.py`, tested in
+# `tests/skills/_shared/test_chain_check.py`. These tests pin that each chain step runs the
+# subcommand that holds its rule, never compares by eye again, and treats exit 2 as no pass.
+
+_CHAIN_CHECK = _SKILLS / "_shared" / "scripts" / "chain_check.py"
+_CALL = '"${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" '
+# Every reason the script prints on a FAIL line, which the chain writes as the item's reason.
+_SCRIPT_REASONS = (
+    "head unverifiable (ledger lost)", "not opened by this chain", "wrong base (", "not open (state ",
+    "head moved", "local head mismatch", "uncommitted changes", "queued: merges later outside this run",
+    "merge not confirmed (state ", "fix not committed", "push not verified", "recorded PR not found",
+    "PR closed without merging", "head moved since review", "not merged into ",
+)
+
+
+def test_every_reason_the_script_prints_is_one_the_prose_names() -> None:
+    source = _read(_CHAIN_CHECK)
+    prose = _read(_SHARED) + _read(_LITE_LOOP) + _read(_LITE / "references" / "phase4-and-log.md")
+    for reason in _SCRIPT_REASONS:
+        assert reason in source, f"chain_check.py no longer prints {reason!r}"
+        if reason != "not merged into ":  # deps names the dependencies instead; see step 3
+            assert reason in prose, f"no chain file names the reason {reason!r}"
+    assert "OK resume open" in source and "OK resume merged" in source
+
+
+def test_chain_merge_runs_the_script_at_each_comparison() -> None:
+    shared = _read(_SHARED)
+    names = _between(shared, "**`chain_check.py` makes the head and state comparisons below.**", "## Bootstrap")
+    assert "Exit 2 →" in names and "This is not a pass" in names
+    assert "`chain check could not run: <first line>`" in names
+    assert "Do not run it again hoping for 0" in names
+    record = _between(shared, "## Record the head", "## Pre-merge checks (every merge)")
+    assert _CALL + "resume --notes <run notes> --id <id>" in record
+    assert _CALL + "fix-pushed --notes <run notes> --id <id>" in record
+    assert "Only `OK resume open`" in record
+    assert "compared in context" not in record, "the by-eye instruction is back"
+    checks = _between(shared, "## Pre-merge checks (every merge)", "## Merge, then confirm it landed")
+    assert _CALL + "before-merge --notes <run notes> --id <id> --base <base-branch>" in checks
+    assert "gh pr view <pr> --json state,headRefOid" not in checks, "step 1 reads the PR by eye again"
+    landed = _between(shared, "## Merge, then confirm it landed", "## A fix needed after a merge")
+    assert landed.count(_CALL + "after-merge --notes <run notes> --id <id>") == 2
+
+
+# requirement: small-change-chains / A small change runs only after the changes it depends on merged
+def test_multi_lite_runs_the_script_at_resume_dependencies_and_its_fix() -> None:
+    loop = _read(_LITE_LOOP)
+    step_2 = _between(loop, "2. **Resume check", "3. **Ensure the right base.**")
+    assert _CALL + "resume --notes cla.io/retro/multi-lite-run-notes-<date>.md --id <id>" in step_2
+    assert "gh pr view <recorded-pr-number>" not in step_2
+    assert "or exit 2** →" in step_2, "exit 2 at resume must leave the PR unmerged"
+    step_3 = _between(loop, "3. **Ensure the right base.**", "4. **Run `/cla:lite-pr`")
+    assert _CALL + "deps --notes cla.io/retro/multi-lite-run-notes-<date>.md --ids <every id in depends_on>" in step_3
+    assert "--against origin/<base-branch>" in step_3
+    blocked = next(line for line in step_3.splitlines() if "deps --notes" in line)
+    assert "Exit 1 → mark this candidate `blocked-by-upstream-failure`" in blocked
+    assert "Exit 2 → the same" in blocked
+    step_7 = _between(loop, "7. **Enforce `/cla:lite-pr`'s deferred review findings", "8. **Merge per the confirmed policy")
+    assert _CALL + "fix-pushed --notes cla.io/retro/multi-lite-run-notes-<date>.md --id <id>" in step_7
+
+
+# requirement: change-chains / A resumed chain acts only on its own pull request at the recorded head
+def test_multi_pr_runs_the_script_at_resume_and_its_fix() -> None:
+    loop = _read(_PR_LOOP)
+    step_1 = _between(loop, "1. **Resume check.**", "2. **Capture a real start timestamp**")
+    assert _CALL + "resume --notes cla.io/retro/multi-pr-run-notes-<date>.md --id <name>" in step_1
+    assert "`chain check could not run` on exit 2 are each a Tier A halt" in step_1
+    step_4 = _between(loop, "4. **No-unresolved-issues enforcement", "4a. **Record the obligations")
+    assert _CALL + "fix-pushed --notes cla.io/retro/multi-pr-run-notes-<date>.md --id <name>" in step_4

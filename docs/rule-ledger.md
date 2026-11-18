@@ -213,18 +213,19 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | 751bed9e 2026-09-16 review findings; shared environment state (migration, seeded data) | **The shared-state answer is never pre-answered.**
 - not-a-rule | - | - | what else the override skips and what it never skips
 - keep | honesty | 893dac87 2026-08-14 (#73) / 6df50092 2026-10-08 head-commit guards | the item's review and full test gate must cover
-- keep | honesty | 87aeac6a 2026-09-16 third-round review findings; no commit made when a hook rejected it | `git rev-parse HEAD` must differ from the row's current `head_sha`
-- keep | honesty | 87aeac6a 2026-09-16 third-round review findings; uncommitted fix seen by every later test | must be empty. Anything listed is part of
-- keep | honesty | 6df50092 2026-10-08 head-commit guards; reason `push not verified` | `git rev-parse HEAD` must equal `git ls-remote origin <branch>`.
+- keep | honesty | 87aeac6a 2026-09-16 third-round review findings; no commit made when a hook rejected it; `chain_check.py fix-pushed` holds the comparison since add-chain-check-script 2026-11-18 | `git rev-parse HEAD` must differ from the row's current `head_sha`
+- keep | honesty | 87aeac6a 2026-09-16 third-round review findings; uncommitted fix seen by every later test; `chain_check.py fix-pushed` holds the comparison since add-chain-check-script 2026-11-18 | must be empty. Anything listed is part of
+- keep | honesty | 6df50092 2026-10-08 head-commit guards; reason `push not verified`; `chain_check.py fix-pushed` holds the comparison since add-chain-check-script 2026-11-18 | `git rev-parse HEAD` must equal `git ls-remote origin <branch>`.
 - keep | user's files | 751bed9e 2026-09-16 review findings; a moved head holds commits nobody reviewed | **A resume never merges a moved head:**
-- keep | user's files | 1325ac6a 2026-09-16 multi-lite merge-each-clean policy | `headRefOid` must equal `head_sha`; a different head means commits nobody tested
-- keep | user's files | ba21ee82 2026-09-16, fix: address second-round review findings | must be `OPEN`. `headRefOid`
-- keep | honesty | ba21ee82 2026-09-16 second-round review findings | `git rev-parse HEAD` must equal `head_sha`. If it
-- keep | honesty | 87aeac6a 2026-09-16 third-round review findings | must be empty; anything listed would be tested by the gate below
+- keep | user's files | 1325ac6a 2026-09-16 multi-lite merge-each-clean policy; `chain_check.py before-merge` holds the comparison since add-chain-check-script 2026-11-18 | `headRefOid` must equal `head_sha`; a different head means commits nobody tested
+- keep | user's files | ba21ee82 2026-09-16, fix: address second-round review findings; `chain_check.py before-merge` holds the comparison since add-chain-check-script 2026-11-18 | `state` must be `OPEN`, or the reason is `not open (state <state>)`.
+- keep | user's files | add-chain-check-script 2026-11-18: the PR head alone missed a remote branch moved after `gh` answered; `chain_check.py before-merge` compares both | must equal `head_sha` too, for the same reason.
+- keep | honesty | ba21ee82 2026-09-16 second-round review findings; `chain_check.py before-merge` holds the comparison since add-chain-check-script 2026-11-18 | `git rev-parse HEAD` must equal `head_sha`, or the reason is `local head mismatch`.
+- keep | honesty | 87aeac6a 2026-09-16 third-round review findings; `chain_check.py before-merge` holds the comparison since add-chain-check-script 2026-11-18 | must be empty; anything listed would be tested by the gate below
 - not-a-rule | - | - | "Never end a turn with nothing in flight" says why `python3`
 - not-a-rule | - | - | so the merged tree was never tested as a whole
 - keep | user's files | 6df50092 2026-10-08 (from multi-lite, cdf0795e 2026-08-06 #18); rewrites tested and reviewed code | Never rebase or force-push to clear it
-- keep | honesty | 751bed9e 2026-09-16 review findings; exit 0 can mean only queued | `state` must be `MERGED`. Otherwise:
+- keep | honesty | 751bed9e 2026-09-16 review findings; exit 0 can mean only queued; `chain_check.py after-merge` holds the comparison since add-chain-check-script 2026-11-18 | `state` must be `MERGED` (exit 0). Otherwise:
 - keep | honesty | 6df50092 2026-10-08; a stale local ref pads a diff with earlier items' files | after a fetch, never the local ref
 - keep | security | 65eb2a15 2026-09-28 multi-pr never runs branch -D mid-chain | Never set `ALLOW_DESTRUCTIVE_GIT=1` to get one through.
 - keep | user's files | ee4034ad 2026-07-23 extract; pre-push guard on the default branch | Never push a fix to `<base-branch>`.
@@ -644,15 +645,15 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/multi-lite/references/candidate-loop.md
 - not-a-rule | - | - | Don't run a candidate on a base its dependency never landed on.
 - keep | user's files | ba21ee82 2026-09-16, second-round review findings | never by branch or title, which can match a different PR
-- keep | user's files | ba21ee82 2026-09-16, second-round review findings | **A resume never merges a head this run did not test and review.**
+- keep | user's files | ba21ee82 2026-09-16, second-round review findings; `chain_check.py resume` holds the comparison since add-chain-check-script 2026-11-18 | **A resume never merges a head this run did not test and review.**
 - keep | user's files | ba21ee82 2026-09-16, fix: address second-round review findings | it never re-enters step 7 or step 8
 - not-a-rule | - | - | For a candidate that must merge before a later one (step 8's definition, including its changed-files check), set `failed-merge — <reason>` and quarantine as step 8 says.
 - keep | honesty | 751bed9e 2026-09-16, review findings (findings lost on resume) | **Never infer clean.**
 - keep | user's files | ba21ee82 2026-09-16, second-round review findings | (three separate commands) — never `<base-branch>` — because
 - keep | user's files | 87aeac6a 2026-09-16, third-round review findings | The status must be empty;
 - keep | user's files | text since d452a82d 2026-07-28 (downstream port) | `depends_on` must already be merged into `<base-branch>` before it runs
-- keep | user's files | 751bed9e 2026-09-16, fix: address review findings | every candidate in `depends_on` must have ledger `status: merged`
-- keep | user's files | 751bed9e 2026-09-16, fix: address review findings | `git merge-base --is-ancestor <merge_commit> HEAD` must exit 0 after the pull
+- keep | user's files | 751bed9e 2026-09-16, fix: address review findings; `chain_check.py deps` holds the comparison since add-chain-check-script 2026-11-18 | every candidate in `depends_on` must have ledger `status: merged`
+- keep | user's files | 751bed9e 2026-09-16, fix: address review findings; `chain_check.py deps` holds the comparison since add-chain-check-script 2026-11-18 | `git merge-base --is-ancestor <merge_commit> HEAD` must exit 0 after the pull
 - keep | shipped to other repos | ee4034ad 2026-07-23 (extraction); an Explore Q&A blocks the unattended run | **Descriptions must be concrete enough that
 - keep | shipped to other repos | text since ee4034ad 2026-07-23 (extraction) | Never let a candidate enter `/cla:lite-pr`'s interactive
 - not-a-rule | - | - | **Test-phase halt (hard failure — never opened a PR).**
