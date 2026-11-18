@@ -225,6 +225,10 @@ def test_dash_a_covers_the_whole_tree_even_from_a_subdirectory(repo, monkeypatch
         "git add \\\n  .",
         "true || git add .",
         "git -c core.quotepath=off --no-pager add .",
+        # A redirection target is not a pathspec, so it does not narrow `-A`.
+        "git add -A > /dev/null",
+        "git add -A >/dev/null 2>&1",
+        "git add -A 2> err.log",
     ],
 )
 def test_a_broad_add_inside_a_chain_still_asks(command, repo, monkeypatch, capsys):
@@ -372,7 +376,9 @@ def test_every_probe_shares_one_deadline(repo, monkeypatch, capsys):
     _run("git add -A && git -C sub add . && git add openspec", monkeypatch, capsys, repo)
     assert len(timeouts) == 3
     assert all(t <= hook.STATUS_BUDGET_SECONDS for t in timeouts)
-    assert timeouts == sorted(timeouts, reverse=True), "each probe gets only what is left"
+    assert all(a > b for a, b in zip(timeouts, timeouts[1:])), (
+        f"each probe gets only what is left of one deadline: {timeouts}"
+    )
 
 
 @pytest.mark.parametrize("stdin_text", ["", "not json", "[]", '{"tool_input": "x"}', '{"tool_input": {"command": 7}}'])
