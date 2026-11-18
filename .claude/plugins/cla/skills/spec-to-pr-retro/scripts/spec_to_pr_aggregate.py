@@ -344,7 +344,7 @@ def round_2_yield(records: list[tuple[str, dict]]) -> dict:
     (spec-to-pr's Revise reference); this is the health check on
     that default. A change counts when
     its Revise `findings_by_round` holds a round >= 2, and surfaces when such a
-    round found at least one Critical or Important. Changes are distinct
+    round found at least one blocking Critical or Important. Changes are distinct
     (ledger, change) pairs, so a re-run change counts once. `records` is
     (ledger, record) over the window.
 

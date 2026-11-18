@@ -178,7 +178,7 @@ Each round, smoke first: a smoke failure → diagnose and fix, decrement, re-run
 
 The exceptions:
 - **Bootstrap permission decline** — halts before any phase.
-- **`--gate-on-push` / `--interactive`** — pause immediately before push and PR open. Decline → halt cleanly, Ship and Revise `skip` ("user declined gate"), then the terminal report.
+- **`--gate-on-push` / `--interactive`** — pause immediately before push and PR open. Decline → halt cleanly, Ship and Revise `skip` ("user declined gate", shown ✗ aborted, so no merge line), then the terminal report.
 - **Mid-flow scope-split ask** — Review finds the artifacts materially stale or the scope separable into several PRs: one `AskUserQuestion` with 3–4 paths (tight / medium / full scope / halt) before Implement. Content-based, never size-based. Under `/cla:multi-pr` only its blocker case (f); otherwise a GitHub issue. Detail: `references/scope-asks.md`.
 - A user interrupt ("stop", "wait", Ctrl-C) halts.
 

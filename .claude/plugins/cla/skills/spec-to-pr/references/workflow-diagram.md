@@ -71,7 +71,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
             │     ↓               │            (reviewers per model-routing.md)
             │  APPLY PR FIXES     │   commit as `fix: review round N`
             │     ↓               │   (via git add + git commit)
-            │  (push, re-review)  │   ✓ 0 Critical+Important after cap
+            │  (push, re-review)  │   ✓ 0 blocking findings after cap
             └──────────┬──────────┘   ⚠ residue after cap
                        │
                        ▼
@@ -109,7 +109,7 @@ step — it ran in Archive)
 | ✓ clean | success criterion met | per-phase rule |
 | ⚠ proceeded with issues | criterion failed but workflow continued (continue-on-everything) | every other failure |
 | – skipped | no work to do; does not hold back the merge line | e.g. doc-only change has no tests |
-| ✗ aborted | orchestration failure (rare; halt); holds back the merge line | only user-decline at gate or bootstrap |
+| ✗ aborted | orchestration failure (rare; halt), or the user declining the push gate (Ship and Revise skip); holds back the merge line | only user-decline at gate or bootstrap |
 
 ## Cap quick reference
 

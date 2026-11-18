@@ -20,12 +20,24 @@ from pathlib import Path
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 _REFERENCE = _PLUGIN_ROOT / "skills" / "_shared" / "references" / "blocking-findings.md"
 
-# "fix every Critical and Important", "Apply all Critical/Important findings",
-# "Triage every Critical+Important finding". A word between the quantifier and "Critical"
-# is allowed unless it is "blocking" (the correct wording), so "every open Critical" fires.
+# Four forms of "every Critical and Important finding is dealt with", none saying "blocking":
+#   active   "fix every Critical and Important", "Apply all Critical/Important findings"
+#   split    "fix all Critical and all Important"
+#   passive  "Every Critical and Important finding is fixed"
+#   verbless "0 Critical+Important after cap"
+# A word between the quantifier and "Critical" is allowed unless it is "blocking".
+# Severity definitions, ledger notes about old records and "N Critical or Important
+# findings that block a merge" do not match: none pairs a quantifier or a count with
+# one of these verbs, and the verbless form excludes a trailing "that block".
+_SEP = r"\s*(?:/|\+|,|and|or)\s*"
+_VERB = r"(?:apply|applies|fix|fixes|triage|triages|address|addresses|resolve|resolves)"
+_QUANT = r"(?:every|all|each)"
+_PAIR = rf"(?:(?!blocking\b)\w+\s+)?Critical{_SEP}(?:{_QUANT}\s+)?Important"
 _RESTATED_FILTER = re.compile(
-    r"\b(?:apply|applies|fix|fixes|triage|triages|address|addresses|resolve|resolves)\s+"
-    r"(?:every|all|each)\s+(?:(?!blocking\b)\w+\s+)?Critical\s*(?:/|\+|,|and|or)\s*Important",
+    rf"\b{_VERB}\s+{_QUANT}\s+{_PAIR}"
+    rf"|\b{_QUANT}\s+{_PAIR}(?:\s+\w+){{0,2}}?\s+(?:is|are|was|were|gets|get|must be)\s+"
+    r"(?:fixed|applied|triaged|addressed|resolved)\b"
+    rf"|\b(?:0|zero)\s+Critical(?:/|\+){{1}}Important\b(?!\s+findings?\s+that\s+block)",
     re.IGNORECASE,
 )
 
@@ -74,6 +86,10 @@ def test_the_detector_fires_on_a_restated_filter_and_not_on_the_correct_wording(
         "Apply every finding that blocks the merge.",
         "A Critical or Important is Applied only when the defect is shown gone.",
         "every Critical/Important finding triaged Deferred-Known-Issue",
+        "0 Critical or Important findings that block a merge",
+        "a record from before the filter counted every Critical and Important, and the retro reads both alike",
+        "Critical: data loss. Important: a wrong result a user would see.",
+        "✓ 0 blocking findings after cap",
     ):
         assert not restated_filters(good), f"detector flagged the correct wording: {good!r}"
 
