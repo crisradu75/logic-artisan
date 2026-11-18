@@ -57,7 +57,7 @@ For each candidate in the confirmed order:
      - **Resolved by that round** → every finding's fix passed the break-it check and the three commit checks above. Write `review: clean` and go to step 8. Step 8b runs the full Test gate on this head before any merge.
      - **A fix whose break no test caught** → write `review: unresolved` with the reason `enforcement fix unverified`, and take the unresolved branch below.
      - **Still unresolved after the round (or genuinely out of scope)** → write `review: unresolved`. Never treat it as silently clean, and **never merge a candidate carrying an unresolved blocking finding.** The status carries the review's own reason, so Phase 4 tells the user the real problem: `unresolved <severity> finding` for a finding that survived, or the reason already written beside `review` (`fix not committed`, `push not verified`, `enforcement fix unverified`, `findings lost on resume`, `deferred findings not determinable`). If this candidate must merge before a later one (step 8's definition, including its changed-files check), set `failed-review — <reason>` and quarantine as defined at the top of step 8: its downstream subtree for a `depends_on` edge, every later candidate for a shared-state edge. If it's independent, leave its PR open and set `open — <reason>`. Surface the specific finding either way, and skip step 8.
-   - **Suggestion-level findings** → reported only; never a fix round or a quarantine trigger (same as `/cla:lite-pr`).
+   - **Suggestion-level findings** → reported only, with no fix round or quarantine: they block no merge (same as `/cla:lite-pr`).
 
 8. **Merge per the confirmed policy (only when clean).** Reaching this step means step 7 wrote `review: clean`.
 

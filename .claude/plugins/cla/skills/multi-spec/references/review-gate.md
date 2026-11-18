@@ -15,7 +15,7 @@ If the plan (`references/plan-schema.md`) has only one change, there is no cross
 
 ## Step 2 — Read artifacts and pre-gather facts, across every change
 
-Read every change's `openspec/changes/<name>/{.openspec.yaml,proposal.md,design.md,tasks.md,specs/*/spec.md}` — design.md and `specs/` may be absent (design.md is written only on a stock trigger; a `skip_specs` change has no delta), and an absent one reads as "(absent)", never as an incomplete change. Batch the reads into as few messages as possible (all N changes' artifacts in one parallel batch, same "maximize parallelism in pre-gathering" rule the checklist itself states).
+Read every change's `openspec/changes/<name>/{.openspec.yaml,proposal.md,design.md,tasks.md,specs/*/spec.md}` — design.md and `specs/` may be absent (design.md is written only on a stock trigger; a `skip_specs` change has no delta), and an absent one reads as "(absent)", not as an incomplete change. Batch the reads into as few messages as possible (all N changes' artifacts in one parallel batch, same "maximize parallelism in pre-gathering" rule the checklist itself states).
 
 Run the same high-yield checks **per change** — note that `0a`–`0e` and `0j`–`0l` live in `checklist.md` itself; the repo-specific checks (`0f`–`0i`, and 1–9) come from `cla.io/overlays/review-change.md` when that file is present, which the checklist reads alongside itself. When it is present, read it here too, or the batch gate silently skips exactly the checks that catch the most repo-specific defects. Then add one check this adaptation introduces:
 

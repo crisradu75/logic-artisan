@@ -64,7 +64,7 @@ Parse `$ARGUMENTS`:
 
 ## Phase 1 — Extract candidates, sequence, and confirm (the one gate)
 
-**Read `references/candidate-extraction.md` first** for the extraction filter, the sequencing rule, and the exact confirmation-gate question shape. Mechanically: (1a) pull every lite candidate (no protected area, no shipped behaviour) out of the doc as `{id, one-line description, depends_on}`, routing non-lite items to an explicit out-of-scope list; (1b) order by `depends_on` first, document order as tiebreak — never group candidates into one PR; (1c) confirm the derived plan and the merge policy (`merge-each-clean` recommended, or `merge-dependencies-only`) once via `AskUserQuestion` before any `/cla:lite-pr` runs. This is the run's only stop (see hoisted rules), pre-confirmed only under an explicit-autonomy override.
+**Read `references/candidate-extraction.md` first** for the extraction filter, the sequencing rule, and the exact confirmation-gate question shape. Mechanically: (1a) pull every lite candidate (no protected area, no shipped behaviour) out of the doc as `{id, one-line description, depends_on}`, routing non-lite items to an explicit out-of-scope list; (1b) order by `depends_on` first, document order as tiebreak — one PR per candidate, so a failure stays in its subtree; (1c) confirm the derived plan and the merge policy (`merge-each-clean` recommended, or `merge-dependencies-only`) once via `AskUserQuestion` before any `/cla:lite-pr` runs. This is the run's only stop (see hoisted rules), pre-confirmed only under an explicit-autonomy override.
 
 ## Phase 2 — Task tracking + the run-notes ledger
 

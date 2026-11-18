@@ -30,7 +30,7 @@ git add -- cla.io/decisions/<stem>.multi-spec-plan.json
 git commit -m "docs(openspec): multi-spec plan for <batch-slug>"
 git push -u origin docs/propose-<batch-slug>
 ```
-**This is the first push to the new branch, so it MUST set the upstream (`-u`)** — `push.autoSetupRemote` is not assumed set, so a bare `git push` here would fail with "no upstream branch." Every push after this one is bare. On a resume where the branch already existed (steps 1–2 took the checkout path), only write+commit+push the plan here if it's missing — it's normally already committed from the original run.
+**This is the first push to the new branch, so it sets the upstream (`-u`)** — `push.autoSetupRemote` is not assumed set, so a bare `git push` here would fail with "no upstream branch." Every push after this one is bare. On a resume where the branch already existed (steps 1–2 took the checkout path), only write+commit+push the plan here if it's missing — it's normally already committed from the original run.
 
 ## Push post-check (shared procedure — Phase 2, every Phase 3 change, Phase 4)
 
