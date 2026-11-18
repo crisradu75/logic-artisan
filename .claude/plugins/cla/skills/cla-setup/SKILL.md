@@ -22,7 +22,7 @@ One skill for a repo's own `cla` data, in two parts:
 
 Run it once at onboarding (marketplace install → `/cla:cla-setup` → install the `pre-push` hook) and
 again whenever a skill reports missing or stale facts. A re-run on a set-up repo changes nothing
-without a yes, except that it replaces the economy rules file with the plugin's current text and appends the run-notes line to `.gitignore` when that is missing. It replaces the former `cla-init` and `sync-context` skills, which no longer exist.
+without a yes, except that it replaces the economy rules file with the plugin's current text and appends the run-notes line to `.gitignore` when that is missing.
 
 The plugin itself (`SKILL.md` bodies, agents, hooks) arrives with the install and is never touched
 here: it is a read-only cache.
@@ -243,8 +243,7 @@ It MUST exit 0. Exit 1 names each stale path: fix every one and re-run. A path c
 placeholder (`{...}` or `<...>`) is never checked, so write an example path with one. A line that
 says `found at <path>` means the path exists only deeper in the tree: it is likely such an example. Exit 2 means it could not
 look (stderr says why): fix that, and never read a 2 as a pass. Nothing in the plugin runs it
-again; a repo that wants it standing wires it into its own gate. A gate still wiring the `0.x`
-`conformance-checks/tests` directory checks nothing: say so and recommend this program.
+again; a repo that wants it standing wires it into its own gate.
 
 ## Report
 

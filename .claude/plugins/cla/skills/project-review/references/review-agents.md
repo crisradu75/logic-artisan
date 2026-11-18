@@ -21,7 +21,9 @@ files.
 >
 > **Attribution:** Where the repo has several apps or packages, every finding MUST name the app/package it applies to (e.g. one worked example per app/package this repo has), and its evidence MUST cite a specific path + line or grep result. A dimension whose quality differs sharply across components should say so in its summary rather than averaging it into one bland grade.
 >
-> **Finding caps:** At most **3 strengths** and **5 gaps**. Prioritize the most impactful.
+> **Not applicable:** A criterion whose subject does not exist in this repo (no engine, gateway, i18n layer, datastore or tenant model) is reported N/A with one line of why, never graded down for absence.
+>
+> **Findings:** Report the strengths and gaps that would change a grade or a decision, most impactful first. The orchestrator reads five reports, so leave out what would not move one.
 >
 > **Pre-verified facts:** The Baseline Facts table already verified workspace build/lint/test, including any cross-file invariants this repo's own tests enforce. Do NOT re-check these — focus on qualitative judgment.
 >

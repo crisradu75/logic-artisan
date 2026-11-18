@@ -8,8 +8,8 @@ From your working memory of each phase, as rendered Markdown in the assistant tu
 
 - Header: `## <change-name> — workflow complete` (`… completed with issues` if any phase is `warn` or `fail`).
 - PR URL + branch + mode + caps. When `<inherits>` was non-empty: one verdict line per supplied entry, `HONOURED` ones included, here ahead of the phase table, even on a resumed run that skipped Review.
-- Phases table: one row per phase — glyph (`✓` / `⚠` / `✗`), phase name, the one-line summary you held for it.
-- Counts at a glance: the ✓/⚠/✗ tally; Critical/Important/Suggestion remaining; failing test names, if any.
+- Phases table: one row per phase — glyph (`✓` / `⚠` / `✗` / `–`), phase name, the one-line summary you held for it.
+- Counts at a glance: the ✓/⚠/✗/– tally; Critical/Important/Suggestion remaining; failing test names, if any.
 - Issues encountered: every `warn`/`fail` outcome from any phase. Also, always when they apply: a missing, unreadable or unknown-level `Risk:` line treated as high, and each Revise round whose fixes were not reviewed again. When `--skip-review` or `--pr-rounds 0` skipped the docs currency check (`revise.md`, "Docs currency"; where it applies), state that docs currency was not checked.
 - **Deferred Known Issues:** every Critical/Important Revise finding triaged Deferred-Known-Issue, each with its one-line rationale, **split into three named subsections, always, even when empty:**
 
@@ -59,7 +59,7 @@ Stage + commit as `docs: TODO.md` and push to the feature branch. Skip only when
 ## 4. Next-steps gating
 
 Gated on the phase tally **and on "Rejected remedies, still open" being empty.** A non-empty one takes the **✗ branch** below even when every glyph is ✓, listing each open rejected finding with the delegate's reason in place of the failing phases. (It reaches Handoff with Revise `warn` — re-attempt or cap exhaustion — and the ⚠ branch would name `gh pr merge` over a live Critical; the section, not the glyph, tells the two apart.)
-- **All ✓:** print `gh pr merge <#> --squash --delete-branch`, with no other preamble. Put the line "Merge <PR title> into <base branch>?" just above it. **Stacked child (`--pr-base` passed):** never a bare merge command — print "lands after its parent — retarget it to the base branch first, then merge parents first with merge commits" (steps: `branch-and-pr-base.md`, "Landing a stack").
+- **All ✓ (a `–` counts as ✓ only for a phase with genuinely nothing to do, such as Test with no source-affecting paths; any other skip, such as Revise skipped by `--skip-review`, is shown as ⚠ and never gets a bare merge line; a declined push gate is ✗ aborted):** print `gh pr merge <#> --squash --delete-branch`, with no other preamble. Put the line "Merge <PR title> into <base branch>?" just above it. **Stacked child (`--pr-base` passed):** never a bare merge command — print "lands after its parent — retarget it to the base branch first, then merge parents first with merge commits" (steps: `branch-and-pr-base.md`, "Landing a stack").
 - **Any ⚠:** print "**Review warnings before merging.**" FIRST, then each ⚠ phase's one-line summary indented, and only then, on a new line, `gh pr merge` as the eventual command.
 - **Any ✗:** print "**This PR is NOT ready to merge.**", list the failing phases, and do NOT name `gh pr merge`.
 

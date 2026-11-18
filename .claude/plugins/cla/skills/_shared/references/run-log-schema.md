@@ -59,7 +59,7 @@ append stays atomic against a concurrent run.
   exhaustion — on Revise, whose round 2 follows a protected-area fix, only when it also ended `warn` or `fail`.
 - Revise: `findings_by_round` — one entry per round, built as each round closes, never
   reconstructed at Handoff. `found` is that round's deduplicated count of blocking Critical+Important findings after
-  triage (the non-blocking ones go to TODO.md and are not counted). Every round after the first also carries `trigger`, what started it, the first that
+  triage (the non-blocking ones go to TODO.md and are not counted; a record from before the filter counted every Critical and Important, and the retro reads both alike). Every round after the first also carries `trigger`, what started it, the first that
   applies: `protected` (the round before applied a protected-area fix), `reentry` (still-open findings
   re-attempted); `unknown` only when the run cannot
   tell. Records written before 2026-11-17 may carry the retired values `critical` and `high-important`; the retro counts them under their own arms. Round 1 never carries it, and the check refuses a later round without it. The retro's
@@ -71,7 +71,7 @@ append stays atomic against a concurrent run.
   `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`,
   `type-design-analyzer` (bare — not the `pr-review-toolkit:` form you pass to `Agent`) and
   `plugin-dev:skill-reviewer` (prefixed; it has no bare form); the check refuses any other key.
-  `found` = Critical+Important findings it surfaced — Suggestions excluded — and `phantom` = how
+  `found` = blocking Critical+Important findings it surfaced — Suggestions and non-blocking findings excluded — and `phantom` = how
   many of those triage disproved. It credits a finding to every agent that raised it, so its
   `found` total is usually at least `findings_by_round`'s; a finding the orchestrator raised itself
   lands only in the latter.

@@ -1,6 +1,6 @@
 # multi-spec — change-plan file schema
 
-Phase 1 derives the grouping this file records; **Phase 2 writes and commits it once (unless there are no proposals), on the batch branch, before any change is authored** — its own small commit ahead of any proposal work, so the grouping/sequencing judgment itself is protected by the same durability discipline as everything downstream. (It's written in Phase 2 rather than Phase 1 because two of its required fields — `batch_slug` and `branch` — are only derived once the branch is set up in Phase 2, and because a Phase-1 commit would land on `<base-branch>`, which this skill may never push, so a "durability" commit there couldn't actually be pushed to survive a dead disk. See SKILL.md Phase 2's "Persist the plan now, on the branch.")
+Phase 1 derives the grouping this file records; **Phase 2 writes and commits it once (unless there are no proposals), on the batch branch, before any change is authored** — its own small commit ahead of any proposal work, so the grouping/sequencing judgment itself is protected by the same durability discipline as everything downstream. (It's written in Phase 2 rather than Phase 1 because two of its required fields — `batch_slug` and `branch` — are only derived once the branch is set up in Phase 2, and because a Phase-1 commit would land on `<base-branch>`, which this skill may never push, so a "durability" commit there couldn't actually be pushed to survive a dead disk. The recipe is in `references/phases.md`, Phase 2.)
 
 ## Location
 
@@ -8,7 +8,7 @@ Phase 1 derives the grouping this file records; **Phase 2 writes and commits it 
 cla.io/decisions/<stem>.multi-spec-plan.json
 ```
 
-Colocated with the source decisions file (`cla.io/decisions/<stem>.md`) — same directory, same stem, `.multi-spec-plan.json` suffix instead of `.md`. This keeps the plan discoverable next to the thing it was derived from, and matches this repo's existing convention that `cla.io/decisions/*` is committed, not gitignored — a convention learned the hard way, when an *untracked* decisions doc destroyed in an `rm -rf` worktree-junction incident had to be reconstructed by hand and only then committed (see memory `feedback-worktree-rmrf-junction-risk`).
+Colocated with the source decisions file (`cla.io/decisions/<stem>.md`) — same directory, same stem, `.multi-spec-plan.json` suffix instead of `.md`. This keeps the plan discoverable next to the thing it was derived from, and matches this repo's existing convention that `cla.io/decisions/*` is committed, not gitignored — a convention learned the hard way, when an *untracked* decisions doc destroyed in an `rm -rf` worktree-junction incident had to be reconstructed by hand and only then committed.
 
 ## Shape
 
@@ -43,7 +43,7 @@ Colocated with the source decisions file (`cla.io/decisions/<stem>.md`) — same
 
 ## What this file is NOT
 
-**Not a live status ledger.** It does not track which changes are authored/committed/reviewed — that would create a second source of truth that could drift from the actual git-tracked state of `openspec/changes/<name>/`. Resume always re-derives "is this change done" from the repository itself (Phase 3 step 1's tracked-file check), never from a status field in this plan. This mirrors `/cla:spec-to-pr`'s own resume philosophy: `probe_state.py` reads repo state, not a log file, specifically because a log can go stale or get lost in exactly the kind of local-machine incident this skill exists to survive — a plan file that also tried to be a status ledger would be exactly as fragile as the problem it's meant to solve.
+**Not a live status ledger.** It does not track which changes are authored/committed/reviewed — that would create a second source of truth that could drift from the actual git-tracked state of `openspec/changes/<name>/`. Resume always re-derives "is this change done" from the repository itself (the resume check in `references/authoring-brief.md`), never from a status field in this plan. This mirrors `/cla:spec-to-pr`'s own resume philosophy: `probe_state.py` reads repo state, not a log file, specifically because a log can go stale or get lost in exactly the kind of local-machine incident this skill exists to survive — a plan file that also tried to be a status ledger would be exactly as fragile as the problem it's meant to solve.
 
 **Not append-only / not a ledger of runs.** Unlike `spec-to-pr`'s `cla.io/retro/spec-to-pr-runs.jsonl` (one line appended per completed run, consumed by `/cla:spec-to-pr-retro`), this file is written once per batch and never appended to again. There is no retro tooling over it and none is planned — see `multi-spec`'s own "What this skill deliberately does not do."
 

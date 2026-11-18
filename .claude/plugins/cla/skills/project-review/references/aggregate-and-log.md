@@ -66,7 +66,7 @@ Print the full report:
 (repeat for all five dimensions)
 ```
 
-Keep each finding to 1-2 lines. Aim for ~60-80 lines total — comprehensive but scannable.
+Write each finding in a line or two. The report should be scannable in one screen.
 
 This skill persists no state. It kept a `project-review-runs.jsonl` ledger until that
 ledger reached a handful of records across five repos with no skill reading it, and it

@@ -2,7 +2,7 @@
 
 Read when running two or more `/cla:spec-to-pr` flows at once in one repo. A single run needs none of the worktree recipe — but it does need the last section, which is about one session sharing a checkout with its own delegate.
 
-A single `/cla:spec-to-pr` run needs no special setup — it creates `<branch>` in place and nothing arbitrates two sessions in one clone — the hook that used to is gone, so the discipline below is the whole protection.
+A single `/cla:spec-to-pr` run needs no special setup — it creates `<branch>` in place. Nothing arbitrates two sessions in one clone, so the discipline below is the whole protection.
 
 To run **two or more `/cla:spec-to-pr` flows at once** in the same repo, give each session its own `git worktree` (own directory + own HEAD; the primary clone stays on `<base-branch>`). This is required because a run's file edits (Review/Implement/Revise) go to the *session's* working directory via Edit/Write — you cannot edit in one clone and commit from another, so the session itself must live in the worktree (`git -C <worktree>` does NOT solve this). See `cla.io/project-facts.md` ("Worktree convention") for this repo's worktree-directory convention. Per-session setup, from the primary clone:
 
