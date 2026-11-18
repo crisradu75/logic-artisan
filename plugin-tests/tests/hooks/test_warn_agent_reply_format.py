@@ -80,6 +80,10 @@ def _run_main(monkeypatch, capsys, payload) -> str:
         ("Scanned files: none\n",),  # the word, not the line
         ("I Scanned: 3 files\n",),  # not at the start of a line
         ("No stale references found. Scanned: 0 files\n",),  # mid-line
+        ("1.Scanned: 3 files\n",),  # a list marker needs a blank after it
+        ("-Scanned: 3 files\n",),
+        ("a) Scanned: 3 files\n",),  # a letter is not a list number
+        ("**Scanned** 3 files\n",),  # emphasis but no colon
         (),  # no text blocks at all
     ],
 )
@@ -105,6 +109,17 @@ def test_a_sweep_reply_with_no_footer_warns(monkeypatch, capsys, subagent_type, 
         ("- Scanned: 4 files",),
         ("Scanned: 0 files from 2 supplied paths/globs. Unresolved: docs/*.md",),  # a wrong count passes
         ("x\r\nScanned: 1 files",),
+        # Formatting a model adds: emphasis before the colon, list items, either case.
+        ("**Scanned**: 3 files",),
+        ("1. Scanned: 3 files",),
+        ("12) Scanned: 3 files",),
+        ("+ Scanned: 3 files",),
+        ("* Scanned: 3 files",),
+        ("- **Scanned:** 3 files",),
+        ("> - Scanned: 3 files",),
+        ("  2.\tScanned: 3 files",),
+        ("scanned: 3 files",),
+        ("SCANNED: 3 files",),
     ],
 )
 def test_a_sweep_reply_holding_the_footer_is_silent(monkeypatch, capsys, texts):
@@ -134,9 +149,13 @@ def test_a_sweep_still_in_the_background_is_silent(monkeypatch, capsys):
     "reply",
     [
         "status: done\n12 passed\n3/3 tasks",
-        "status: done\nFact corrections (none)",  # no colon
-        "status: done\nfact corrections: (none)",  # the field's own spelling is capitalised
+        "status: done\nFact corrections (none)",  # no colon, not a heading
         "status: done\nFact correction: (none)",
+        "status: done\n## Fact correction\n(none)",  # singular heading
+        "status: done\n##Fact corrections\n(none)",  # not a heading without the blank
+        "status: done\n####### Fact corrections\n(none)",  # seven hashes is not a heading
+        "status: done\nNotes on fact corrections\n(none)",
+        "status: done\nNotes ## Fact corrections\n(none)",  # hashes mid-line are not a heading
     ],
 )
 def test_a_fix_reply_without_the_field_warns(monkeypatch, capsys, reply):
@@ -156,6 +175,12 @@ def test_a_fix_reply_without_the_field_warns(monkeypatch, capsys, reply):
         "status: done\n**Fact corrections**: (none)",
         "status: blocked\nFact corrections:\n- row 2 did not resolve",
         "Fact corrections: (none)",  # content is not judged
+        "status: done\nfact corrections: (none)",
+        "status: done\nFact Corrections: (none)",
+        "status: done\n## Fact corrections\n(none)",
+        "status: done\n### **Fact Corrections**\n- row 2 did not resolve",
+        "status: done\n> # fact corrections\n(none)",
+        "status: done\n###### Fact corrections\n(none)",
     ],
 )
 def test_a_fix_reply_holding_the_field_is_silent(monkeypatch, capsys, reply):
@@ -257,6 +282,13 @@ def test_a_string_content_is_read(monkeypatch, capsys):
     assert "no `Scanned:`" in _run_main(monkeypatch, capsys, _call(response=response))
 
 
+def test_json_nested_past_the_recursion_limit_is_silent():
+    """The decoder raises RecursionError, not a ValueError, on input this deep."""
+    r = subprocess.run([sys.executable, str(HOOK_PATH)], input="[" * 200_000,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert (r.returncode, r.stdout, r.stderr) == (0, "", "")
+
+
 @pytest.mark.parametrize("io_encoding", ["utf-8:strict", "utf-8:surrogateescape"])
 def test_bad_bytes_on_stdin_are_silent(io_encoding):
     """Strict decoding raises UnicodeDecodeError while reading; a POSIX locale's
@@ -273,8 +305,14 @@ def test_bad_bytes_on_stdin_are_silent(io_encoding):
         "\n".join(["> " * 100] * 20_000),
         "Fact corrections" * 200_000,
         "Fact corrections" + "*" * 3_000_000,
+        "1" * 3_000_000,
+        "#" * 3_000_000,
+        "\n".join(["#" * 6 + " " * 100] * 20_000),
+        "> " * 1_000_000 + "-",
+        " " * 3_000_000 + "#",
     ],
-    ids=["emphasis", "quote-lines", "field-names", "field-emphasis"],
+    ids=["emphasis", "quote-lines", "field-names", "field-emphasis", "digits", "hashes",
+         "heading-openers", "quotes", "blanks"],
 )
 def test_a_large_reply_stays_fast(reply):
     start = time.monotonic()

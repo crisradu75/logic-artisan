@@ -3,10 +3,11 @@
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/test_warn_agent_dispatch.py
 
 Scope: every line of `hooks/warn-agent-dispatch.py` that decides whether a warning fires, plus
-its `hooks.json` wiring (the matcher and the script name). One mutant per decision, each anchor
-occurring once in its file. The size tests run real multi-megabyte prompts, so a mutant that
-made a pattern quadratic would show as a slow kill; none here does. Each mutant was checked by
-hand in a scratch copy with bytecode writing off, not with mutate.py: every one fails a test.
+its `hooks.json` wiring (the matcher and the script name) and the two shipped passages that keep
+a dispatch at the session model, which now say to name that model. One mutant per decision, each
+anchor occurring once in its file. The size tests run real multi-megabyte prompts, so a mutant
+that made a pattern quadratic would show as a slow kill; none here does. Each mutant was checked
+by hand in a scratch copy with bytecode writing off, not with mutate.py: every one fails a test.
 
 Paths resolve from this file's own location, never an absolute developer path.
 """
@@ -17,6 +18,8 @@ DEV = Path(__file__).resolve().parents[2]  # <repo>/plugin-tests
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 HOOK = PLUGIN / "hooks" / "warn-agent-dispatch.py"
 WIRING = PLUGIN / "hooks" / "hooks.json"
+ROUTING = PLUGIN / "skills" / "_shared" / "references" / "model-routing.md"
+REVIEW_DISPATCH = PLUGIN / "skills" / "review-change" / "references" / "dispatch.md"
 TARGETS = [DEV / "tests" / "hooks" / "test_warn_agent_dispatch.py"]
 
 # The two Agent groups in hooks.json differ only in the script name, so the matcher's anchor runs
@@ -163,8 +166,15 @@ MUTANTS = [
     (
         'undecodable stdin crashes the hook',
         HOOK,
-        'except (json.JSONDecodeError, UnicodeDecodeError, ValueError):',
-        'except json.JSONDecodeError:',
+        'except (ValueError, RecursionError):',
+        'except (json.JSONDecodeError, RecursionError):',
+        TARGETS,
+    ),
+    (
+        'deeply nested input crashes the hook',
+        HOOK,
+        'except (ValueError, RecursionError):',
+        'except ValueError:',
         TARGETS,
     ),
     (
@@ -201,5 +211,19 @@ MUTANTS = [
         '/hooks/warn-agent-dispatch.py\\"',
         '/hooks/warn-agent-dispatch-gone.py\\"',
         TARGETS + [DEV / "tests" / "hooks" / "test_hooks_wiring.py"],
+    ),
+    (
+        "the routing reference leaves the rubric agents' model out again",
+        ROUTING,
+        'naming it in their\n`model:` (`sonnet` on a Sonnet session): the Agent tool has no value meaning "the session model",\nand a dispatch with no `model:` draws a warning.',
+        'with no `model:`.',
+        TARGETS,
+    ),
+    (
+        "the review dispatch's fallback leaves the model out again",
+        REVIEW_DISPATCH,
+        ' A fallback still names the session\'s model in each dispatch\'s `model:` (`opus` on an Opus session): the Agent tool has no value meaning "the session model", and a dispatch with no `model:` draws a warning.',
+        '',
+        TARGETS,
     ),
 ]

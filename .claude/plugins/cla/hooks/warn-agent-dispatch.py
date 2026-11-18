@@ -84,7 +84,9 @@ def _warnings(tool_input: dict) -> list[str]:
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+    except (ValueError, RecursionError):
+        # ValueError covers a JSON error and undecodable bytes; RecursionError is
+        # input nested deeper than the decoder's recursion limit.
         return 0
     if not isinstance(payload, dict) or payload.get("tool_name") != "Agent":
         return 0

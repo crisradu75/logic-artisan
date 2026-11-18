@@ -210,6 +210,13 @@ def test_a_non_string_prompt_still_gets_the_model_check(monkeypatch, capsys):
     assert "passes no `model`" in warning and "diff text" not in warning
 
 
+def test_json_nested_past_the_recursion_limit_is_silent():
+    """The decoder raises RecursionError, not a ValueError, on input this deep."""
+    r = subprocess.run([sys.executable, str(HOOK_PATH)], input="[" * 200_000,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert (r.returncode, r.stdout, r.stderr) == (0, "", "")
+
+
 @pytest.mark.parametrize("io_encoding", ["utf-8:strict", "utf-8:surrogateescape"])
 def test_bad_bytes_on_stdin_are_silent(io_encoding):
     """Strict decoding raises UnicodeDecodeError while reading; a POSIX locale's
@@ -305,3 +312,19 @@ def test_copilot_cli_does_not_run_the_agent_warnings():
     assert '"Agent"' not in adapter
     readme = (HOOKS_DIR.parent / "README.md").read_text(encoding="utf-8")
     assert "do not run under Copilot CLI" in readme
+
+
+@pytest.mark.parametrize(
+    "reference",
+    ["skills/_shared/references/model-routing.md", "skills/review-change/references/dispatch.md"],
+)
+def test_the_session_model_fallbacks_name_the_model(reference):
+    """The two shipped places that keep a dispatch at the session model say to name it.
+
+    They used to leave `model` out, which this hook warns on. The Agent tool takes only a
+    model alias, with no value meaning "the session model", so the skill names the session's
+    model instead of the hook carving out an exception for one agent type (the rubric
+    agents are `general-purpose`, like most other dispatches)."""
+    text = " ".join((HOOKS_DIR.parent / reference).read_text(encoding="utf-8").split())
+    assert 'the Agent tool has no value meaning "the session model"' in text
+    assert "a dispatch with no `model:` draws a warning" in text

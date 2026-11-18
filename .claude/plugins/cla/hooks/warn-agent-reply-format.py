@@ -29,6 +29,11 @@ says a hand-back happened (`handback`) but carries no report, the hook stays
 silent, since the report is not in front of it. Where neither field arrives the
 warning itself says a hand-back may be why, so it never reads as proof.
 
+If those undocumented fields change, the documented route to the report is a
+hook matched on `SubagentHandback` that reads `tool_input.message`. It fires in
+the subagent, not in the orchestrator that dispatched it, so a warning from
+there reaches the subagent; that is why this hook reads the Agent result first.
+
 Bad input is silent: input that is not JSON, not an object, not an Agent call,
 or with no usable `tool_input` or `tool_response` exits 0 with no output. The
 hook runs no subprocess and reads no file, and each check is linear in the
@@ -41,12 +46,21 @@ import json
 import re
 import sys
 
-# The footer line, allowing leading blanks and Markdown emphasis or a list or
-# quote marker before it, since a model may format the footer.
-_SCANNED_LINE = re.compile(r"^[ \t>*_`-]*Scanned:", re.MULTILINE)
+# The footer line, as a model may format it: quote markers and blanks, then one
+# list marker (`-`, `*`, `+`, `1.`, `1)`), then emphasis around the name, in any
+# case. Each part is a single character class or a bounded group, so a long run
+# of one character is backtracked once per line start: linear.
+_SCANNED_LINE = re.compile(
+    r"^[ \t>]*(?:[-*+][ \t]+|\d+[.)][ \t]+)?[*_`]*Scanned[*_`]*:",
+    re.MULTILINE | re.IGNORECASE,
+)
 
-# The field name, allowing emphasis between the name and its colon.
-_FACT_FIELD = re.compile(r"Fact corrections[*_`]*:")
+# The field, in any case: the name with emphasis before its colon, or a heading
+# whose text starts with the name (`## Fact corrections`, the value on the next line).
+_FACT_FIELD = re.compile(
+    r"Fact corrections[*_`]*:|^[ \t>]*#{1,6}[ \t]+[*_`]*Fact corrections",
+    re.MULTILINE | re.IGNORECASE,
+)
 
 _FACT_FIELD_IN_PROMPT = "Fact corrections:"
 
@@ -104,7 +118,9 @@ def _warnings(tool_input: dict, reply: str) -> list[str]:
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+    except (ValueError, RecursionError):
+        # ValueError covers a JSON error and undecodable bytes; RecursionError is
+        # input nested deeper than the decoder's recursion limit.
         return 0
     if not isinstance(payload, dict) or payload.get("tool_name") != "Agent":
         return 0
