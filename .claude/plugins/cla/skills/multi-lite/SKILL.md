@@ -102,6 +102,7 @@ Re-invoking `/cla:multi-lite` on the same doc after an interruption picks up cle
 - `references/candidate-extraction.md` — Phase 1's extraction filter, sequencing rule, and confirmation-gate question shape (mandatory-read from the Phase 1 stub).
 - `references/candidate-loop.md` — Phase 3's 8-step per-candidate procedure and the resume mechanics it enables (mandatory-read from the Phase 3 stub and the Resume-behavior section).
 - `references/phase4-and-log.md` — the Phase 4 final-report shape (mandatory-read from the Phase 4 stub).
+- `${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py` — the head, PR-state and dependency checks of Phase 3 steps 2, 3, 7 and 8, run as `chain-merge.md` says.
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py` — reused directly for the Phase 0 precheck (a `spec-to-pr`/`multi-pr` bootstrap script, not `lite-pr`'s).
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/required-permissions.json` — the pattern set the Phase 0 permissions check compares against.
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/bash-discipline.md` — the hard bash-shape rules binding every git command this skill runs.

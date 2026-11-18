@@ -35,8 +35,14 @@ Leftover review suggestions. The inbox is emptied by regular sweep PRs.
 
 ## From the ship_check review (Suggestions, not fixed)
 
-- `_shared/references/chain-merge.md` "Record the head" still compares `git rev-parse HEAD` with `git ls-remote origin <branch>` by eye, and `multi-lite`'s candidate loop (step 7) points to it. Left for the chain head gate (audit check 2).
 - `multi-spec/references/phases.md` Phase 2 finds an existing branch with `git ls-remote --heads origin docs/propose-<batch-slug>`, which also matches a longer branch name ending in it.
 - Rule ledger: the `ship.md` rows for "must be EMPTY" and "They must be equal" are gone; those obligations remain in the text, held by `ship_check.py`, without absolute wording.
 - `ship_check.py`: the "no remote" branch of `_upstream_config`'s callers is untested; a `merge` set with no `remote` makes `preflight` exit 2, not 1.
 - `ship_check.py`: `branch.X.merge = X` (the short form) is reported as `upstream-elsewhere`. It fails safe.
+
+## From the chain_check review (Suggestions, not fixed)
+
+- "Opened by this chain" is branch match plus not-a-fork. A teammate's or bot's PR on the chain's branch at the same head would pass. An `author.login` check needs `gh api user`, which fails under some tokens.
+- A fork workflow (gh resolving to an `upstream` remote) now blocks every merge as `not opened by this chain`. It fails closed, but it is new.
+- Untested: `after-merge` on a not-found PR, the crash path, and a 64-hex head.
+- `chain_check.py`: a bare-repo worktree layout or a submodule exits 2, because the common git dir is not named `.git` (`_primary`). It fails safe.
