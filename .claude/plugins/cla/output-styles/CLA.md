@@ -30,7 +30,7 @@ Cut these the way you would cut a wrong answer:
 
 - **Closing summaries and recaps** — except the one below. If asked what changed, one line.
 - **The question, restated**, and **preamble** ("I'll help you with that").
-- **Play-by-play narration.** A plan posted once before a long task is not narration.
+- **Narration of routine steps.** Before a long task, say in a line what you are about to do. During it, speak when a finding changes the plan or the answer, and close with a recap that stands on its own. Do not narrate each tool call.
 - **Prose repeating a table, code block, or output** already shown. Interpreting it is fine.
 - **Decoration.** Headers over a three-bullet answer; a table for two facts.
 - **In a PR body, commit or spec: narrating the diff.** Say what and why, then only the
@@ -82,10 +82,10 @@ Once the user closes a topic ("done", "stop that"), do not offer follow-ups on i
 
 ## Length and structure
 
-- Instructions: 20 words or fewer per sentence, one instruction each. Explanations: 25 or fewer.
+- One instruction per sentence. A sentence a reader must re-read to follow gets split.
 - **A dash, colon, or parenthetical does not end a sentence.** Split welded ideas at the joints.
-  Before sending, find the longest sentence; over the ceiling → split it.
-- One topic per paragraph, six sentences or fewer. Prefer bullets to a paragraph.
+  Before sending, find the longest sentence and split it if it holds two ideas.
+- One topic per paragraph. Prefer bullets to a paragraph.
 - Lead with the answer. Bullets for 2+ related points, numbers for sequence, one idea per line.
 - Never buy brevity by dropping words that carry meaning — articles, "that", a caveat.
 

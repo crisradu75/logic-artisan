@@ -1,6 +1,6 @@
 ---
 name: release
-description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the two plugin manifests, the two marketplace catalog refs, and the CLAUDE.md release line in one commit, then cut the tag with `claude plugin tag`. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /release or natural language like 'cut a release', 'publish a new version', 'tag 0.10.0', 'ship the plugin', 'bump the plugin version'."
+description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the two plugin manifests, the two marketplace catalog refs, and the CLAUDE.md release line in one commit, then cut the tag with `claude plugin tag`. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /release or natural language like 'cut a release', 'publish a new version', 'tag a version', 'ship the plugin', 'bump the plugin version'."
 argument-hint: "[major|minor|patch|<explicit version>] (default: ask)"
 allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 ---
@@ -9,16 +9,13 @@ allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 
 Cutting a release is a **five-file edit plus a tag**, and getting either half wrong is
 expensive in a way ordinary mistakes are not: a published tag is what consumers have
-already fetched, so it can never be corrected in place. This skill exists because that
-procedure has been performed by hand on every release so far, and a hand-run procedure
-with an irreversible last step is exactly the kind that earns automation.
+already fetched, so it can never be corrected in place.
 
 ## The invariant that governs everything here
 
-**A published tag is never moved.** `0.9.0` was cut, a consumer installed it, and the
-very next fix therefore became `0.9.1` rather than a re-tag — moving it would have
-changed what that consumer had already fetched. If a release turns out to be wrong,
-the answer is always the next version, never the same one again.
+**A published tag is never moved.** A consumer that installed a tag has fetched that tree,
+and moving the tag would change it under them. If a release turns out to be wrong, the
+answer is always the next version, never the same one again.
 
 Two consequences this skill enforces rather than advises:
 
@@ -39,7 +36,7 @@ git rev-parse --abbrev-ref HEAD
 git status --porcelain
 git fetch origin
 git status -sb
-pytest plugin-tests -q -n auto --dist loadfile
+pytest plugin-tests -q -n 2 --dist loadfile
 openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 python3 .claude/skills/release/scripts/check_copilot_models.py
@@ -50,10 +47,10 @@ python3 .claude/skills/release/scripts/check_copilot_models.py
 | On the repo's default branch | A tag cut from a feature branch pins commits that may never merge. |
 | Working tree clean (`git status --porcelain` prints nothing) | An uncommitted edit is either in the release or it isn't; a dirty tree means nobody knows which. **Nothing is excluded, and nothing should be:** no pathspec, so the check covers the whole repo from any directory, and a half-resolved merge conflict shows up here too. The run ledgers under `cla.io/retro/` are written at a controlled moment and should be committed, not hidden. |
 | Up to date with `origin` | Tagging a stale local branch publishes a tree that is not what `main` holds. |
-| `pytest plugin-tests -q -n auto --dist loadfile` fully green | There is no CI. This run, plus the spec validation below, is the whole gate that exists. |
+| `pytest plugin-tests -q -n 2 --dist loadfile` fully green | There is no CI. This run, plus the spec validation below, is the whole gate that exists. |
 | `openspec validate --specs --strict` passes with no warning | It is the second command in CLAUDE.md's "Before opening a PR" gate, so the OpenSpec CLI is now a release precondition: without it on `PATH` this step fails and no tag is cut. |
 | The work is reviewed and merged | See the invariant above. |
-| The docs match the code since the last tag | Re-check every count and present-tense claim in `README.md`, `DEVELOPER-GUIDE.md` and `.claude/plugins/cla/README.md` against `git log <last-tag>..HEAD`, and fix them in a PR first. 2.0.0 shipped saying "21 workflow skills" and "neutral stub" overlays, and a docs PR had to follow it. |
+| The docs match the code since the last tag | Re-check every count and present-tense claim in `README.md`, `DEVELOPER-GUIDE.md` and `.claude/plugins/cla/README.md` against `git log <last-tag>..HEAD`, and fix them in a PR first. A release that ships stale counts needs a docs PR after it. |
 | `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
 | `check_copilot_models.py` exits 0 | It verifies generated Copilot agent copies stay in step with their Claude sources and inherit the session model instead of pinning account-specific IDs. A source model alias without a defined inheritance policy, a stale profile, or an explicit Copilot model refuses the release. It is local-only; exit 2 means the sources could not be checked. Fix the source alias policy and regenerate the copies in a PR first, never as part of the release. |
 
@@ -72,9 +69,6 @@ it. Otherwise ask with `AskUserQuestion`, showing what changed since the last ta
 - **patch** — fixes and doc corrections only.
 - **minor** — a skill added or removed, a new guard, a restructure consumers will notice.
 - **major** — a change that breaks a consuming repo's existing usage.
-
-The pre-1.0 validation line is closed; how it closed is in `docs/history.md`, "The versioning
-line".
 
 ## Step 3 — The five-file edit, in one commit
 
@@ -104,12 +98,6 @@ changelog, so this step is the only thing that keeps it current.
 Then re-run the suite — the version-agreement test, the two manifest tests and the doc-fact
 test are what confirm the five copies agree — and commit the five files plus `CHANGELOG.md` together:
 
-**A mutation batch anchored on the version literal breaks with every bump** — the anchor
-no longer appears and `mutate.py` refuses the whole batch in preflight. Nothing in the
-suite runs batches, so this shows up only when someone next runs one. Anchor on the
-version-independent prefix and inject a digit, as `mutants/consistency/test_doc_facts.py`
-and `mutants/consistency/test_marketplace_manifest.py` both do.
-
 **Branch BEFORE committing.** Step 1 put you on the default branch; committing there and
 branching afterwards leaves the local default branch carrying a commit `origin` does not
 have, and the `git pull` at the end of this step then refuses. Branch first and the
@@ -117,7 +105,7 @@ default branch never moves:
 
 ```bash
 git checkout -b release/<new>
-pytest plugin-tests -q -n auto --dist loadfile
+pytest plugin-tests -q -n 2 --dist loadfile
 openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude/plugins/cla/plugin.json .claude-plugin/marketplace.json .github/plugin/marketplace.json CLAUDE.md CHANGELOG.md
@@ -133,9 +121,15 @@ branch, open the PR, merge it, then return:
 git push -u origin release/<new>
 gh pr create --base <default-branch> --title "release: <new>" \
   --body "Version bump: <old> → <new>."
-# merge it, then:
+# ask the release question below, merge only on yes, then:
 git checkout <default-branch> && git pull --ff-only
 ```
+
+**Ask once before the merge.** With the PR open and before merging, call `AskUserQuestion` one
+time. It shows the version, the output of `git log --oneline <last-tag>..HEAD`, and the
+`CHANGELOG.md` section that is moving under the new version heading. The options are yes and no. On
+no, stop: nothing is merged and nothing is tagged. On yes, merge, and Step 4 pushes the tag with no
+second question.
 
 Pass `--body`: without it `gh pr create` opens an interactive editor, which in a
 non-interactive session is a hang two steps before an irreversible action.
@@ -150,8 +144,7 @@ and stop: hand the owner the merge and Step 4's commands.
 **Why a PR and not `git push`.** `hooks/git/pre-push` refuses a direct push to the default
 branch. The hook's message names an `ALLOW_PUSH_TO_MAIN=1` override, and it is not the
 answer here: that hatch is for a genuine emergency, and a release is a planned act, so
-reaching for it is routing around a guard rather than complying with one. Earlier versions
-of this skill said `git push` and were hand-run past the refusal every time.
+reaching for it is routing around a guard rather than complying with one.
 
 Confirm the default branch carries the bump before tagging — the tag must point at the
 merged commit, not at the branch.

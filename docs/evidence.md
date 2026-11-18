@@ -51,7 +51,7 @@ catches gross divergence, not a test passing for the wrong reason.
 ### Why `mutate.py` stays serial
 
 It shells out as `pytest -q -x <targets>` and reads the exit code to decide killed vs survived — a
-judgement its own docstring says every check exists to protect. This is why `-n auto` is NOT in an
+judgement its own docstring says every check exists to protect. This is why `-n` is NOT in an
 `addopts` key: `addopts` applies to every invocation, so putting it there would silently change how
 the mutation runner executes.
 

@@ -45,7 +45,7 @@ MUTANTS = [
         # script it tested.
         "the pytest gate is dropped from Step 1's runnable preconditions",
         SKILL,
-        _NL.join(["git status -sb", "pytest plugin-tests -q -n auto --dist loadfile"]),
+        _NL.join(["git status -sb", "pytest plugin-tests -q -n 2 --dist loadfile"]),
         "git status -sb",
         TARGETS,
     ),
@@ -58,11 +58,11 @@ MUTANTS = [
         _NL.join(
             [
                 "git status -sb",
-                "pytest plugin-tests -q -n auto --dist loadfile",
+                "pytest plugin-tests -q -n 2 --dist loadfile",
                 "openspec validate --specs --strict",
             ]
         ),
-        _NL.join(["git status -sb", "pytest plugin-tests -q -n auto --dist loadfile"]),
+        _NL.join(["git status -sb", "pytest plugin-tests -q -n 2 --dist loadfile"]),
         TARGETS,
     ),
     (

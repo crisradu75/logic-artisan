@@ -15,7 +15,7 @@ path with `/skills/<name>` removed, or the absolute path of any plugin file you 
 at `.../plugins/cla`. If neither works, say so and stop. Detail:
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
-**The dominant cost here is round-trips, not the install's own execution time.** What actually makes a rerun feel slower is extra tool calls layered on top (a separate `git worktree list` lookup, ad hoc verification checks, status checks) — each one is a full model round-trip regardless of how fast the command inside it runs. So: keep this to the fewest possible tool calls, and don't add "just to be sure" verification steps — trust each command's own output/exit code.
+**The dominant cost here is round-trips, not the install's own execution time.** What actually makes a rerun feel slower is extra tool calls layered on top (a separate `git worktree list` lookup, ad hoc verification checks, status checks) — each one is a full model round-trip regardless of how fast the command inside it runs. So run the steps below as written, and add a check only when a command's own output or exit code looks wrong; those already confirm each step.
 
 ## Path discipline once inside a worktree
 
