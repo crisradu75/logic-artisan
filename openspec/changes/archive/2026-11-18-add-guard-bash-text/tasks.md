@@ -7,7 +7,7 @@
 - [x] 1.3 A multi-line `git commit -m` or `gh pr|issue … --body` warns; single-line and repeated `-m` values are silent; tests marked `requirement: guard-warnings / A multi-line inline commit message or pull request body warns`.
 - [x] 1.4 The command is found behind global options, chains, subshells, `env`/`command`/`sudo` and quoting; malformed input fails open; a 500,000-character hostile command stays fast.
 - [x] 1.5 Run it from the Bash dispatcher as an enforcing hook at no budget cost; dispatcher, wiring and Copilot tests cover the block, the ask and the warning.
-- [x] 1.6 Write a mutation batch for the hook's lines and the changed dispatcher lines under `plugin-tests/mutants/hooks/`.
+- [x] 1.6 No mutation batch (owner rule: lean). Each decision line was broken by hand once and a test failed: the block gate, its exit code, the `..` escape test, the ask branch and its decision value, the warning branch, and the unterminated-input guard; each restored.
 
 ## 2. Docs
 
