@@ -94,8 +94,8 @@ per item. Reading another skill's reference file is not calling it: `spec-to-pr`
 ## Always-on guardrails (hooks)
 
 The hooks wire themselves from the plugin's own `hooks/hooks.json` when it loads; there is no
-`settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 8 leaf hooks between
-them in one Python process each, and `warn-wholesale-rewrite` runs on its own after a Write: 9 leaf
+`settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 9 leaf hooks between
+them in one Python process each, and `warn-wholesale-rewrite` runs on its own after a Write: 10 leaf
 hooks, active in every phase.
 
 | Severity | Hook | Fires on |
@@ -104,6 +104,7 @@ hooks, active in every phase.
 | | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a write that escapes the worktree boundary |
 | **Ask**: a permission prompt | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete and PR merges (`ALLOW_PR_MERGE=1` drops only the merge prompt, for the chainers' unattended runs); `git checkout <path>`, `git restore <path>`, a forced `checkout -f`/`switch -f` and `git clean`, but only when they would destroy uncommitted work; a saving `git stash` while a merge, cherry-pick or revert is in progress, because it drops `MERGE_HEAD`; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
+| | `ask-broad-git-add` | a `git add` of the whole tree or a whole directory (`-A`, `--all`, `.`, `:/`, `*`, a bare `openspec/`) that would stage untracked files; it names up to ten and suggests staging named paths. Silent for `-u`, for named paths (`-A <path>` included), when only tracked files changed, and whenever it cannot check; skipped, like a warning, when the hook time budget is spent |
 | **Warn**: a caution, and the call runs | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
 | | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
 | | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |

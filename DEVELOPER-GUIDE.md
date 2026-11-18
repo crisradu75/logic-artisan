@@ -260,9 +260,9 @@ stale absolute path sneaks into a prompt.
 ## 8. The guardrails you'll meet
 
 The hooks wire themselves from `hooks/hooks.json` when the plugin loads; there is no
-`settings.json` step. Two dispatchers each run several leaf hooks in one Python process (6 on the
+`settings.json` step. Two dispatchers each run several leaf hooks in one Python process (7 on the
 Bash/PowerShell matcher, 2 on Edit/Write), and `warn-wholesale-rewrite` runs on its own after a
-Write: **9 leaf hooks**, in three severities.
+Write: **10 leaf hooks**, in three severities.
 
 | Severity | Hook | Fires on |
 |---|---|---|
@@ -270,6 +270,7 @@ Write: **9 leaf hooks**, in three severities.
 | | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a Write or Edit outside the current worktree (section 7) |
 | **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, and a saving `git stash` during a merge, cherry-pick or revert; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
+| | `ask-broad-git-add` | a `git add` of the whole tree or a whole directory (`-A`, `--all`, `.`, `:/`, `*`, a bare `openspec/`) that would stage untracked files (it names up to ten); silent for `-u`, named paths and tracked-only changes, and best-effort: silent when it cannot check, and skipped like a warning when the handler budget is spent |
 | **Warn**: a caution, and the call runs | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
 | | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
 | | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
@@ -657,7 +658,11 @@ what enforces it; read that code rather than a copy of it here.
    stays out of that file's `_ADVISORY_HOOKS`, which is what protects it from being skipped when
    the budget runs short (in the Edit/Write dispatcher, order is not a backstop: its blocking guard
    sits last). In the Bash dispatcher, also order it ahead of the advisory ones. A guard that only
-   warns goes in `_ADVISORY_HOOKS`, so budget pressure drops warnings before it drops a block. In
+   warns goes in `_ADVISORY_HOOKS`, so budget pressure drops warnings before it drops a block. An
+   ask guard that is silent whenever its own check cannot run (best-effort, like
+   `ask-broad-git-add`) may go in the Bash dispatcher's `_BEST_EFFORT_HOOKS` instead: skipped like
+   a warning under budget pressure, its ask re-emitted otherwise; it can never block
+   (`test_best_effort_hooks_are_named_ask_hooks_the_dispatcher_runs`). In
    `test_hooks_wiring.py`, `test_every_dispatcher_sibling_hook_exists` and
    `test_no_outcome_changing_hook_is_marked_advisory` fail on a miss. A post-edit warning is wired
    by hand: its own `PostToolUse` entry in `hooks/hooks.json` (as `warn-wholesale-rewrite.py` is).

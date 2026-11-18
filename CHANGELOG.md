@@ -20,6 +20,10 @@ the skills fall back to the default list of protected areas.
 
 ### Added
 
+- **An `ask-broad-git-add` guard hook:** a `git add` of the whole tree or a whole directory (`-A`,
+  `--all`, `.`, `:/`, `*`, a bare `openspec/`) asks first when it would stage untracked files, and
+  names up to ten of them. It stays silent for `-u`, named paths and tracked-only changes, and
+  whenever it cannot check. It enforces the skills' "stage named paths only" rule (#PR).
 - **Stakes and a whole-change size budget:** `/cla:cla-setup` asks the owner for a short `## Stakes`
   section in `cla.io/project-facts.md` (who uses the repo, what a bug costs, protected areas) and
   offers a `lean` (12 requirements, 3,000 words) or `protected` (25 requirements, 6,000 words) budget
