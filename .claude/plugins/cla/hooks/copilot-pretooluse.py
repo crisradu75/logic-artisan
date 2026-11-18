@@ -19,6 +19,8 @@ _DISPATCHERS = {
     "Edit": "dispatch-edit-write-pretooluse.py",
     "Write": "dispatch-edit-write-pretooluse.py",
 }
+# The key that carries the new text of each Edit/Write tool the adapter accepts.
+_TEXT_KEYS = {"Edit": "new_string", "Write": "content"}
 # The dispatchers report "a guard did not run" as an `ask` whose reason carries one
 # of these phrases (`dispatch-*-pretooluse.py`: the enforcing-guard escalation in
 # main() and `_fail_closed`). Copilot cannot resolve that ask as a confirmation of
@@ -165,6 +167,15 @@ def main() -> int:
     # passed unchecked; confirm against a live payload before relying on it.
     elif not isinstance(tool_input.get("file_path"), str) or not tool_input["file_path"]:
         return _deny("CLA guard received no file path to check; refusing the call.")
+    # The same assumption for the new text: `content` on a Write, `new_string` on
+    # an Edit, the keys the Edit/Write guards read (the secret scan among them).
+    # The adapter passes `tool_input` through unchanged and maps no key, so a
+    # Copilot payload that names the text differently is denied here rather than
+    # scanned as empty and passed. An empty string is text, and is allowed.
+    elif not isinstance(tool_input.get(_TEXT_KEYS[tool_name]), str):
+        return _deny(
+            f"CLA guard received no `{_TEXT_KEYS[tool_name]}` to check; refusing the call."
+        )
     if not isinstance(event.get("cwd"), str) or not event["cwd"]:
         return _deny("CLA guard received no working directory; refusing the call.")
 
