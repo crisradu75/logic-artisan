@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import random
 import re
 from pathlib import Path
 from types import ModuleType
@@ -107,13 +108,79 @@ def test_run_hook_file_loads_and_runs_a_real_sibling():
 # --------------------------------------------------------------------------- #
 
 def _git_push_pattern():
-    return re.compile(r"\bgit\s+" + lib.GIT_GLOBAL_OPTS + r"push\b")
+    return lib.GitInvocation(r"push\b")
 
 
 def _branch_create_pattern():
-    return re.compile(
-        r"\bgit\s+" + lib.GIT_GLOBAL_OPTS + r"(?:checkout\s+-b|switch\s+(?:-c|--create))\s+(\S+)"
-    )
+    return lib.GitInvocation(r"(?:checkout\s+-b|switch\s+(?:-c|--create))\s+(\S+)")
+
+
+# The global-option pattern as it stood before #526, frozen as the reference
+# `GitInvocation` is held to below. The git guards composed it as
+# `GIT_CMD + GIT_SEP + <this> + <subcommand>` and searched with the result.
+_SEP = r"(?:[ \t]|\\\r?\n)+"
+_FROZEN_GLOBAL_OPTS = (
+    r"(?:(?:(?:-[cC]" + _SEP + r"\S+)"
+    r"|(?:--(?:git-dir|work-tree|namespace|super-prefix)\b(?:=\S+|" + _SEP + r"\S+)?)"
+    r"|(?:-[A-Za-z])"
+    r"|(?:--[A-Za-z][\w-]*(?:=\S+)?))" + _SEP + r")*"
+)
+_TAIL = r"((?:\\\r?\n|[^&|;\n])*)"
+
+
+def test_the_exported_option_pattern_is_unchanged():
+    # Repos with their own hooks may import it; #526 changed how the guards
+    # here match, not what the constant says.
+    assert lib.GIT_SEP == _SEP
+    assert lib.GIT_GLOBAL_OPTS == _FROZEN_GLOBAL_OPTS
+
+
+@pytest.mark.parametrize(
+    ("after", "capture_opts"),
+    [
+        (r"push\b" + _TAIL, False),
+        (r"reset\b" + _TAIL, False),
+        (r"stash\b" + _TAIL, True),
+        (r"(?:add|commit)\b", False),
+        (r"(?:checkout\s+-b|switch\s+(?:-c|--create))\s+(\S+)", False),
+    ],
+)
+def test_git_invocation_matches_what_the_old_pattern_matched(after, capture_opts):
+    """Every match, group and span, on generated commands dense in the shapes
+    that split two ways (`-c` with or without a value, `--git-dir=x` read as
+    either long-option arm) and in `git` tokens inside option values."""
+    opts = "(" + _FROZEN_GLOBAL_OPTS + ")" if capture_opts else _FROZEN_GLOBAL_OPTS
+    old = re.compile(lib.GIT_CMD + _SEP + opts + after)
+    new = lib.GitInvocation(after, capture_opts=capture_opts)
+    tokens = ["git", "git", "GIT.exe", "-c", "-C", "x=y", "--git-dir", "--git-dir=x", "--work-tree",
+              "--namespace", "--no-pager", "--bare", "-p", "push", "reset", "--hard", "stash", "status",
+              "add", "commit", "checkout", "-b", "switch", "-cfoo", "--git-dirx", "--git-dir-x",
+              "--foo=bar", "a.git", "x;git", "=", "-", "--", "-c=x", "\\", "pushx", "c"]
+    seps = [" ", " ", " ", "  ", "\t", "\\\n", " \\\n ", "\n", ";", " && ", "", "\\\r\n", "\r"]
+    rng = random.Random(20261118)
+    commands = ["git " + "".join(rng.choice(tokens) + rng.choice(seps[:6]) for _ in range(rng.randint(1, 12)))
+                for _ in range(1500)]
+    commands += ["".join(rng.choice(tokens) + rng.choice(seps) for _ in range(rng.randint(1, 12)))
+                 for _ in range(1500)]
+    hits = 0
+    for command in commands:
+        want = [[m.span(g) for g in range(old.groups + 1)] for m in old.finditer(command)]
+        got = [[m.span(g) for g in range(old.groups + 1)] for m in new.finditer(command)]
+        assert got == want, repr(command)
+        hits += bool(want)
+        found = new.search(command)
+        assert (found.span() if found else None) == (want[0][0] if want else None), repr(command)
+    assert 0 < hits < len(commands), "the generated commands must hold both hits and misses"
+
+
+def test_git_invocation_groups_read_like_a_match():
+    m = lib.GitInvocation(r"stash\b" + _TAIL, capture_opts=True).search("ls; git -C a -c k=v stash pop && x")
+    assert m.group() == "git -C a -c k=v stash pop "
+    assert m.group(1) == "-C a -c k=v "
+    assert m.group(2) == " pop "
+    assert m.span(1) == (8, 20) and m.start(2) == 25 and m.end() == 30
+    absent = lib.GitInvocation(r"push(x)?").search("git push")
+    assert absent.group(1) is None and absent.span(1) == (-1, -1)
 
 
 @pytest.mark.parametrize(

@@ -29,6 +29,7 @@ def _run(
     payload: dict,
     cwd: Path | None = None,
     extra_env: dict | None = None,
+    timeout: float | None = None,
 ) -> subprocess.CompletedProcess:
     # The subprocess inherits this shell's environment, so a developer with
     # CLA_EXPECTED_GIT_EMAIL or either ALLOW_* override set would flip these
@@ -48,6 +49,7 @@ def _run(
         input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8", errors="replace",
         cwd=str(cwd) if cwd else None,
         env=env,
+        timeout=timeout,
     )
 
 
@@ -1002,3 +1004,68 @@ def test_a_three_megabyte_command_answers_well_inside_the_hook_timeout(tmp_path)
     r = _bash(tmp_path, ";" * 3_000_000)
     assert time.perf_counter() - started < 10.0
     assert json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+# --------------------------------------------------------------------------- #
+# Repeated git global options: linear time (#526)
+#
+# The git guards matched `git <global options> <subcommand>` with one regex,
+# which walked an option run again from every `git` inside it and tried every
+# with-value/bare split of `-c`, `-C` and `--git-dir`. Measured on main 660b001d
+# (Linux, Python 3.13), 28 KB through this dispatcher: `-c git` 23 s, `-C git`
+# 24 s, `-c a.git` 18 s, `--git-dir git` 16 s, `--git-dir=x` past 40 s, and the
+# 125-byte `git -c -c ... -c x` past 40 s. A hook killed at the 15 s timeout
+# lets the command through.
+# --------------------------------------------------------------------------- #
+
+_OPTION_RUNS = ["-c git ", "-C git ", "-c a.git ", "--git-dir git ", "--git-dir=x ", "-c a=b ",
+                "-C dir ", "--git-dir x ", "--no-pager ", "--namespace ns "]
+
+
+def _timed_bash(tmp_path, command: str) -> tuple[float, subprocess.CompletedProcess]:
+    import time
+
+    started = time.perf_counter()
+    try:
+        r = _run(_BASH_DISPATCH, {"tool_input": {"command": command}, "cwd": str(tmp_path)}, timeout=30)
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"the dispatcher ran past 30 s on {command[:40]!r}...")
+    return time.perf_counter() - started, r
+
+
+def _reason(r: subprocess.CompletedProcess) -> str | None:
+    if "permissionDecision" not in r.stdout:
+        return None
+    return json.loads(r.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+# requirement: git-guards / A force-push, hard reset or forced branch delete asks first
+@pytest.mark.parametrize("unit", _OPTION_RUNS)
+def test_a_long_global_option_run_is_fast_and_keeps_its_verdict(tmp_path, unit):
+    run = "git " + unit * (28_000 // len(unit))
+    elapsed, r = _timed_bash(tmp_path, run + "status")
+    assert elapsed < 5.0, f"{elapsed:.1f}s"
+    assert (r.returncode, _reason(r)) == (0, None)
+    elapsed, r = _timed_bash(tmp_path, run + "reset --hard")
+    assert elapsed < 5.0, f"{elapsed:.1f}s"
+    assert r.returncode == 0 and "git reset --hard" in _reason(r)
+
+
+@pytest.mark.parametrize(
+    ("command", "asks"),
+    [
+        ("git " + "-c " * 40 + "x", False),
+        ("git " + "-C " * 40 + "x", False),
+        ("git " + "--git-dir " * 30 + "x", False),
+        ("git " + "-c " * 40 + "reset --hard", True),
+    ],
+    ids=["c", "capital-c", "git-dir", "c-then-reset"],
+)
+def test_options_that_parse_two_ways_are_fast(tmp_path, command, asks):
+    # `-c -c` is a `-c` taking `-c` as its value, or two bare flags. The regex
+    # tried every split: 6 s for 30 of them on main, about 1.6 times longer
+    # for each one more.
+    elapsed, r = _timed_bash(tmp_path, command)
+    assert elapsed < 5.0, f"{elapsed:.1f}s"
+    assert r.returncode == 0
+    assert ("git reset --hard" in (_reason(r) or "")) is asks
