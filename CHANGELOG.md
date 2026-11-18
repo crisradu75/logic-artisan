@@ -20,6 +20,10 @@ the skills fall back to the default list of protected areas.
 
 ### Added
 
+- **A `block-dishonest-commit` and an `ask-staged-debug-tag` guard hook** on `git commit`: the
+  first refuses a message with a `Measured-by: none` trailer and an `--allow-empty` commit with a
+  review-round subject (any other `--allow-empty` warns); the second asks when the commit would add
+  a `/cla:diagnose` debug tag (best-effort, from `git diff --cached`) (#PR).
 - **`ask-destructive-git` asks before three more history changes**, each only when work is at
   stake: a `git rebase`, or a `git pull` that rebases, that would rewrite a commit already on a
   remote-tracking ref (a rebase of local-only commits, one that replays nothing, and a rebase action
