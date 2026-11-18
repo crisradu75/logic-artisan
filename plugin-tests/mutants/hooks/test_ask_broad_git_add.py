@@ -4,11 +4,14 @@ guard over a broad `git add`, in `ask-broad-git-add.py`.
 Run:
     python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/test_ask_broad_git_add.py
 
-Every mutant edits the hook, never the test, and re-breaks one line the hook
-added: the decision itself, each broad-form recogniser, each thing that makes an
+Every mutant edits the hook or the Bash dispatcher, never a test. The hook
+mutants re-break one line the hook added: the decision itself, each broad-form recogniser, each thing that makes an
 add NOT broad, the directory the probe runs in, the parse that keeps the walk
 linear, and the shared probe deadline. The two halves of the decision are both
 here: a hook that never asks, and a hook that asks without an untracked file.
+The dispatcher mutants re-break the best-effort tier: the budget skip, the
+load failure reported as context, and the run order that keeps the 4 s probe
+behind the enforcing hooks.
 
 Deliberately absent, because no correct input can tell them from the real code:
 dropping the `directory is not None` guard before `_parse_add` (a None directory
@@ -30,6 +33,8 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 HOOK = PLUGIN / "hooks" / "ask-broad-git-add.py"
 GUARD = DEV / "tests" / "hooks" / "test_ask_broad_git_add.py"
 TARGETS = [GUARD]
+DISPATCHER = PLUGIN / "hooks" / "dispatch-bash-pretooluse.py"
+DISPATCH_TARGETS = [DEV / "tests" / "hooks" / "test_dispatch.py", DEV / "tests" / "hooks" / "test_hooks_wiring.py"]
 
 MUTANTS = [
     (
@@ -178,5 +183,82 @@ MUTANTS = [
         "MAX_NAMED = 10",
         "MAX_NAMED = 12",
         TARGETS,
+    ),
+    (
+        "a `:^` exclusion is read as a narrow positive pathspec",
+        HOOK,
+        '    return spec.startswith((":!", ":^", ":(exclude"))',
+        '    return spec.startswith((":!", ":(exclude"))',
+        TARGETS,
+    ),
+    (
+        "a `:(exclude)` exclusion is read as a narrow positive pathspec",
+        HOOK,
+        '    return spec.startswith((":!", ":^", ":(exclude"))',
+        '    return spec.startswith((":!", ":^"))',
+        TARGETS,
+    ),
+    (
+        "--force no longer counts the ignored files it would add",
+        HOOK,
+        "                force = not negated",
+        "                force = force",
+        TARGETS,
+    ),
+    (
+        "--chmod no longer consumes its value, which then narrows -A",
+        HOOK,
+        "                skip_next = True",
+        "                pass",
+        TARGETS,
+    ),
+    (
+        "an ambiguous abbreviation resolves to its first match instead of being refused",
+        HOOK,
+        "    return hits[0] if len(hits) == 1 and name else None",
+        "    return hits[0] if hits and name else None",
+        TARGETS,
+    ),
+    (
+        "--pathspec-from-file no longer silences a -A it narrows",
+        HOOK,
+        "                from_file = not negated",
+        "                from_file = False",
+        TARGETS,
+    ),
+    (
+        "a rename's source field is read as an entry of its own",
+        HOOK,
+        "            index += 1  # a rename or copy carries its source path as the next field",
+        "            pass",
+        TARGETS,
+    ),
+    (
+        "the dispatcher stops skipping the best-effort hook on a spent budget",
+        DISPATCHER,
+        "        if filename in _SKIPPABLE_HOOKS and not deadline.has_room(cost):",
+        "        if filename in _ADVISORY_HOOKS and not deadline.has_room(cost):",
+        DISPATCH_TARGETS,
+    ),
+    (
+        "a load failure of the best-effort hook escalates to the enforcing-guard ask",
+        DISPATCHER,
+        "        if result.errored and filename not in _SKIPPABLE_HOOKS:",
+        "        if result.errored and filename not in _ADVISORY_HOOKS:",
+        DISPATCH_TARGETS,
+    ),
+    (
+        "the best-effort set is dropped from the skippable set",
+        DISPATCHER,
+        "_SKIPPABLE_HOOKS = _ADVISORY_HOOKS | _BEST_EFFORT_HOOKS",
+        "_SKIPPABLE_HOOKS = _ADVISORY_HOOKS",
+        DISPATCH_TARGETS,
+    ),
+    (
+        "the best-effort hook runs ahead of the 12 s enforcing hook",
+        DISPATCHER,
+        '    "ask-destructive-git.py",\n    "block-unsafe-recursive-delete.py",\n    "ask-broad-git-add.py",\n',
+        '    "ask-broad-git-add.py",\n    "ask-destructive-git.py",\n    "block-unsafe-recursive-delete.py",\n',
+        DISPATCH_TARGETS,
     ),
 ]

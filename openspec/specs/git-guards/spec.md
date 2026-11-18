@@ -122,7 +122,7 @@ The `pre-push` hook SHALL also refuse a push that updates or deletes the branch 
 
 ### Requirement: A broad git add that would stage untracked files asks first
 
-The guard hooks SHALL ask the user before a `git add` of the whole tree or a whole directory (`-A`, `--all`, `.`, `:/`, `*` or a bare `openspec/`) when it would stage untracked files, naming up to ten of them, and SHALL stay silent when it would stage none or cannot check.
+The guard hooks SHALL ask the user before a `git add` of the current directory, the repo root or a bare `openspec/` (`-A`, `--all`, `.`, `:/` or `*`) when it would stage untracked files, naming up to ten of them, and SHALL stay silent when it would stage none or cannot check.
 
 #### Scenario: A broad add over an untracked file
 

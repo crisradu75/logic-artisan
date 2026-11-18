@@ -99,6 +99,10 @@ _BROAD_FORMS = [
     "git add --no-ignore-r",
     # Only exclusions: git reads that as "everything except these".
     "git add ':!tracked.txt'",
+    "git add ':^tracked.txt'",
+    "git add ':(exclude)tracked.txt'",
+    # `--chmod` takes the next token as its value, not as a pathspec.
+    "git add -A --chmod +x",
     "GIT.EXE add -A",
     "/usr/bin/git add .",
 ]
@@ -155,6 +159,8 @@ def test_each_broad_form_is_silent_with_only_tracked_modifications(command, repo
         # git refuses an ambiguous or unknown option, so nothing is staged.
         "git add --n .",
         "git add --bogus .",
+        # `--ig` could be --ignore-removal, --ignore-errors or --ignore-missing.
+        "git add --ig .",
         "git add -Z .",
         # `git add` with nothing names nothing.
         "git add",
@@ -164,6 +170,8 @@ def test_each_broad_form_is_silent_with_only_tracked_modifications(command, repo
         "git addx .",
         # The paths live in a file this hook does not read.
         "git add --pathspec-from-file list.txt",
+        "git add -A --pathspec-from-file list.txt",
+        "git add -A --pathspec-from-file=list.txt",
     ],
 )
 def test_narrow_or_non_staging_adds_are_silent(command, repo, monkeypatch, capsys):
@@ -278,9 +286,30 @@ def test_an_ignored_file_does_not_count(repo, monkeypatch, capsys):
     assert _run("git add .", monkeypatch, capsys, repo) is None
 
 
-def test_force_counts_the_ignored_files_it_would_add(repo, monkeypatch, capsys):
+@pytest.mark.parametrize("command", ["git add -f .", "git add --force .", "git add -Af"])
+def test_force_counts_the_ignored_files_it_would_add(command, repo, monkeypatch, capsys):
     (repo / "ignored.env").write_text("TOKEN=x\n", encoding="utf-8")
-    assert "`ignored.env`" in _reason(_run("git add -f .", monkeypatch, capsys, repo))
+    assert "`ignored.env`" in _reason(_run(command, monkeypatch, capsys, repo))
+
+
+def test_a_staged_rename_does_not_hide_the_untracked_file_after_it(repo, monkeypatch, capsys):
+    """In `-z` output a rename carries its source path as a separate field."""
+    _git(repo, "mv", "tracked.txt", "moved.txt")
+    (repo / "stray.txt").write_text("scratch\n", encoding="utf-8")
+    reason = _reason(_run("git add -A", monkeypatch, capsys, repo))
+    assert "1 untracked file(s)" in reason and "`stray.txt`" in reason
+
+
+def test_a_rename_source_field_is_never_read_as_an_entry(monkeypatch, tmp_path):
+    """A source path is a bare path, so one that happens to begin with `?? `
+    would read as an untracked entry if the parser did not skip it."""
+    fake = "R  new.txt\0?? looks-untracked.txt\0?? stray.txt\0"
+
+    def _status(args, *_a, **_k):
+        return subprocess.CompletedProcess(args, 0, fake, "")
+
+    monkeypatch.setattr(hook.subprocess, "run", _status)
+    assert hook._status_entries(str(tmp_path), [], False, 1.0) == ["stray.txt"]
 
 
 def test_an_exclusion_beside_a_broad_pathspec_is_respected(repo, monkeypatch, capsys):

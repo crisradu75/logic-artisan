@@ -566,9 +566,46 @@ def test_best_effort_hooks_are_named_ask_hooks_the_dispatcher_runs(dispatcher):
     for name in best_effort:
         source = (_HOOKS_DIR / name).read_text(encoding="utf-8")
         assert "permissionDecision" in source, f"{name} cannot ask; mark it advisory"
-        assert not re.search(r"^\s*return 2\b", source, re.M), (
+        assert not _can_block(source), (
             f"{name} can block, so it must be enforcing, never best-effort"
         )
+
+
+def _can_block(source: str) -> bool:
+    """A `return 2` from `main()`, or an exit with status 2 anywhere."""
+    return bool(
+        re.search(r"^\s*return 2\b", source, re.M)
+        or re.search(r"\b(?:sys\.)?exit\(\s*2\s*\)", source)
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["def main():\n    return 2\n", "sys.exit(2)\n", "    exit( 2 )\n", "raise SystemExit(sys.exit(2))\n"],
+)
+def test_the_block_detector_sees_every_way_to_exit_2(source):
+    assert _can_block(source)
+
+
+def test_the_block_detector_is_silent_on_an_ask_hook():
+    assert not _can_block((_HOOKS_DIR / "ask-broad-git-add.py").read_text(encoding="utf-8"))
+    assert not _can_block("sys.exit(main())\nreturn 20\nsys.exit(21)\n")
+
+
+def test_skippable_hooks_run_after_every_enforcing_hook_in_the_bash_dispatcher():
+    """Order is the Bash dispatcher's backstop: a skippable hook that runs before
+    an enforcing one spends budget the enforcing one may need. Moving the 4 s
+    broad-add probe ahead of the 12 s destructive-git hook adds up to more than
+    the handler timeout, and a killed handler lets the call through."""
+    dispatcher_path = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
+    order = _hook_files_list(dispatcher_path)
+    skippable = _named_collection(dispatcher_path, "_ADVISORY_HOOKS") | _best_effort(dispatcher_path)
+    enforcing = [i for i, name in enumerate(order) if name not in skippable]
+    skipped = [i for i, name in enumerate(order) if name in skippable]
+    assert enforcing and skipped
+    assert max(enforcing) < min(skipped), (
+        f"a skippable hook runs before an enforcing one in {order}"
+    )
 
 
 def test_the_bash_dispatcher_declares_the_broad_add_hook_best_effort():

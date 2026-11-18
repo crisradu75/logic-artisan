@@ -15,3 +15,12 @@ Leftover review suggestions. The inbox is emptied by regular sweep PRs.
 - `codify-learnings/SKILL.md`: "not a made-up slug no file has" reads awkwardly.
 - `test_autonomy_gate_exceptions.py` passes rewordings like "no exceptions authorize a pause"; pin the exact clause if the gate is reworded again.
 - Rule ledger: a few `not-a-rule` fragments also span a real rule's keyword (`agents/doc-sweeper.md` and its Copilot copy, `cla-setup/SKILL.md` "never-clobber. ALWAYS guard"); narrow them so deleting the rule's own `keep` entry would fail the test.
+
+## From the ask-broad-git-add review (Suggestions, not fixed)
+
+- `git add */` is classed broad, but the probe passes a literal `*/` to git, so it stays silent while the shell stages every directory.
+- Not detected: `..`, `sub/..`, `"$PWD"`, `$(pwd)`, `:(glob)**`, a quoted `"git"` and `--config-env`.
+- A `GIT_DIR=` anywhere in the command silences every add in it, e.g. `GIT_DIR=x git status; git add -A`.
+- The rename skip checks only `code[0]`, so a worktree rename shown as `" R"` is missed.
+- The bare `except Exception` hides parser bugs even under `--debug`.
+- Untracked file names go verbatim into the ask reason, so a file named "…did not run…" makes the Copilot adapter turn the ask into a deny.
