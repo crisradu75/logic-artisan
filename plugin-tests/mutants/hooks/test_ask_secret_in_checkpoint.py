@@ -1,33 +1,47 @@
 """Mutant batch for `tests/hooks/test_ask_secret_in_checkpoint.py` -- the enforcing ask
 guard over a secret-shaped string written into a committed briefing under `cla.io/`,
-in `ask-secret-in-checkpoint.py`.
+in `ask-secret-in-checkpoint.py`, and the Copilot adapter's check for the new text.
 
 Run:
     python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/test_ask_secret_in_checkpoint.py
 
-Every mutant edits the hook, the Edit/Write dispatcher or `_dispatch_lib.py`,
-never a test. The hook mutants re-break one line each, and several decisions on the
-lines that carry more than one (a pattern's prefix, its boundaries and its
-body check; the path split; the scope test): the briefing directories, the placeholder words, the cap on named findings, the three
-character-class checks, each key pattern, its boundaries and its check, the private-key and JWT
-shapes, the URL pattern and each placeholder rule, the path scope, the scan
-loop, line numbering and ordering, the reason text, the input handling, the
-fail-open catch and the ask payload. The dispatcher mutants re-break the hook's
-place in the list and its enforcing tier; one more breaks its budget entry.
+Every mutant edits the hook, the Edit/Write dispatcher, `_dispatch_lib.py` or the
+Copilot adapter, never a test. The hook mutants re-break one line each, and
+several decisions on the lines that carry more than one (a pattern's prefix, its
+start rule, its end and its body check; the path split; the scope test): the
+briefing directories, the placeholder words, the cap on named findings, the
+character-class checks, the start rule shared by every token pattern (a run
+boundary, a written escape, a percent-escape), each key pattern, the private-key
+and JWT shapes, the URL start, what follows `user:`, where the password ends,
+each placeholder rule, the path scope, the scan, the new texts an Edit,
+Write or MultiEdit carries, the reason text, the input handling, the boundary
+between failing open and propagating a crash, and the ask payload. The
+dispatcher mutants re-break the hook's place in the list and its enforcing tier;
+one more breaks its budget entry. The adapter mutants re-break the key each tool
+carries its text under, the type check and the denial's wording.
 
-Deliberately absent, because no correct input can tell them from the real code:
+Deliberately absent, because no correct input can tell them from the real code,
+or because the planted bug would hang the run rather than fail it:
 - `bisect_left` against `bisect_right` in the line numbering. A match never
   starts on a newline, so the two return the same index.
-- `>= 4` against `>= 3` in `_varied`. A body of three distinct characters in an
-  AWS key shape is no more a placeholder than one of four; the batch pins the
-  rule against two (`XY` repeated) instead.
+- `>= 4` against `>= 3` in `_varied`. The batch pins the rule against two
+  (`XY` repeated) instead.
 - the connection URL's opening lookbehind. A scheme with a letter in front is
   still a scheme, so finditer finds the same password without it, and the scan
-  stays linear either way (the scheme is at most 32 characters, so at most 32
-  starts reach any one `://`). It only spares those repeat starts.
+  stays linear either way (the scheme is at most 32 characters).
+- `:(?!//)` in `_URL_REST`. Its only job is to stop each start's stretch at the
+  next `://`, which keeps the scan linear; without it the 1 MB timing test runs
+  for hours instead of failing. The colon itself is pinned by a password that
+  holds a `:`.
+- `.endswith("}")` in the `${...}` test on its own. A real password that starts
+  `${` and does not end `}` is no likelier than one that does; the whole
+  condition carries a mutant.
+- `isinstance(edits, list)` against a plain truth test. A non-list `edits`
+  either iterates harmlessly or raises inside the fail-open `try`, so both
+  return silence; the batch pins the type with `dict` instead.
 - the `return False` lines of `_real_password` are each pinned through their
-  `if` condition, not separately: removing the condition and removing the
-  return are the same planted bug.
+  `if` condition: removing the condition and removing the return are the same
+  planted bug.
 
 Each anchor occurs once in its file; checked by hand when the batch was written,
 in a scratch copy of the tree with bytecode writing off, not with mutate.py.
@@ -49,6 +63,15 @@ DISPATCH_TARGETS = [
     DEV / "tests" / "hooks" / "test_dispatch.py",
     DEV / "tests" / "hooks" / "test_hooks_wiring.py",
 ]
+ADAPTER = PLUGIN / "hooks" / "copilot-pretooluse.py"
+ADAPTER_TARGETS = [DEV / "tests" / "hooks" / "test_copilot_hooks.py"]
+
+
+def _check(anchor: str, kind: str, why: str) -> tuple:
+    """A pattern's body check replaced with `kind`, for the line `anchor` ends."""
+    return (why, HOOK, f'{anchor}"),\n        {kind.split(">")[0]},',
+            f'{anchor}"),\n        {kind.split(">")[1]},', TARGETS)
+
 
 MUTANTS = [
     # ---- scope and tables ----------------------------------------------------
@@ -64,6 +87,27 @@ MUTANTS = [
         HOOK,
         '    "password", "passwd", "pass", "pwd",',
         '    "passwd", "pass", "pwd",',
+        TARGETS,
+    ),
+    (
+        "`pw` is no longer a placeholder word",
+        HOOK,
+        '"pw", "token", "mysecretpassword"',
+        '"token", "mysecretpassword"',
+        TARGETS,
+    ),
+    (
+        "`token` is no longer a placeholder word",
+        HOOK,
+        '"token", "mysecretpassword"',
+        '"mysecretpassword"',
+        TARGETS,
+    ),
+    (
+        "the Docker docs' `mysecretpassword` is no longer a placeholder word",
+        HOOK,
+        '"mysecretpassword",\n})',
+        '\n})',
         TARGETS,
     ),
     (
@@ -96,6 +140,20 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "a fixed-length key needs no upper case",
+        HOOK,
+        "    return any(c.isupper() for c in body) and any",
+        "    return True and any",
+        TARGETS,
+    ),
+    (
+        "a fixed-length key needs no lower case",
+        HOOK,
+        "for c in body) and any(c.islower() for c in body)\n",
+        "for c in body) and True\n",
+        TARGETS,
+    ),
+    (
         "a Slack token needs no digit",
         HOOK,
         "def _has_digit(body: str) -> bool:\n    return any(c.isdigit() for c in body)",
@@ -109,7 +167,343 @@ MUTANTS = [
         "    return len(set(body)) >= 2",
         TARGETS,
     ),
+    # ---- the start rule every token pattern shares ---------------------------
+    (
+        "a token may start anywhere, inside a longer run too",
+        HOOK,
+        r'rf"(?:(?<!{boundary})|',
+        r'rf"(?:|',
+        TARGETS,
+    ),
+    (
+        "a key after a written escape is missed",
+        HOOK,
+        r"|(?<=\\[nrt])|",
+        r"|",
+        TARGETS,
+    ),
+    (
+        "a key after a written \\r or \\t is missed",
+        HOOK,
+        r"(?<=\\[nrt])",
+        r"(?<=\\[n])",
+        TARGETS,
+    ),
+    (
+        "a key after a percent-escape is missed",
+        HOOK,
+        r"|(?<=%[0-9A-Fa-f]{{2}})){body}",
+        r"){body}",
+        TARGETS,
+    ),
+    # ---- the key patterns ----------------------------------------------------
+    (
+        "an ASIA session key ID is no longer an AWS key",
+        HOOK,
+        "(?:AKIA|ASIA)(?P<body>",
+        "(?:AKIA)(?P<body>",
+        TARGETS,
+    ),
+    (
+        "an AWS key ID inside a longer word asks",
+        HOOK,
+        '_token("[A-Za-z0-9]", r"(?:AKIA',
+        '_token("\\\\x00", r"(?:AKIA',
+        TARGETS,
+    ),
+    (
+        "an AWS-shaped run one character too long asks",
+        HOOK,
+        '{16})(?![A-Za-z0-9])"),',
+        '{16})"),',
+        TARGETS,
+    ),
+    (
+        "an AWS key with a placeholder body asks",
+        HOOK,
+        "        _varied,\n",
+        "        None,\n",
+        TARGETS,
+    ),
+    (
+        "only ghp_ GitHub tokens are found",
+        HOOK,
+        "gh[pousr]_(?P<body>",
+        "ghp_(?P<body>",
+        TARGETS,
+    ),
+    (
+        "a GitHub token inside a longer run asks",
+        HOOK,
+        '_token("[A-Za-z0-9_]", r"gh[pousr]',
+        '_token("\\\\x00", r"gh[pousr]',
+        TARGETS,
+    ),
+    (
+        "a GitHub token body may run past its fixed length",
+        HOOK,
+        "gh[pousr]_(?P<body>[A-Za-z0-9]{36})",
+        "gh[pousr]_(?P<body>[A-Za-z0-9]{36,})",
+        TARGETS,
+    ),
+    _check("gh[pousr]_(?P<body>[A-Za-z0-9]{36})(?![A-Za-z0-9])", "_cased>None",
+           "a GitHub token with a placeholder body asks"),
+    _check("gh[pousr]_(?P<body>[A-Za-z0-9]{36})(?![A-Za-z0-9])", "_cased>_mixed",
+           "a real GitHub token with no digit is missed"),
+    (
+        "a fine-grained token's body must be longer than real ones are",
+        HOOK,
+        "github_pat_(?P<body>[A-Za-z0-9_]{30,})",
+        "github_pat_(?P<body>[A-Za-z0-9_]{90,})",
+        TARGETS,
+    ),
+    (
+        "a fine-grained token inside a longer run asks",
+        HOOK,
+        '_token("[A-Za-z0-9_]", r"github_pat_',
+        '_token("\\\\x00", r"github_pat_',
+        TARGETS,
+    ),
+    _check("github_pat_(?P<body>[A-Za-z0-9_]{30,})", "_mixed>None",
+           "a fine-grained token with a placeholder body asks"),
+    (
+        "the Anthropic prefix is misspelled",
+        HOOK,
+        "sk-ant-(?P<body>",
+        "sk-anth-(?P<body>",
+        TARGETS,
+    ),
+    (
+        "an Anthropic key inside a longer run asks",
+        HOOK,
+        '_token("[A-Za-z0-9_-]", r"sk-ant-',
+        '_token("\\\\x00", r"sk-ant-',
+        TARGETS,
+    ),
+    _check("sk-ant-(?P<body>[A-Za-z0-9_-]{20,})", "_mixed>None",
+           "an Anthropic key with a placeholder body asks"),
+    (
+        "an sk-proj- key is no longer found",
+        HOOK,
+        "sk-(?:proj|svcacct|admin|None)-",
+        "sk-(?:svcacct|admin|None)-",
+        TARGETS,
+    ),
+    (
+        "a prefixed OpenAI key inside a longer run asks",
+        HOOK,
+        '_token("[A-Za-z0-9_-]", r"sk-(?:proj',
+        '_token("\\\\x00", r"sk-(?:proj',
+        TARGETS,
+    ),
+    _check("sk-(?:proj|svcacct|admin|None)-(?P<body>[A-Za-z0-9_-]{40,})", "_mixed>None",
+           "a prefixed OpenAI key with a placeholder body asks"),
+    (
+        "a bare sk- key may be the first part of a longer slug",
+        HOOK,
+        r'sk-(?P<body>[A-Za-z0-9]{32,})(?![A-Za-z0-9_-])"',
+        r'sk-(?P<body>[A-Za-z0-9]{32,})"',
+        TARGETS,
+    ),
+    (
+        "a bare sk- key may hold dashes, so a slug matches",
+        HOOK,
+        "sk-(?P<body>[A-Za-z0-9]{32,})",
+        "sk-(?P<body>[A-Za-z0-9-]{32,})",
+        TARGETS,
+    ),
+    (
+        "a bare OpenAI key inside a longer run asks",
+        HOOK,
+        '_token("[A-Za-z0-9_-]", r"sk-(?P<body>',
+        '_token("\\\\x00", r"sk-(?P<body>',
+        TARGETS,
+    ),
+    _check("sk-(?P<body>[A-Za-z0-9]{32,})(?![A-Za-z0-9_-])", "_mixed>None",
+           "a bare sk- run without mixed classes asks"),
+    (
+        "xoxe- refresh tokens are no longer found",
+        HOOK,
+        "xox[abpre]-(?P<body>",
+        "xox[abpr]-(?P<body>",
+        TARGETS,
+    ),
+    (
+        "a Slack token inside a longer run asks",
+        HOOK,
+        '_token("[A-Za-z0-9_-]", r"xox',
+        '_token("\\\\x00", r"xox',
+        TARGETS,
+    ),
+    (
+        "a Slack token with no numeric id asks",
+        HOOK,
+        "        _has_digit,\n",
+        "        None,\n",
+        TARGETS,
+    ),
+    (
+        "a Google key must be one character longer than real ones are",
+        HOOK,
+        "AIza(?P<body>[A-Za-z0-9_-]{35})",
+        "AIza(?P<body>[A-Za-z0-9_-]{36})",
+        TARGETS,
+    ),
+    (
+        "a Google key inside a longer run asks",
+        HOOK,
+        '_token("[A-Za-z0-9_-]", r"AIza',
+        '_token("\\\\x00", r"AIza',
+        TARGETS,
+    ),
+    (
+        "a Google-shaped run one character too long asks",
+        HOOK,
+        '{35})(?![A-Za-z0-9_-])"),',
+        '{35})"),',
+        TARGETS,
+    ),
+    _check("AIza(?P<body>[A-Za-z0-9_-]{35})(?![A-Za-z0-9_-])", "_cased>None",
+           "a Google key with a placeholder body asks"),
+    _check("AIza(?P<body>[A-Za-z0-9_-]{35})(?![A-Za-z0-9_-])", "_cased>_mixed",
+           "a real Google key with no digit is missed"),
+    (
+        "a restricted Stripe key is no longer found",
+        HOOK,
+        "[sr]k_live_(?P<body>",
+        "sk_live_(?P<body>",
+        TARGETS,
+    ),
+    (
+        "a Stripe key inside a longer run asks",
+        HOOK,
+        '_token("[A-Za-z0-9_]", r"[sr]k_live_',
+        '_token("\\\\x00", r"[sr]k_live_',
+        TARGETS,
+    ),
+    _check("[sr]k_live_(?P<body>[A-Za-z0-9]{16,})", "_mixed>None",
+           "a Stripe key with a placeholder body asks"),
+    (
+        "a PKCS8 private key header (no algorithm word) is no longer found",
+        HOOK,
+        "-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY",
+        "-----BEGIN [A-Z0-9 ]{1,40}PRIVATE KEY",
+        TARGETS,
+    ),
+    (
+        "the private key shape is run through a body check it has no group for",
+        HOOK,
+        "PRIVATE KEY\"),\n        None,",
+        "PRIVATE KEY\"),\n        _mixed,",
+        TARGETS,
+    ),
+    (
+        "a JWT may start inside a run, which also makes the scan quadratic",
+        HOOK,
+        '            "[A-Za-z0-9_-]",\n            r"eyJ',
+        '            "\\\\x00",\n            r"eyJ',
+        TARGETS,
+    ),
+    (
+        "two base64url segments count as a JWT",
+        HOOK,
+        r"\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
+        r"\.eyJ[A-Za-z0-9_-]{8,}",
+        TARGETS,
+    ),
+    (
+        "the JWT shape is run through a body check it has no group for",
+        HOOK,
+        "        ),\n        None,\n    ),\n]",
+        "        ),\n        _mixed,\n    ),\n]",
+        TARGETS,
+    ),
+    # ---- the connection URL --------------------------------------------------
+    (
+        "only short schemes are read, so postgres:// is missed",
+        HOOK,
+        "[A-Za-z][A-Za-z0-9+.-]{0,31}://",
+        "[A-Za-z][A-Za-z0-9+.-]{0,3}://",
+        TARGETS,
+    ),
+    (
+        "an IPv6 host's bracket is read as a user",
+        HOOK,
+        r"(?P<user>[^\s:/@\[]*):",
+        r"(?P<user>[^\s:/@]*):",
+        TARGETS,
+    ),
+    (
+        "a password stops at its first colon",
+        HOOK,
+        r'_URL_REST = re.compile(r"(?:[^\s:]|:(?!//))*")',
+        r'_URL_REST = re.compile(r"[^\s:]*")',
+        TARGETS,
+    ),
+    (
+        "the stretch after user: is read from the scheme instead",
+        HOOK,
+        "_URL_REST.match(text, m.end())",
+        "_URL_REST.match(text, m.start())",
+        TARGETS,
+    ),
+    (
+        "the authority runs to the end, so a query's @ moves the password's end",
+        HOOK,
+        '    slash = rest.find("/")',
+        "    slash = -1",
+        TARGETS,
+    ),
+    (
+        "the password stops at its first @",
+        HOOK,
+        '        return authority[:authority.rindex("@")]',
+        '        return authority[:authority.index("@")]',
+        TARGETS,
+    ),
+    (
+        "an @ before the first / is not read as the userinfo's end",
+        HOOK,
+        '    if "@" in authority:',
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "a URL with no @ at all crashes the scan",
+        HOOK,
+        '    if "@" not in rest or authority.isdigit():',
+        "    if authority.isdigit():",
+        TARGETS,
+    ),
+    (
+        "a port before the first / is read as a password",
+        HOOK,
+        '"@" not in rest or authority.isdigit():',
+        '"@" not in rest:',
+        TARGETS,
+    ),
+    (
+        "a password holding an unencoded / is missed",
+        HOOK,
+        '    return rest[:rest.rindex("@")]',
+        "    return None",
+        TARGETS,
+    ),
     # ---- the URL password placeholders ---------------------------------------
+    (
+        "a percent-encoded placeholder counts as a password",
+        HOOK,
+        "    user, password = unquote(user), unquote(password)",
+        "    pass",
+        TARGETS,
+    ),
+    (
+        "an empty password crashes the scan",
+        HOOK,
+        "    if not password:",
+        "    if False:",
+        TARGETS,
+    ),
     (
         "a {password} placeholder counts as a password",
         HOOK,
@@ -120,15 +514,22 @@ MUTANTS = [
     (
         "a ${VAR} placeholder counts as a password",
         HOOK,
-        '    if password.startswith("${") or re.fullmatch(',
-        '    if re.fullmatch(',
+        '    if password.startswith("${") and password.endswith("}"):',
+        "    if False:",
         TARGETS,
     ),
     (
-        "a $VAR placeholder counts as a password",
+        "a password starting $ and a lower-case letter is read as a variable",
         HOOK,
-        r'or re.fullmatch(r"\$[A-Za-z_][A-Za-z0-9_]*", password):',
-        r'or False:',
+        r'r"\$[A-Z_][A-Z0-9_]*"',
+        r'r"\$[A-Za-z_][A-Za-z0-9_]*"',
+        TARGETS,
+    ),
+    (
+        "an upper-case stand-in (TOKEN) counts as a password",
+        HOOK,
+        r'    if re.fullmatch(r"[A-Z]+(?:_[A-Z]+)*", password):',
+        "    if False:",
         TARGETS,
     ),
     (
@@ -152,240 +553,14 @@ MUTANTS = [
         "    return True",
         TARGETS,
     ),
-    # ---- the key patterns ----------------------------------------------------
-    (
-        "an ASIA session key ID is no longer an AWS key",
-        HOOK,
-        "(?:AKIA|ASIA)(?P<body>",
-        "(?:AKIA)(?P<body>",
-        TARGETS,
-    ),
-    (
-        "an AWS key with a placeholder body asks",
-        HOOK,
-        "        _varied,\n",
-        "        None,\n",
-        TARGETS,
-    ),
-    (
-        "only ghp_ GitHub tokens are found",
-        HOOK,
-        "gh[pousr]_(?P<body>",
-        "ghp_(?P<body>",
-        TARGETS,
-    ),
-    (
-        "a GitHub token with a placeholder body asks",
-        HOOK,
-        "gh[pousr]_(?P<body>[A-Za-z0-9]{30,})\"),\n        _mixed,",
-        "gh[pousr]_(?P<body>[A-Za-z0-9]{30,})\"),\n        None,",
-        TARGETS,
-    ),
-    (
-        "a fine-grained token's body must be longer than real ones are",
-        HOOK,
-        "github_pat_(?P<body>[A-Za-z0-9_]{30,})",
-        "github_pat_(?P<body>[A-Za-z0-9_]{90,})",
-        TARGETS,
-    ),
-    (
-        "a fine-grained token with a placeholder body asks",
-        HOOK,
-        "github_pat_(?P<body>[A-Za-z0-9_]{30,})\"),\n        _mixed,",
-        "github_pat_(?P<body>[A-Za-z0-9_]{30,})\"),\n        None,",
-        TARGETS,
-    ),
-    (
-        "the Anthropic prefix is misspelled",
-        HOOK,
-        "sk-ant-(?P<body>",
-        "sk-anth-(?P<body>",
-        TARGETS,
-    ),
-    (
-        "an Anthropic key with a placeholder body asks",
-        HOOK,
-        "sk-ant-(?P<body>[A-Za-z0-9_-]{20,})\"),\n        _mixed,",
-        "sk-ant-(?P<body>[A-Za-z0-9_-]{20,})\"),\n        None,",
-        TARGETS,
-    ),
-    (
-        "an Anthropic key is also named as an OpenAI key",
-        HOOK,
-        "sk-(?!ant-)(?P<body>",
-        "sk-(?P<body>",
-        TARGETS,
-    ),
-    (
-        "a kebab-case slug after sk- asks",
-        HOOK,
-        "sk-(?!ant-)(?P<body>[A-Za-z0-9_-]{20,})\"),\n        _mixed,",
-        "sk-(?!ant-)(?P<body>[A-Za-z0-9_-]{20,})\"),\n        None,",
-        TARGETS,
-    ),
-    (
-        "only xoxb- Slack tokens are found",
-        HOOK,
-        "xox[abpr]-(?P<body>",
-        "xoxb-(?P<body>",
-        TARGETS,
-    ),
-    (
-        "a Slack token with no numeric id asks",
-        HOOK,
-        "        _has_digit,\n",
-        "        None,\n",
-        TARGETS,
-    ),
-    (
-        "a Google key must be one character longer than real ones are",
-        HOOK,
-        "AIza(?P<body>[A-Za-z0-9_-]{35})",
-        "AIza(?P<body>[A-Za-z0-9_-]{36})",
-        TARGETS,
-    ),
-    (
-        "a Google key with a placeholder body asks",
-        HOOK,
-        "AIza(?P<body>[A-Za-z0-9_-]{35})(?![A-Za-z0-9_-])\"),\n        _mixed,",
-        "AIza(?P<body>[A-Za-z0-9_-]{35})(?![A-Za-z0-9_-])\"),\n        None,",
-        TARGETS,
-    ),
-    (
-        "a restricted Stripe key is no longer found",
-        HOOK,
-        "[sr]k_live_(?P<body>",
-        "sk_live_(?P<body>",
-        TARGETS,
-    ),
-    (
-        "a Stripe key with a placeholder body asks",
-        HOOK,
-        "[sr]k_live_(?P<body>[A-Za-z0-9]{16,})\"),\n        _mixed,",
-        "[sr]k_live_(?P<body>[A-Za-z0-9]{16,})\"),\n        None,",
-        TARGETS,
-    ),
-    (
-        "a PKCS8 private key header (no algorithm word) is no longer found",
-        HOOK,
-        "-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY",
-        "-----BEGIN [A-Z0-9 ]{1,40}PRIVATE KEY",
-        TARGETS,
-    ),
-    (
-        "the private key shape is run through a body check it has no group for",
-        HOOK,
-        "PRIVATE KEY\"),\n        None,",
-        "PRIVATE KEY\"),\n        _mixed,",
-        TARGETS,
-    ),
-    (
-        "two base64url segments count as a JWT",
-        HOOK,
-        r"\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
-        r"\.eyJ[A-Za-z0-9_-]{8,}",
-        TARGETS,
-    ),
-    (
-        "the JWT shape is run through a body check it has no group for",
-        HOOK,
-        "        ),\n        None,\n    ),\n]",
-        "        ),\n        _mixed,\n    ),\n]",
-        TARGETS,
-    ),
-    (
-        "only short schemes are read, so postgres:// is missed",
-        HOOK,
-        "[A-Za-z][A-Za-z0-9+.-]{0,31}://",
-        "[A-Za-z][A-Za-z0-9+.-]{0,3}://",
-        TARGETS,
-    ),
-    (
-        "the password runs on past a slash, into a path",
-        HOOK,
-        "(?P<password>[^\\s/@]+)@",
-        "(?P<password>[^\\s@]+)@",
-        TARGETS,
-    ),
-    # ---- each key prefix opens its run, and the fixed-length ends close it --
-    (
-        "an AWS key ID inside a longer word asks",
-        HOOK,
-        'r"(?<![A-Za-z0-9])(?:AKIA',
-        'r"(?:AKIA',
-        TARGETS,
-    ),
-    (
-        "an AWS-shaped run one character too long asks",
-        HOOK,
-        '{16})(?![A-Za-z0-9])"),',
-        '{16})"),',
-        TARGETS,
-    ),
-    (
-        "a GitHub token inside a longer run asks",
-        HOOK,
-        'r"(?<![A-Za-z0-9_])gh[pousr]',
-        'r"gh[pousr]',
-        TARGETS,
-    ),
-    (
-        "a fine-grained token inside a longer run asks",
-        HOOK,
-        'r"(?<![A-Za-z0-9_])github_pat_',
-        'r"github_pat_',
-        TARGETS,
-    ),
-    (
-        "an Anthropic key inside a longer run asks",
-        HOOK,
-        'r"(?<![A-Za-z0-9_-])sk-ant-',
-        'r"sk-ant-',
-        TARGETS,
-    ),
-    (
-        "an OpenAI key inside a longer run asks",
-        HOOK,
-        'r"(?<![A-Za-z0-9_-])sk-(?!ant-)',
-        'r"sk-(?!ant-)',
-        TARGETS,
-    ),
-    (
-        "a Slack token inside a longer run asks",
-        HOOK,
-        'r"(?<![A-Za-z0-9_-])xox',
-        'r"xox',
-        TARGETS,
-    ),
-    (
-        "a Google key inside a longer run asks",
-        HOOK,
-        'r"(?<![A-Za-z0-9_-])AIza',
-        'r"AIza',
-        TARGETS,
-    ),
-    (
-        "a Google-shaped run one character too long asks",
-        HOOK,
-        '{35})(?![A-Za-z0-9_-])"),',
-        '{35})"),',
-        TARGETS,
-    ),
-    (
-        "a Stripe key inside a longer run asks",
-        HOOK,
-        'r"(?<![A-Za-z0-9_])[sr]k_live_',
-        'r"[sr]k_live_',
-        TARGETS,
-    ),
-    (
-        "a JWT match may start inside a run, which also makes the scan quadratic",
-        HOOK,
-        'r"(?<![A-Za-z0-9_-])eyJ',
-        'r"eyJ',
-        TARGETS,
-    ),
     # ---- the path scope ------------------------------------------------------
+    (
+        "a trailing dot or space on a folder name hides the folder",
+        HOOK,
+        'p.rstrip(". ").lower()',
+        "p.lower()",
+        TARGETS,
+    ),
     (
         "a backslash path is not split into its parts",
         HOOK,
@@ -396,8 +571,8 @@ MUTANTS = [
     (
         "the scope is case-sensitive",
         HOOK,
-        "parts = [p.lower() for p in path",
-        "parts = [p for p in path",
+        'parts = [p.rstrip(". ").lower() for p',
+        'parts = [p.rstrip(". ") for p',
         TARGETS,
     ),
     (
@@ -467,15 +642,15 @@ MUTANTS = [
     (
         "connection URLs are never scanned",
         HOOK,
-        "    for m in _URL_CREDENTIALS.finditer(text):",
-        "    for m in _URL_CREDENTIALS.finditer(text[:0]):",
+        "    for m in _URL_START.finditer(text):",
+        "    for m in _URL_START.finditer(text[:0]):",
         TARGETS,
     ),
     (
-        "every URL password counts, placeholders included",
+        "a URL with no password reaches the placeholder rules, and crashes",
         HOOK,
-        '        if _real_password(m.group("user"), m.group("password")):',
-        "        if True:",
+        "        if password is not None and _real_password(",
+        "        if _real_password(",
         TARGETS,
     ),
     (
@@ -499,12 +674,76 @@ MUTANTS = [
         "    return [(bisect.bisect_left(newlines, start), kind) for start, kind in hits]",
         TARGETS,
     ),
+    # ---- the new texts a call carries ----------------------------------------
+    (
+        "an Edit's new_string is not read",
+        HOOK,
+        '    for key in ("content", "new_string"):',
+        '    for key in ("content",):',
+        TARGETS,
+    ),
+    (
+        "a non-string field reaches the scan, and crashes it",
+        HOOK,
+        "        if isinstance(value, str):\n",
+        "        if True:\n",
+        TARGETS,
+    ),
+    (
+        "a Write's content is dropped",
+        HOOK,
+        '            texts.append(("", value))',
+        "            pass",
+        TARGETS,
+    ),
+    (
+        "a MultiEdit's edits are not read",
+        HOOK,
+        '    edits = tool_input.get("edits")',
+        "    edits = None",
+        TARGETS,
+    ),
+    (
+        "edits are read only from a mapping, never from the list a MultiEdit sends",
+        HOOK,
+        "    if isinstance(edits, list):",
+        "    if isinstance(edits, dict):",
+        TARGETS,
+    ),
+    (
+        "edits are numbered from 0",
+        HOOK,
+        "        for n, edit in enumerate(edits, 1):",
+        "        for n, edit in enumerate(edits):",
+        TARGETS,
+    ),
+    (
+        "an edit with no string new_string reaches the scan, and crashes it",
+        HOOK,
+        '            if isinstance(edit, dict) and isinstance(edit.get("new_string"), str):',
+        "            if isinstance(edit, dict):",
+        TARGETS,
+    ),
+    (
+        "the ask stops saying which edit holds the secret",
+        HOOK,
+        '                texts.append((f" of edit {n}", edit["new_string"]))',
+        '                texts.append(("", edit["new_string"]))',
+        TARGETS,
+    ),
     # ---- the reason ----------------------------------------------------------
     (
         "every finding is named, past the cap",
         HOOK,
-        "for line, kind in findings[:_MAX_NAMED]]",
-        "for line, kind in findings]",
+        "for line, kind, where in findings[:_MAX_NAMED]]",
+        "for line, kind, where in findings]",
+        TARGETS,
+    ),
+    (
+        "a finding's place drops its edit number",
+        HOOK,
+        'f"{kind} on line {line}{where}"',
+        'f"{kind} on line {line}"',
         TARGETS,
     ),
     (
@@ -549,7 +788,7 @@ MUTANTS = [
         '        "not a real secret."',
         TARGETS,
     ),
-    # ---- input handling ------------------------------------------------------
+    # ---- input handling, and where failing open stops -------------------------
     (
         "an empty file_path is joined to the cwd",
         HOOK,
@@ -593,24 +832,25 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "an Edit's new_string is not read",
+        "no new text is collected",
         HOOK,
-        '        for key in ("content", "new_string"):',
-        '        for key in ("content",):',
+        "        texts = _new_texts(tool_input)",
+        "        texts = []",
         TARGETS,
     ),
     (
-        "a non-string field aborts the scan of the other field",
+        "only a JSON error fails open; other bad input escapes",
         HOOK,
-        "            if isinstance(text, str):\n",
-        "            if text is not None or True:\n",
+        "    except Exception:  # noqa: BLE001 -- bad input fails open; the scan below does not",
+        "    except ValueError:  # noqa: BLE001 -- bad input fails open; the scan below does not",
         TARGETS,
     ),
     (
-        "only a JSON error fails open; a crash in the scan escapes",
+        "a crash in the scan fails open silently again",
         HOOK,
-        "    except Exception:  # noqa: BLE001 -- fail open: a guard does not break normal work",
-        "    except ValueError:  # noqa: BLE001 -- fail open: a guard does not break normal work",
+        "    findings = [(line, kind, where) for where, text in texts for line, kind in _findings(text)]",
+        "    try:\n        findings = [(line, kind, where) for where, text in texts"
+        " for line, kind in _findings(text)]\n    except Exception:\n        return 0",
         TARGETS,
     ),
     (
@@ -663,5 +903,27 @@ MUTANTS = [
         '    "ask-secret-in-checkpoint.py": 0.0,',
         '    "ask-secret-in-checkpoint.py": 3.0,',
         DISPATCH_TARGETS,
+    ),
+    # ---- the Copilot adapter -------------------------------------------------
+    (
+        "the adapter looks for each tool's text under the other tool's key",
+        ADAPTER,
+        '_TEXT_KEYS = {"Edit": "new_string", "Write": "content"}',
+        '_TEXT_KEYS = {"Edit": "content", "Write": "new_string"}',
+        ADAPTER_TARGETS,
+    ),
+    (
+        "the adapter accepts new text that is not a string",
+        ADAPTER,
+        "    elif not isinstance(tool_input.get(_TEXT_KEYS[tool_name]), str):",
+        "    elif tool_input.get(_TEXT_KEYS[tool_name]) is None:",
+        ADAPTER_TARGETS,
+    ),
+    (
+        "the adapter's denial stops naming the missing key",
+        ADAPTER,
+        '            f"CLA guard received no `{_TEXT_KEYS[tool_name]}` to check; refusing the call."',
+        '            "CLA guard received no text to check; refusing the call."',
+        ADAPTER_TARGETS,
     ),
 ]
