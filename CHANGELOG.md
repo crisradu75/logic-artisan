@@ -76,7 +76,8 @@ the skills fall back to the default list of protected areas.
 - **Absolute rules that guard no protected area are softened into guidance.** Every "never",
   "always" and "must" in the shipped skills, references, agents and output styles has a line in the
   repo's rule ledger (it does not ship); rules that guard no protected area now say why and allow a
-  judgment call, and those that guard one stay absolute (#519).
+  judgment call, and those that guard one stay absolute. Five rules that only repeated another were
+  removed (#519, #522).
 - **Shipped prose is corrected and reworded to read literally.** Wrong and stale statements are
   fixed across `_shared`, `annotate`, `feedback`, `new-worktree`, `project-review`,
   `report-upstream`, `right-model` and others, and the rest of the prompt audit reworded the
@@ -123,7 +124,7 @@ deny tests, #496 `warn-comment-dates` branch tests, #508 mnemo spec-writing benc
 foundation decisions, #518 faster suite with cached git fixture repos and the gate at `-n 4`);
 specs and docs (#480 and #490 guard decisions and new specs for AGENTS.md, cla-setup, copilot-cli,
 git-guards and guard-warnings, #494 drift fixes and the 2.2.3 and 2.3.0 changelog entries, #514 the
-foundation checklist, #488 requirement shape in the `plugin-distribution` and `review-agents`
+foundation checklist, #521 the mnemo benchmark run of the finished plugin, #488 requirement shape in the `plugin-distribution` and `review-agents`
 specs); the repo's own OpenSpec skills regenerated for OpenSpec 2.0, with the old
 `/opsx:*` command files removed (#506); and the `/release` skill, which now asks one question, with
 a "Don't release" option, before any edit (#517), and runs the test gate at `-n 4` (#518).
