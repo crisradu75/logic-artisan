@@ -198,10 +198,19 @@ _URL_START = re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]{0,31}://(?P<
 # What follows `user:`, up to whitespace or the next `://`. Stopping at the next
 # `://` keeps every start's stretch apart from the next one's, so the scan is linear.
 _URL_REST = re.compile(r"(?:[^\s:]|:(?!//))*")
+# Where the userinfo can no longer run. `?` and `#` start the query and the
+# fragment, so an `@` after them (`:3000?email=a@b`) separates nothing. A comma,
+# a semicolon, a bracket or a quote ends a URL in prose (`http://host:3000,@bob`).
+# The limit this leaves: a password holding one of these unencoded is cut there,
+# and the stub before it is all that is checked.
+_AUTHORITY_END = re.compile(r"[?#,;()'\"]")
 
 
-def _url_password(rest: str) -> str | None:
+def _url_password(user: str, rest: str) -> str | None:
     """The password at the start of `rest` (the text after `user:`), or None."""
+    end = _AUTHORITY_END.search(rest)
+    if end is not None:
+        rest = rest[:end.start()]
     slash = rest.find("/")
     authority = rest if slash < 0 else rest[:slash]
     if "@" in authority:
@@ -209,11 +218,12 @@ def _url_password(rest: str) -> str | None:
         return authority[:authority.rindex("@")]
     # No `@` before the first `/`: either that `/` sits inside an unencoded
     # password (`user:pa/ss@host`), or there is no password and a later `@` is
-    # in the path (`host:8080/a@b`). A port is all digits, so an all-digit
-    # stretch before the `/` reads as a port. The limit this leaves: a real
-    # password whose first `/` follows only digits (`user:2024/x@host`) is read
-    # as a port and missed.
-    if "@" not in rest or authority.isdigit():
+    # in the path (`host:8080/a@b`, Vite's `localhost:<port>/@vite/client`). A
+    # port is all digits or a stand-in (`<port>`, `${PORT}`, `PORT`), so such a
+    # stretch before the `/` reads as a port, and so does an empty one. The limit
+    # this leaves: a real password whose first `/` follows only digits
+    # (`user:2024/x@host`) is read as a port and missed.
+    if "@" not in rest or authority.isdigit() or not _real_password(user, authority):
         return None
     return rest[:rest.rindex("@")]
 
@@ -257,7 +267,7 @@ def _findings(text: str) -> list[tuple[int, str]]:
             if check is None or check(m.group("body")):
                 hits.append((m.start(), kind))
     for m in _URL_START.finditer(text):
-        password = _url_password(_URL_REST.match(text, m.end()).group())
+        password = _url_password(m.group("user"), _URL_REST.match(text, m.end()).group())
         if password is not None and _real_password(m.group("user"), password):
             hits.append((m.start(), "a password in a connection URL"))
     hits.sort(key=lambda hit: hit[0])

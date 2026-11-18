@@ -12,8 +12,9 @@ start rule, its end and its body check; the path split; the scope test): the
 briefing directories, the placeholder words, the cap on named findings, the
 character-class checks, the start rule shared by every token pattern (a run
 boundary, a written escape, a percent-escape), each key pattern, the private-key
-and JWT shapes, the URL start, what follows `user:`, where the password ends,
-each placeholder rule, the path scope, the scan, the new texts an Edit,
+and JWT shapes, the URL start, what follows `user:`, where the authority ends
+(a slash, a query, a fragment, punctuation), a stand-in port, where the password
+ends, each placeholder rule, the path scope, the scan, the new texts an Edit,
 Write or MultiEdit carries, the reason text, the input handling, the boundary
 between failing open and propagating a crash, and the ask payload. The
 dispatcher mutants re-break the hook's place in the list and its enforcing tier;
@@ -471,15 +472,71 @@ MUTANTS = [
     (
         "a URL with no @ at all crashes the scan",
         HOOK,
-        '    if "@" not in rest or authority.isdigit():',
-        "    if authority.isdigit():",
+        '    if "@" not in rest or authority.isdigit() or',
+        "    if authority.isdigit() or",
         TARGETS,
     ),
     (
         "a port before the first / is read as a password",
         HOOK,
-        '"@" not in rest or authority.isdigit():',
-        '"@" not in rest:',
+        '"@" not in rest or authority.isdigit() or',
+        '"@" not in rest or',
+        TARGETS,
+    ),
+    (
+        "a stand-in port (<port>, ${PORT}) before a path @ is read as a password",
+        HOOK,
+        " or not _real_password(user, authority):",
+        ":",
+        TARGETS,
+    ),
+    (
+        "a query's @ is read as the end of the userinfo",
+        HOOK,
+        """_AUTHORITY_END = re.compile(r"[?#,;()'\\"]")""",
+        """_AUTHORITY_END = re.compile(r"[#,;()'\\"]")""",
+        TARGETS,
+    ),
+    (
+        "a fragment's @ is read as the end of the userinfo",
+        HOOK,
+        """re.compile(r"[?#,;""",
+        """re.compile(r"[?,;""",
+        TARGETS,
+    ),
+    (
+        "a comma before an @mention is read as part of a password",
+        HOOK,
+        """#,;()'""",
+        """#;()'""",
+        TARGETS,
+    ),
+    (
+        "nothing ends the authority but a slash",
+        HOOK,
+        "    end = _AUTHORITY_END.search(rest)",
+        "    end = None",
+        TARGETS,
+    ),
+    (
+        "the authority's end is looked up even when there is none, and crashes",
+        HOOK,
+        "    if end is not None:",
+        "    if end is None:",
+        TARGETS,
+    ),
+    (
+        "the text past the authority's end is kept",
+        HOOK,
+        "        rest = rest[:end.start()]",
+        "        pass",
+        TARGETS,
+    ),
+    (
+        "the user name is not passed, so a port equal to it reads as a password",
+        HOOK,
+        '_url_password(m.group("user"), ',
+        '_url_password("", ',
         TARGETS,
     ),
     (
