@@ -23,7 +23,7 @@ the skills fall back to the default list of protected areas.
 - **A `block-dishonest-commit` and an `ask-staged-debug-tag` guard hook** on `git commit`: the
   first refuses a message with a `Measured-by: none` trailer and an `--allow-empty` commit with a
   review-round subject (any other `--allow-empty` warns); the second asks when the commit would add
-  a `/cla:diagnose` debug tag (best-effort, from `git diff --cached`) (#PR).
+  a `/cla:diagnose` debug tag (best-effort, from `git diff --cached`) (#542).
 - **A `guard-bash-text` guard hook** reads a Bash or PowerShell command's text. It blocks a
   `${CLAUDE_PLUGIN_ROOT}/` or `$CLAUDE_PLUGIN_ROOT/` path the shell would expand: Claude Code does
   not set that variable in the Bash tool's shell, so a placeholder copied from a `references/` file
