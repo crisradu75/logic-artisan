@@ -261,8 +261,8 @@ stale absolute path sneaks into a prompt.
 
 The hooks wire themselves from `hooks/hooks.json` when the plugin loads; there is no
 `settings.json` step. Two dispatchers each run several leaf hooks in one Python process (7 on the
-Bash/PowerShell matcher, 2 on Edit/Write), and `warn-wholesale-rewrite` runs on its own after a
-Write: **10 leaf hooks**, in three severities.
+Bash/PowerShell matcher, 3 on Edit/Write), and `warn-wholesale-rewrite` runs on its own after a
+Write: **11 leaf hooks**, in three severities.
 
 | Severity | Hook | Fires on |
 |---|---|---|
@@ -270,6 +270,7 @@ Write: **10 leaf hooks**, in three severities.
 | | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a Write or Edit outside the current worktree (section 7) |
 | **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, and a saving `git stash` during a merge, cherry-pick or revert; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
+| | `ask-plugin-cache-edit` | a Write or Edit whose resolved target is inside an installed plugin copy: `cache/` or `marketplaces/` under the plugins directory (`~/.claude/plugins`, or where `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_PLUGIN_CACHE_DIR` puts it), or `$CLAUDE_PLUGIN_ROOT` when that root is in there; silent for a `--plugin-dir` working tree (this repo) and for `data/`. Enforcing, at no budget cost: it runs no subprocess |
 | | `ask-broad-git-add` | a `git add` of the current directory, the repo root or a bare `openspec/` (`-A`, `--all`, `.`, `:/`, `*`) that would stage untracked files (it names up to ten); silent for `-u`, named paths and tracked-only changes, and best-effort: silent when it cannot check, and skipped like a warning when the handler budget is spent |
 | **Warn**: a caution, and the call runs | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
 | | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
