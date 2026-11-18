@@ -175,7 +175,7 @@ def test_every_protected_file_deleted_without_a_yes_fails(work: Path, rel: str) 
 @pytest.mark.parametrize(
     "rel",
     ["CLAUDE.md", "AGENTS.md", "CLAUDE.local.md", ".claude/CLAUDE.md", ".claude/CLAUDE.local.md",
-     ".claude/AGENTS.md", ".claude/settings.json", ".claude/settings.local.json", ".claude-plugin/plugin.json",
+     ".claude/AGENTS.md", ".claude/settings.json", ".claude-plugin/plugin.json",
      ".claude/rules/house.md", ".claude/rules/sub/more.md", TERMS, OVERLAY, TOKENS, "cla.io/fleet.local.md"],
 )
 def test_every_protected_file_created_without_a_yes_fails(work: Path, rel: str) -> None:
@@ -355,6 +355,7 @@ def test_the_snapshot_is_never_written_into_the_repo(work: Path) -> None:
         why = "git does not ignore it" if rel == "snap.json" else "is a protected path"
         assert why in r.stdout, (rel, r.stdout)
     # A gitignored folder is allowed, and the file it writes there is not seen as a change.
+    (work / "temp").mkdir()
     r = _run("snapshot", "--root", str(work), "--out", str(work / "temp" / "snap.json"))
     assert r.returncode == 0, r.stdout
     assert _verify(work, work / "temp" / "snap.json").returncode == 0
@@ -378,18 +379,24 @@ def test_the_skill_snapshots_first_and_verifies_last() -> None:
         "the exit-1 report must carry the UNCHECKED lines as well as the PROBLEM lines"
     assert "could not run" in exit2 and "every line after it" in exit2
     assert "--approved" in tail
-    assert 'rm -f -- "<snapshot file>"' in tail, "the snapshot is deleted after verify"
+    assert "stop there" not in exit1, "the clean-up after the bullets must run on every exit"
+    cleanup = tail[tail.index("- Exit 2:"):]
+    assert "whatever the exit" in cleanup and 'rm -f -- "<snapshot file>"' in cleanup, \
+        "the snapshot is deleted after verify, on every exit"
+    assert 'rmdir -- "$d"' in cleanup, "the mktemp -d folder is removed too"
     report = text[text.index("## Report"):text.index("## Non-goals")]
     assert "post-run check's first line with every line after it" in report
     head = text[text.index("## Snapshot the protected files"):text.index("## Never-clobber contract")]
-    assert "mktemp" in head and ".git/" in head, "the fallback is a mktemp file, never inside .git/"
+    assert 'd="$(mktemp -d' in head and '--out "$d/snapshot.json"' in head, \
+        "the fallback is a new file in a fresh temp folder, never an existing file"
+    assert ".git/" in head
 
 
 # ---------------------------------------------------------------- more protected files
 
 
 _NEVER_COVERED = [
-    ".claude/settings.json", ".claude/settings.local.json", ".claude-plugin/plugin.json",
+    ".claude/settings.json", ".claude-plugin/plugin.json",
     ".claude/rules/house.md", "CLAUDE.local.md", ".claude/CLAUDE.local.md",
 ]
 
@@ -408,6 +415,21 @@ def test_settings_rules_and_local_instruction_files_fail_even_when_approved(work
     assert r.returncode == 1, r.stdout
     assert len(_problems(r)) == 1 and _problems(r)[0].startswith(f"PROBLEM {action}: {rel} (")
     assert "so a yes does not cover it" in _problems(r)[0]
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_claude_codes_own_permission_writes_pass(work: Path) -> None:
+    # Claude Code writes settings.local.json when the user answers a permission prompt with
+    # "Yes, don't ask again", which is routine during a setup run that is not in auto mode.
+    snap = _snap(work)
+    allow = {"permissions": {"allow": ["Bash(git status:*)"]}}
+    _write(work, ".claude/settings.local.json", json.dumps(allow, indent=2) + "\n")
+    assert _verify(work, snap).returncode == 0
+    snap = _snap(work)
+    allow["permissions"]["allow"].append("Bash(python3:*)")
+    _write(work, ".claude/settings.local.json", json.dumps(allow, indent=2) + "\n")
+    r = _verify(work, snap)
+    assert r.returncode == 0, r.stdout
 
 
 # requirement: cla-setup / Setup checks that its protected files were left alone
@@ -541,12 +563,60 @@ def test_the_snapshot_never_clobbers_a_sibling_temp_file(work: Path, tmp_path: P
 
 
 # requirement: cla-setup / Setup checks that its protected files were left alone
-def test_an_empty_file_or_an_earlier_snapshot_may_be_replaced(work: Path, tmp_path: Path) -> None:
-    empty = tmp_path / "from-mktemp"
-    empty.write_bytes(b"")
-    assert _run("snapshot", "--root", str(work), "--out", str(empty)).returncode == 0
-    assert _run("snapshot", "--root", str(work), "--out", str(empty)).returncode == 0  # a re-run
-    assert _verify(work, empty).returncode == 0
+def test_only_an_earlier_snapshot_may_be_replaced(work: Path, tmp_path: Path) -> None:
+    out = tmp_path / "snap.json"
+    assert _run("snapshot", "--root", str(work), "--out", str(out)).returncode == 0
+    assert _run("snapshot", "--root", str(work), "--out", str(out)).returncode == 0  # a re-run
+    assert _verify(work, out).returncode == 0
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_an_empty_user_file_is_never_overwritten(work: Path, tmp_path: Path) -> None:
+    (work / ".gitignore").write_text("*.local.md\ntemp/\n.env\n", encoding="utf-8")
+    (work / ".env").write_bytes(b"")  # touch .env
+    empty_outside = tmp_path / "empty.txt"
+    empty_outside.write_bytes(b"")
+    for target in (work / ".env", empty_outside):
+        r = _run("snapshot", "--root", str(work), "--out", str(target))
+        assert r.returncode == 2 and r.stdout.startswith("UNCHECKED out:") and "is empty" in r.stdout, r.stdout
+        assert target.read_bytes() == b""
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@_symlinks
+@pytest.mark.parametrize("target_text", ["", '{"version": 1}'])
+def test_a_symlink_at_out_is_never_written_through(work: Path, tmp_path: Path, target_text: str) -> None:
+    target = tmp_path / "users-file"
+    target.write_text(target_text, encoding="utf-8")
+    link = tmp_path / "snap.json"
+    os.symlink(target, link)
+    r = _run("snapshot", "--root", str(work), "--out", str(link))
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED out:") and "is a symlink" in r.stdout, r.stdout
+    assert target.read_text(encoding="utf-8") == target_text and os.path.islink(link)
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_missing_folder_is_refused_and_not_created(work: Path, tmp_path: Path) -> None:
+    r = _run("snapshot", "--root", str(work), "--out", str(tmp_path / "no" / "such" / "snap.json"))
+    assert r.returncode == 2 and "does not exist" in r.stdout, r.stdout
+    assert not (tmp_path / "no").exists()
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_failed_write_leaves_no_file_behind(work: Path, tmp_path: Path, monkeypatch, capsys) -> None:
+    spec = importlib.util.spec_from_file_location("setup_guard_failed_write", _SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    folder = tmp_path / "out"
+    folder.mkdir()
+
+    def refuse(src, dst):
+        raise OSError("planted: disk full")
+
+    monkeypatch.setattr(mod.os, "replace", refuse)
+    assert mod.main(["snapshot", "--root", str(work), "--out", str(folder / "snap.json")]) == 2
+    assert capsys.readouterr().out.startswith("UNCHECKED out: cannot write")
+    assert list(folder.iterdir()) == []
 
 
 # requirement: cla-setup / Setup checks that its protected files were left alone
@@ -556,7 +626,7 @@ def test_an_out_that_cannot_be_written_is_unchecked(work: Path, tmp_path: Path) 
     assert r.returncode == 2 and r.stdout.startswith("UNCHECKED out:") and "is a directory" in r.stdout
     (tmp_path / "a-file").write_text("x", encoding="utf-8")
     r = _run("snapshot", "--root", str(work), "--out", str(tmp_path / "a-file" / "snap.json"))
-    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED out: cannot write"), r.stdout
+    assert r.returncode == 2 and "does not exist" in r.stdout, r.stdout
     r = _run("snapshot", "--root", str(work), "--out", str(work / ".git" / "snap.json"))
     assert r.returncode == 2 and "inside the git directory" in r.stdout, r.stdout
     assert not (work / ".git" / "snap.json").exists()
@@ -576,6 +646,7 @@ def test_a_failing_check_ignore_is_unchecked(work: Path, tmp_path: Path) -> None
     )
     (fake / "git").chmod(0o755)
     env = {**os.environ, "PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}
+    (work / "temp").mkdir()
     r = _run("snapshot", "--root", str(work), "--out", str(work / "temp" / "snap.json"), env=env)
     assert r.returncode == 2 and r.stdout.startswith("UNCHECKED out: git check-ignore failed"), r.stdout
 

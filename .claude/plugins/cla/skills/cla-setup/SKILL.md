@@ -57,19 +57,20 @@ leave alone: the instruction files (`CLAUDE.md`, `AGENTS.md`, `CLAUDE.local.md`)
 (`.claude/settings*.json`), the repo's own `.claude/rules/*.md`, an existing `notes.md`, the
 machine-read `*.local.md` files, the terminology file and the overlays. Write the snapshot to a new
 file in the session scratchpad. With no scratchpad, use a folder the repo gitignores (run
-`git check-ignore -q` on it first); with neither, a `mktemp` file in the system temp folder
-(`mktemp "${TMPDIR:-/tmp}/cla-setup-snapshot.XXXXXX"`, passed as a native path with `cygpath -w` in
-Git Bash on Windows). Write it nowhere else: the script refuses a path in the repo that git does
-not ignore, a path inside `.git/`, and an existing file that is neither empty nor an earlier snapshot.
+`git check-ignore -q` on it first). With neither, make a fresh temp folder outside the repo,
+`d="$(mktemp -d "${TMPDIR:-/tmp}/cla-setup.XXXXXX")"`, and pass `--out "$d/snapshot.json"` (in Git
+Bash on Windows, as a native path through `cygpath -w`). Write it nowhere else: the script refuses a
+path in the repo that git does not ignore, a path inside `.git/`, a symlink, a folder that does not
+exist, and any existing file that is not an earlier snapshot.
 
 ```bash
 : "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/setup_guard.py" snapshot --root "$ROOT" --out "<snapshot file>"
 ```
 
-Keep the `<snapshot file>` path for the post-run check. Exit 0: go on to item 1. Any other exit:
-report its first line and stop, since nothing is written yet and the run's promises could not be
-checked afterwards.
+Keep the `<snapshot file>` path, and `$d` if you made one, for the post-run check. Exit 0: go on to
+item 1. Any other exit: report its first line, remove `$d` if you made one (`rmdir -- "$d"`), and
+stop, since nothing is written yet and the run's promises could not be checked afterwards.
 
 ## Never-clobber contract
 
@@ -287,12 +288,13 @@ overlay or a new terminology file: the script reports those whatever `--approved
 - Exit 0: report its first line, which names each approved change.
 - Exit 1: the run is not clean. Report the first line and every line after it: each `PROBLEM` line
   (it names the file and whether it was changed, created or deleted) and each `UNCHECKED` line (a
-  file it could not read); never call the run clean, and stop there: leave the files as they are
-  for the user to judge.
+  file it could not read); never call the run clean, and leave the files as they are for the user
+  to judge.
 - Exit 2: say the check could not run, with its first line and every line after it,
   and never treat that exit as a pass.
 
-Then delete the snapshot file, whatever the exit: `rm -f -- "<snapshot file>"`.
+Then, whatever the exit, clean up before the Report: `rm -f -- "<snapshot file>"`, and with the
+temp-folder fallback also `rmdir -- "$d"`.
 
 ## Report
 

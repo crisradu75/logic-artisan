@@ -17,12 +17,16 @@ Trigger: a new data model, the snapshot file the two steps share.
 
 - **Choice:** JSON `{"version": 1, "root": ..., "created": <unix seconds>, "head": <commit or null>,
   "files": {path: sha256, a not-a-file marker, or null}}`, written to the session scratchpad, a
-  gitignored folder or a `mktemp` file. The overlays present at the start are derived from `files`,
-  so no second list can disagree with it. `--out` inside a git directory, inside the repo and not
-  ignored, at a protected path, or at an existing file that is neither empty nor a snapshot exits 2;
-  the write goes through a new `mkstemp` file in the same folder, so no file is ever overwritten.
+  gitignored folder or a fresh `mktemp -d` folder. The overlays present at the start are derived
+  from `files`, so no second list can disagree with it. `--out` that is a symlink, whose folder does
+  not exist, inside a git directory, inside the repo and not ignored, at a protected path, or at any
+  existing file that is not an earlier snapshot (an empty one included) exits 2. Only its folder is
+  resolved, so nothing is written through a link, and no folder is created. The write goes through a
+  new `mkstemp` file in that folder, so only an earlier snapshot is ever replaced, and a failed write
+  leaves no file.
 - **Why:** writing it into the repo would itself be a change for the run to explain, and an `--out`
-  that names a user's ignored file (`.env`) must not replace it.
+  that names a user's ignored file (`.env`, even an empty one) must not replace it, since the skill
+  then deletes the snapshot.
 - **Rejected, a fixed path under `cla.io/`:** it would show in the user's `git status`.
 
 ## Stale snapshots
@@ -37,8 +41,9 @@ Trigger: a new data model, the snapshot file the two steps share.
 
 - **Choice:** `--approved` covers a change or deletion of a `*.local.md` file, the terminology file or
   an existing overlay, and the creation of a `*.local.md` file (item 12). It never covers an instruction
-  file (any letter case at the root and in `.claude/`), a settings file (`.claude/settings*.json`,
-  `.claude-plugin/plugin.json`, a non-goal of the skill), a rules file of the repo's own (the skill
+  file (any letter case at the root and in `.claude/`), a settings file (`.claude/settings.json`,
+  `.claude-plugin/plugin.json`, a non-goal of the skill; not `.claude/settings.local.json`, which
+  Claude Code itself writes when the user answers a permission prompt with "don't ask again"), a rules file of the repo's own (the skill
   writes only `cla-economy.md` there, and item 13 writes only under `cla.io/` and the spec map path),
   an existing `notes.md`, a new overlay or a new terminology file.
 - **Why:** the skill never asks to touch those, so an approval for one can only be a mistake.

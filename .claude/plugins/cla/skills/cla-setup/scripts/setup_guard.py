@@ -30,8 +30,10 @@ PROTECTED PATHS (repo-relative) and what may happen to each during a run:
                      lowercase ``claude.md`` on Linux), plus any file of exactly those names deeper
                      in the tree that git tracks or sees as untracked. No change, creation or
                      deletion; ``--approved`` does not cover them, since the skill never touches them.
-  settings           ``.claude/settings*.json`` and ``.claude-plugin/plugin.json`` (a non-goal of
-                     the skill). Same as instruction files.
+  settings           ``.claude/settings.json`` and ``.claude-plugin/plugin.json`` (a non-goal of
+                     the skill). Same as instruction files. ``.claude/settings.local.json`` is NOT
+                     protected: Claude Code itself writes it whenever the user answers a permission
+                     prompt with "don't ask again", which is routine during a setup run.
   rules files        every ``*.md`` under ``.claude/rules/`` except ``cla-economy.md``, which the
                      skill owns and replaces. Same as instruction files: the skill writes repo
                      content only under ``cla.io/`` and the spec map path.
@@ -49,10 +51,13 @@ A gitignored instruction file deeper than ``.claude/`` is not found, so not chec
 SNAPSHOT FILE. JSON: ``{"version": 1, "root": <absolute top level>, "created": <unix seconds>,
 "head": <HEAD commit or null when the branch has none>, "files": {<path>: <sha256 hex, a
 "not-a-file:..." marker, or null>}}``. ``null`` means absent. The overlays present at the start are
-the overlay keys whose value is not ``null``. ``snapshot`` refuses (exit 2) an ``--out`` inside a
-git directory, inside the checkout unless git ignores it, at a protected path, at a directory, or at
-an existing file that is neither empty nor a setup snapshot; it writes through a new temporary file
-in the same folder and moves it into place, so it never overwrites any other file.
+the overlay keys whose value is not ``null``. ``snapshot`` refuses (exit 2) an ``--out`` that is a
+symlink, a directory, or an existing file that is not a version-1 setup snapshot (an empty file
+included), or whose folder does not exist, or that is inside a git directory, inside the checkout
+unless git ignores it, or at a protected path. Only the folder of ``--out`` is resolved, never its
+last part, so nothing is written through a link. It writes through a new temporary file in that
+folder and moves it into place, so it overwrites nothing but an earlier snapshot, and on a failure
+it leaves no file behind.
 
 STALE SNAPSHOT. ``verify`` exits 2, never 0 or 1, when the snapshot was taken more than
 ``MAX_AGE_HOURS`` ago or more than ``FUTURE_SKEW_SECONDS`` in the future, or when ``HEAD`` has
@@ -93,7 +98,7 @@ MAX_AGE_HOURS = 24
 FUTURE_SKEW_SECONDS = 300
 INSTRUCTION_NAMES = ("CLAUDE.md", "AGENTS.md", "CLAUDE.local.md")
 INSTRUCTION_DIRS = ("", ".claude/")  # where a name in another letter case is still protected
-SETTINGS_FILES = (".claude/settings.json", ".claude/settings.local.json", ".claude-plugin/plugin.json")
+SETTINGS_FILES = (".claude/settings.json", ".claude-plugin/plugin.json")
 RULES_DIR = ".claude/rules"
 ECONOMY_RULES = ".claude/rules/cla-economy.md"
 NOTES = "cla.io/feedback/notes.md"
@@ -174,7 +179,7 @@ def kind_of(rel: str) -> str:
     folder = folder + "/" if folder else ""
     if name in INSTRUCTION_NAMES or (folder in INSTRUCTION_DIRS and name.casefold() in _FOLDED):
         return "instruction"
-    if rel in SETTINGS_FILES or (folder == ".claude/" and name.startswith("settings") and name.endswith(".json")):
+    if rel in SETTINGS_FILES:
         return "settings"
     if rel.startswith(RULES_DIR + "/") and rel.endswith(".md") and rel != ECONOMY_RULES:
         return "rules"
@@ -250,7 +255,6 @@ def protected_paths(root: Path) -> set[str]:
     paths = set(FIXED)
     paths.update(_case_variants(root))
     paths.update(_nested_instruction_files(root))
-    paths.update(".claude/" + n for n in _listdir(root, ".claude") if _is_protected(".claude/" + n))
     paths.update(p for p in _walk_md(root, RULES_DIR, ".md") if p != ECONOMY_RULES)
     paths.update(_walk_md(root, "cla.io", LOCAL_SUFFIX))
     paths.update(OVERLAY_DIR + "/" + n for n in _listdir(root, OVERLAY_DIR) if _is_protected(OVERLAY_DIR + "/" + n))
@@ -323,8 +327,18 @@ def _inside(path: Path, root: Path) -> bool:
         return False
 
 
+def _out_path(raw: str) -> Path:
+    """``--out`` with its folder resolved and its last part kept as given, so a link there is seen."""
+    given = Path(raw)
+    return given.parent.resolve() / given.name
+
+
 def _check_out(root: Path, out: Path) -> None:
     """Refuse an --out that would overwrite or add anything the user owns."""
+    if os.path.islink(out):
+        raise Unchecked("out", f"{out} is a symlink; it is not written through, so choose a new path")
+    if not out.parent.is_dir():
+        raise Unchecked("out", f"the folder {out.parent} does not exist; create it or choose another path")
     for gd in _git_dirs(root):
         if _inside(out, gd):
             raise Unchecked("out", f"{out} is inside the git directory {gd}")
@@ -345,24 +359,21 @@ def _check_out(root: Path, out: Path) -> None:
             existing = out.read_bytes()
         except OSError as exc:
             raise Unchecked("out", f"{out} exists and cannot be read: {exc}") from None
-        if existing:
-            try:
-                why = _shape_problem(json.loads(existing.decode("utf-8")))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                why = "is not JSON"
-            if why is not None:
-                raise Unchecked("out", f"{out} exists and {why}; it is not overwritten, so choose a new path")
+        try:
+            why = _shape_problem(json.loads(existing.decode("utf-8")))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            why = "is not JSON" if existing else "is empty"
+        if why is not None:
+            raise Unchecked("out", f"{out} exists and {why}; it is not overwritten, so choose a new path")
 
 
 def snapshot(root: Path, out: Path) -> tuple[int, int, int]:
     """Write the snapshot. Returns (paths recorded, present, overlays present)."""
-    out = out.resolve()
     _check_out(root, out)
     files = {rel: _digest(root, rel) for rel in sorted(protected_paths(root))}
     data = {"version": VERSION, "root": str(root), "created": time.time(), "head": _head(root), "files": files}
     tmp: str | None = None
     try:
-        out.parent.mkdir(parents=True, exist_ok=True)
         # A new file of its own (O_EXCL), so no file of any name is overwritten on the way.
         fd, tmp = tempfile.mkstemp(dir=out.parent, prefix=f".{out.name}.", suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -512,9 +523,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = _toplevel(Path(args.root).resolve())
         if args.cmd == "snapshot":
-            n, present, overlays = snapshot(root, Path(args.out))
+            out = _out_path(args.out)
+            n, present, overlays = snapshot(root, out)
             _report(f"OK snapshot: {n} protected path(s) recorded, {present} present, "
-                    f"{overlays} overlay(s), in {Path(args.out).resolve()}", [])
+                    f"{overlays} overlay(s), in {out}", [])
             return 0
         approved = _normalise_approved(root, args.approved)
         snap = load_snapshot(Path(args.snapshot), root)
