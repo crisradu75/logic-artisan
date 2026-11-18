@@ -168,6 +168,12 @@ def test_git_invocation_matches_what_the_old_pattern_matched(after, capture_opts
                 for _ in range(1500)]
     commands += ["".join(rng.choice(tokens) + rng.choice(seps) for _ in range(rng.randint(1, 12)))
                  for _ in range(1500)]
+    # Fixed cases where a named option's value is also the subcommand word, so
+    # both readings reach a match: the regex reads the value first, and the
+    # tail (or, for stash, the captured options) shows which reading won.
+    commands += ["git --git-dir push push --force x", "git --work-tree stash stash pop",
+                 "git --namespace reset reset --hard", "git --super-prefix add add x",
+                 "git --git-dir checkout -b checkout -b y"]
     hits = 0
     for command in commands:
         want = [[m.span(g) for g in range(old.groups + 1)] for m in old.finditer(command)]
