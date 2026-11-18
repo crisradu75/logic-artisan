@@ -2457,6 +2457,21 @@ def history(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cached_git_repo) ->
     return cached_git_repo("ask_destructive_git_history", _build_history, tmp_path / "repo")
 
 
+def _sha(repo: Path, rev: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", rev],
+        check=True, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    ).stdout.strip()
+
+
+def _commit_off(repo: Path, parent: str, message: str) -> str:
+    """A new commit on top of `parent`, made without touching the worktree."""
+    return subprocess.run(
+        ["git", "-C", str(repo), "commit-tree", parent + "^{tree}", "-p", parent, "-m", message],
+        check=True, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    ).stdout.strip()
+
+
 def _history_probe(monkeypatch):
     """Record each history probe's argv and timeout, delegating to the real one."""
     calls: list[tuple[list[str], float | None]] = []
@@ -2548,12 +2563,15 @@ def test_a_rebase_of_a_branch_pushed_without_an_upstream_asks(
         # Onto its own upstream: only f2, which is local, is rewritten.
         "git rebase",
         "git rebase origin/feat",
-        "git rebase -i origin/feat",
         "git rebase origin/feat feat",
         # A local-only branch onto a fresh base: routine.
         "git rebase main uniq",
         "git rebase --onto main~1 main uniq",
         "git rebase --root lonely",
+        # Forced, so they reach the counts: only f2 / u1, which are local.
+        "git rebase -f origin/feat",
+        "git rebase --no-ff origin/feat",
+        "git rebase -i origin/feat",
     ],
 )
 def test_a_rebase_of_local_commits_stays_silent(command, history, monkeypatch, capsys):
@@ -2604,14 +2622,6 @@ def test_a_rebase_on_a_dirty_tree_of_local_commits_stays_silent(
     (history / "tracked.txt").write_text("edited\n", encoding="utf-8")
     for command in ("git rebase origin/feat", "git rebase --autostash origin/feat"):
         assert _run(command, monkeypatch, capsys, cwd=str(history)) is None, command
-
-
-def test_pull_rebase_is_out_of_scope(history, monkeypatch, capsys):
-    """Named in the module docstring: it rebases onto refs its own fetch has not
-    updated yet, and in the ordinary flow only the unpushed commits move."""
-    calls = _history_probe(monkeypatch)
-    assert _run("git pull --rebase", monkeypatch, capsys, cwd=str(history)) is None
-    assert calls == []
 
 
 @pytest.mark.parametrize(
@@ -2856,6 +2866,8 @@ def test_a_history_reason_adds_to_the_earlier_ones(history, monkeypatch, capsys)
     [
         ("git --git-dir=/x/.git rebase main && git switch -C uniq", "BRANCH_RESET_REASON"),
         ("git rebase main && git --git-dir=/x/.git switch -C uniq", "REBASE_REASON"),
+        ("git --git-dir=/x/.git pull --rebase origin main && git switch -C uniq",
+         "BRANCH_RESET_REASON"),
     ],
 )
 def test_an_unnamed_repository_skips_only_its_own_invocation(
@@ -2951,13 +2963,21 @@ def test_the_history_probes_share_the_hook_budget(history, monkeypatch, capsys):
     import _dispatch_lib
 
     assert hook._PROBE_BUDGET_SECONDS == _dispatch_lib.HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"]
-    clock = iter([100.0, 100.0, 109.5])
+    # `_reasons` reads the clock once, then each probe once: two rev-parses, the
+    # ancestry check, and the first rev-list, after which the 12s are spent.
+    clock = iter([100.0, 100.0, 109.5, 110.0, 111.0, 112.5])
     # The hook's own `time` only; patching the shared module would reach pytest.
     monkeypatch.setattr(hook, "time", types.SimpleNamespace(monotonic=lambda: next(clock)))
     calls = _history_probe(monkeypatch)
-    _run("git rebase main", monkeypatch, capsys, cwd=str(history))
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+        {"tool_input": {"command": "git rebase main"}, "cwd": str(history)}
+    )))
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == ""
     # The library's constant, not the hook's own name for it.
-    assert [t for _, t in calls] == [_dispatch_lib.GIT_TIMEOUT_SECONDS, 2.5], calls
+    assert [t for _, t in calls] == [_dispatch_lib.GIT_TIMEOUT_SECONDS, 2.5, 2.0, 1.0], calls
+    assert "probe did not run" in captured.err
 
 
 def test_no_history_probe_starts_once_the_budget_is_spent(history, monkeypatch, capsys):
@@ -2977,7 +2997,8 @@ def test_an_identical_history_probe_runs_once(history, monkeypatch, capsys):
         "git rebase origin/feat && git -C . rebase origin/feat",
         monkeypatch, capsys, cwd=str(history),
     ) is None
-    assert len(calls) == 2, calls
+    # Two rev-parses and the ancestry check, once.
+    assert len(calls) == 3, calls
 
 
 def test_a_rebase_probe_counts_against_the_remotes(history, monkeypatch, capsys):
@@ -2985,7 +3006,357 @@ def test_a_rebase_probe_counts_against_the_remotes(history, monkeypatch, capsys)
     over the same range, the second leaving out what `--remotes` reaches."""
     calls = _history_probe(monkeypatch)
     _run("git rebase main", monkeypatch, capsys, cwd=str(history))
+    head = _sha(history, "HEAD")
+    main = _sha(history, "main")
     assert [args for args, _ in calls] == [
-        ["rev-list", "--count", "HEAD", "^main", "--"],
-        ["rev-list", "--count", "HEAD", "^main", "--not", "--remotes", "--"],
+        ["rev-parse", "--verify", "--quiet", "--end-of-options", "HEAD^{commit}"],
+        ["rev-parse", "--verify", "--quiet", "--end-of-options", "main^{commit}"],
+        ["merge-base", "--is-ancestor", main, head],
+        ["rev-list", "--count", head, "^" + main, "--"],
+        ["rev-list", "--count", head, "^" + main, "--not", "--remotes", "--"],
     ]
+
+
+# --- review round: no command text reaches git as an option -------------------
+# `rev-list` honours `--output=<file>` and opens the file for writing. A quoted
+# operand once reached it bare, so the hook truncated a file before the user was
+# asked anything. Every revision now goes through `rev-parse --end-of-options`
+# and only SHAs reach the other probes.
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        'git rebase main "--output={f}"',
+        "git rebase main '--output={f}'",
+        'git rebase "--output={f}" main',
+        'git rebase --root "--output={f}"',
+        'git switch -C topic "--output={f}"',
+        "git checkout -B topic '--output={f}'",
+        'git switch -C "--output={f}"',
+        'git switch -C uniq "--output={f}"',
+        'git pull --rebase origin "--output={f}"',
+        'git pull --rebase "--output={f}" main',
+    ],
+)
+def test_a_quoted_option_never_reaches_git(template, history, tmp_path, monkeypatch, capsys):
+    victim = tmp_path / "victim"
+    victim.write_bytes(b"ninebytes")
+    fresh = tmp_path / "fresh"
+    calls = _history_probe(monkeypatch)
+    for target in (victim, fresh):
+        _run(template.format(f=target), monkeypatch, capsys, cwd=str(history))
+    assert victim.read_bytes() == b"ninebytes"
+    assert not fresh.exists()
+    assert not [args for args in (a for a, _ in calls) if _reads_as_option(args, "--output")], calls
+
+
+def _reads_as_option(args: list[str], option: str) -> bool:
+    """True when `option` sits where git would read it as one: before any `--`
+    or `--end-of-options`."""
+    for arg in args:
+        if arg in ("--", "--end-of-options"):
+            return False
+        if arg.startswith(option):
+            return True
+    return False
+
+
+def test_every_revision_probe_ends_its_options(history, monkeypatch, capsys):
+    """Only `rev-parse --end-of-options` sees command text; every other probe
+    gets SHAs, `--` and options this hook wrote itself."""
+    calls = _history_probe(monkeypatch)
+    _run(
+        "git rebase main feat && git pull --rebase origin main && git switch -C uniq main",
+        monkeypatch, capsys, cwd=str(history),
+    )
+    assert calls
+    for args, _ in calls:
+        if args[0] == "rev-parse":
+            assert args[:4] == ["rev-parse", "--verify", "--quiet", "--end-of-options"], args
+        elif args[0] in ("rev-list", "merge-base"):
+            for arg in args[1:]:
+                assert arg.startswith("-") or len(arg.lstrip("^")) == 40, args
+
+
+# --- quoted options read like their unquoted forms ---------------------------
+
+
+@pytest.mark.parametrize(
+    "command,fragment",
+    [
+        ('git rebase "-i" main', "rewrites commits already"),
+        ('git rebase "--root"', "rewrites commits already"),
+        ("git rebase '--onto' main main~1", "rewrites commits already"),
+        ('git switch "-C" uniq', "orphans them"),
+        ('git checkout "-B" uniq', "orphans them"),
+    ],
+)
+def test_a_quoted_option_reads_like_its_unquoted_form(
+    command, fragment, history, monkeypatch, capsys
+):
+    payload = _run(command, monkeypatch, capsys, cwd=str(history))
+    assert payload is not None, command
+    assert fragment in _reason(payload)
+
+
+def test_a_quoted_merge_flag_reads_like_its_unquoted_form(staged, monkeypatch, capsys):
+    payload = _run('git switch "-m" main', monkeypatch, capsys, cwd=str(staged))
+    assert payload is not None
+    assert "merging branch change" in _reason(payload)
+
+
+def test_a_quoted_action_is_still_an_action(history, monkeypatch, capsys):
+    calls = _history_probe(monkeypatch)
+    assert _run('git rebase "--continue"', monkeypatch, capsys, cwd=str(history)) is None
+    assert calls == []
+
+
+# --- a rebase that replays nothing -------------------------------------------
+
+
+# requirement: git-guards / A rebase of pushed commits asks first
+@pytest.mark.parametrize(
+    "command", ["git rebase main~1", "git rebase origin/feat", "git rebase -r main~1"]
+)
+def test_a_rebase_onto_an_ancestor_replays_nothing_and_stays_silent(
+    command, history, monkeypatch, capsys
+):
+    """`main~1` is where feat forked, so git reports it up to date and moves
+    nothing, though f1 is pushed."""
+    assert _run(command, monkeypatch, capsys, cwd=str(history)) is None, command
+
+
+# requirement: git-guards / A rebase of pushed commits asks first
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git rebase -f main~1",
+        "git rebase --force-rebase main~1",
+        "git rebase --no-ff main~1",
+        "git rebase --signoff main~1",
+        "git rebase --reset-author-date main~1",
+        "git rebase -i main~1",
+        "git rebase --interactive main~1",
+        "git rebase -x true main~1",
+        "git rebase --exec true main~1",
+        "git rebase --onto main main~1",
+        # The `=` forms: the option is read from the part before `=`.
+        "git rebase --onto=main main~1",
+        "git rebase --exec=true main~1",
+    ],
+)
+def test_an_option_that_replays_an_up_to_date_branch_asks(
+    command, history, monkeypatch, capsys
+):
+    """Measured on git 2.43: these rewrite an up-to-date branch (or hand the
+    todo list, a command or a new base the chance to)."""
+    payload = _run(command, monkeypatch, capsys, cwd=str(history))
+    assert payload is not None, command
+    assert hook.REBASE_REASON in _reason(payload)
+
+
+# --- git pull with rebase ------------------------------------------------------
+
+
+# requirement: git-guards / A rebasing pull of pushed commits asks first
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Explicit remote and branch: origin/main..HEAD holds f1, pushed.
+        "git pull --rebase origin main",
+        "git pull -r origin main",
+        "git pull --rebase=merges origin main",
+        "git pull --rebase=interactive origin main",
+        "git pull --reb origin main",
+        "git pull -vr origin main",
+        "git pull --rebase origin refs/heads/main",
+        "git pull --rebase origin main:main",
+        'git pull "--rebase" origin main',
+        "git -C . pull --rebase origin main",
+        "git -c core.x=y pull --rebase origin main",
+        "git fetch && git pull --rebase origin main",
+        "git pull --rebase \\\n  origin main",
+        "git pull --rebase --depth 5 origin main",
+        "git pull --rebase --refmap x origin main",
+        "git pull --rebase --negotiation-tip HEAD origin main",
+        "git pull --rebase -s ort origin main",
+        "git pull -rmerges origin main",
+    ],
+)
+def test_a_rebasing_pull_of_a_pushed_commit_asks(command, history, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys, cwd=str(history))
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert hook.REBASE_REASON in _reason(payload)
+
+
+# requirement: git-guards / A rebasing pull of pushed commits asks first
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Onto its own upstream (origin/feat): only f2, unpushed, moves.
+        "git pull --rebase",
+        "git pull -r",
+        "git pull --rebase origin",
+        "git pull --rebase origin feat",
+        # Not a rebase.
+        "git pull origin main",
+        "git pull --no-rebase origin main",
+        "git pull --rebase=false origin main",
+        "git pull -r --no-rebase origin main",
+        "git pull -rfalse origin main",
+        # `-S` owns the rest of its cluster: a key named `r`, not `-r`.
+        "git pull -Sr origin main",
+        # More than one branch: git refuses to rebase onto them.
+        "git pull --rebase origin main feat",
+        # A URL names no remote-tracking ref this hook can read.
+        "git pull --rebase https://example.invalid/r.git main",
+    ],
+)
+def test_a_pull_that_moves_no_pushed_commit_stays_silent(
+    command, history, monkeypatch, capsys
+):
+    assert _run(command, monkeypatch, capsys, cwd=str(history)) is None, command
+
+
+def test_a_pull_rebased_by_the_pull_setting_asks(history, monkeypatch, capsys):
+    _git(history, "config", "pull.rebase", "true")
+    payload = _run("git pull origin main", monkeypatch, capsys, cwd=str(history))
+    assert payload is not None
+    assert hook.REBASE_REASON in _reason(payload)
+
+
+def test_the_branch_setting_overrides_the_pull_setting(history, monkeypatch, capsys):
+    _git(history, "config", "pull.rebase", "true")
+    _git(history, "config", "branch.feat.rebase", "false")
+    assert _run("git pull origin main", monkeypatch, capsys, cwd=str(history)) is None
+    _git(history, "config", "pull.rebase", "false")
+    _git(history, "config", "branch.feat.rebase", "merges")
+    assert _run("git pull origin main", monkeypatch, capsys, cwd=str(history)) is not None
+
+
+def test_a_rebasing_pull_ignores_up_to_date(history, monkeypatch, capsys):
+    """The fetch can move the upstream past HEAD, so an up-to-date upstream
+    before it proves nothing: `main~1` is an ancestor of feat now."""
+    _git(history, "update-ref", "refs/remotes/origin/base", "main~1")
+    payload = _run("git pull --rebase origin base", monkeypatch, capsys, cwd=str(history))
+    assert payload is not None
+    assert hook.REBASE_REASON in _reason(payload)
+
+
+# --- branch reset: what counts as reachable elsewhere ---------------------------
+
+
+def test_a_reset_of_commits_held_by_a_tag_stays_silent(history, monkeypatch, capsys):
+    tip = _commit_off(history, "main", "t1")
+    _git(history, "update-ref", "refs/heads/tagged", tip)
+    _git(history, "tag", "v1", tip)
+    assert _run("git switch -C tagged", monkeypatch, capsys, cwd=str(history)) is None
+    _git(history, "tag", "-d", "v1")
+    assert _run("git switch -C tagged", monkeypatch, capsys, cwd=str(history)) is not None
+
+
+def test_a_reset_of_commits_held_by_a_remote_stays_silent(history, monkeypatch, capsys):
+    tip = _commit_off(history, "main", "r1")
+    _git(history, "update-ref", "refs/heads/remoted", tip)
+    _git(history, "update-ref", "refs/remotes/origin/remoted", tip)
+    assert _run("git switch -C remoted", monkeypatch, capsys, cwd=str(history)) is None
+    _git(history, "update-ref", "-d", "refs/remotes/origin/remoted")
+    assert _run("git switch -C remoted", monkeypatch, capsys, cwd=str(history)) is not None
+
+
+@pytest.mark.parametrize(
+    "command", ["git checkout --force-create uniq", "git checkout --force- uniq"]
+)
+def test_checkout_has_no_force_create(command, history, monkeypatch, capsys):
+    """Only `switch` takes `--force-create`; git rejects it on checkout."""
+    assert _run(command, monkeypatch, capsys, cwd=str(history)) is None, command
+
+
+def test_a_probe_that_does_not_run_says_so(history, monkeypatch, capsys):
+    monkeypatch.setattr(hook, "_run_git", lambda cwd, args, timeout=None: None)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+        {"tool_input": {"command": "git rebase main"}, "cwd": str(history)}
+    )))
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == ""
+    assert captured.err.count("probe did not run") == 1
+
+
+def test_a_probe_that_runs_leaves_no_note(history, monkeypatch, capsys):
+    _run("git rebase main && git switch -C uniq", monkeypatch, capsys, cwd=str(history))
+    assert "did not run" not in capsys.readouterr().err
+
+
+def test_a_revision_starting_with_a_dash_is_never_probed(history, monkeypatch):
+    calls = _history_probe(monkeypatch)
+    probes = hook._Probes(hook.time.monotonic())
+    assert probes.commit(str(history), "--output=x") is None
+    assert probes.commit(str(history), "") is None
+    assert calls == []
+
+
+def test_only_a_sha_comes_back_from_a_revision_probe(history, monkeypatch):
+    """Whatever rev-parse prints, only a commit id goes on to another probe."""
+    monkeypatch.setattr(
+        hook, "_run_git", lambda cwd, args, timeout=None: _completed(0, "--output=x\n")
+    )
+    probes = hook._Probes(hook.time.monotonic())
+    assert probes.commit(str(history), "main") is None
+
+
+@pytest.mark.parametrize(
+    "command", ['git switch --force-create=-x', 'git switch -C "-x"', "git checkout -B-x"]
+)
+def test_a_branch_name_starting_with_a_dash_is_never_probed(
+    command, history, monkeypatch, capsys
+):
+    calls = _history_probe(monkeypatch)
+    assert _run(command, monkeypatch, capsys, cwd=str(history)) is None
+    assert calls == [], calls
+
+
+def test_a_refused_revision_probe_yields_nothing(history, monkeypatch):
+    """A non-zero rev-parse is a refusal, whatever it printed."""
+    monkeypatch.setattr(
+        hook, "_run_git", lambda cwd, args, timeout=None: _completed(1, "a" * 40 + "\n")
+    )
+    probes = hook._Probes(hook.time.monotonic())
+    assert probes.commit(str(history), "main") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git rebase main no-such-branch",
+        "git rebase no-such-base",
+        "git switch -C uniq no-such-start",
+        "git pull --rebase origin no-such-branch",
+    ],
+)
+def test_an_unresolvable_revision_is_silence_not_an_error(
+    command, history, monkeypatch, capsys
+):
+    """Silent because the revision does not resolve, not because a `None` reached
+    a probe and the exception handler swallowed it."""
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+        {"tool_input": {"command": command}, "cwd": str(history)}
+    )))
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == ""
+    assert "raised" not in captured.err, captured.err
+
+
+def test_a_pull_whose_setting_probes_cannot_run_is_silence_not_an_error(
+    history, monkeypatch, capsys
+):
+    monkeypatch.setattr(hook, "_run_git", lambda cwd, args, timeout=None: None)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+        {"tool_input": {"command": "git pull origin main"}, "cwd": str(history)}
+    )))
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == ""
+    assert "raised" not in captured.err and "did not run" in captured.err

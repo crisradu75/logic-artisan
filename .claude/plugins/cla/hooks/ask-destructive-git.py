@@ -109,20 +109,29 @@ Detection scope
   whose repository cannot be named (`--git-dir`, `GIT_DIR=`, `-C ~/x`, `-C $V`, a `-C` path that does not exist)
   asks as unchecked. Any tail that is not a non-saving subcommand counts as
   saving, so `git stash 2>&1` and `(git stash)` are covered.
-- `git rebase` when the commits it rewrites (`<upstream>..<branch>`, all of
-  `<branch>` under `--root`) include one already on a remote-tracking branch,
-  ANY remote's, not only the upstream: a branch pushed without `-u` is
-  published all the same. Rewriting it takes a force-push, and the guarded
-  `--force-with-lease` form does not ask, so this is the checkpoint. A rebase
-  of local-only commits onto a fresh base is routine and silent: nobody else
-  has them and `ORIG_HEAD` undoes it. So is one on a dirty tree, because git
-  refuses that itself and `--autostash` keeps the changes in the stash when the
-  re-apply conflicts (measured, git 2.43). `--continue`, `--abort`, `--skip`,
-  `--quit`, `--edit-todo` and `--show-current-patch` rewrite nothing new and
-  are never probed. `git pull --rebase` (and `pull.rebase=true`) is out of
-  scope: it rebases onto refs its own fetch has not updated yet, and in the
-  ordinary flow moves only the unpushed commits.
-- `git switch -C <name>` / `--force-create`, and `git checkout -B <name>`, when
+- `git rebase`, and a `git pull` that rebases (`-r`, `--rebase[=<mode>]`, or
+  `branch.<name>.rebase` / `pull.rebase` set), when the commits it rewrites
+  (`<upstream>..<branch>`, all of `<branch>` under `--root`) include one
+  already on a remote-tracking branch, ANY remote's, not only the upstream: a
+  branch pushed without `-u` is published all the same. Rewriting it takes a
+  force-push, and the guarded `--force-with-lease` form does not ask, so this
+  is the checkpoint. A pull rebases onto `<remote>/<branch>` when it names
+  them, else onto `@{upstream}`, read BEFORE its fetch runs.
+  Silent: a rebase of local-only commits onto a fresh base (nobody else has
+  them and `ORIG_HEAD` undoes it); a rebase onto an upstream that is already
+  an ancestor of the branch, which replays nothing, unless an option replays it
+  anyway (`-f`, `--no-ff`, `--signoff`, `--reset-author-date`, `-i`, `--exec`,
+  `--onto`, `--root`; never applied to a pull, whose fetch can move the
+  upstream); a rebase on a dirty tree, because git refuses that itself and
+  `--autostash` keeps the changes in the stash when the re-apply conflicts
+  (measured, git 2.43); and `--continue`, `--abort`, `--skip`, `--quit`,
+  `--edit-todo` and `--show-current-patch`, which rewrite nothing new and are
+  never probed.
+  Known miss: "on a remote" means a remote-tracking ref in THIS clone. A stale
+  or missing one (a single-branch clone, a branch pushed to a URL rather than a
+  remote, refs never fetched) makes pushed commits look local.
+- `git switch -C <name>` / `--force-create` (switch only: checkout has no such
+  option), and `git checkout -B <name>`, when
   `<name>` already exists and holds commits on no other branch, tag or
   remote-tracking branch, nor in the start point. git resets it without a word,
   orphaning them: the same loss as a force-delete. Creating a new branch, or a
@@ -133,7 +142,12 @@ Detection scope
   this prompt is one extra keystroke on a rare command. Unstaged changes are
   silent: a conflicted merge keeps them in the markers and as index stage 3.
   These three fail OPEN when their probe cannot run, unlike the discards above:
-  what they protect is still in the reflog or the object store.
+  what they protect is still in the reflog or the object store. A probe that
+  did not run leaves one note on stderr. Their words are read by their unquoted
+  text, so `"-i"` is `-i`, and no command text reaches git as an option: every
+  revision is resolved by `rev-parse --end-of-options` and only commit SHAs go
+  on to the other probes (a quoted `"--output=<file>"` once made `rev-list`
+  truncate that file before the user was asked).
 - A push that skips the `pre-push` guard on the default branch: `--no-verify`
   (down to `--no-veri`), `-c core.hooksPath=...`, or the hook's own
   `ALLOW_PUSH_TO_MAIN=1` override typed into the command. That guard is the only
@@ -931,35 +945,58 @@ def _operation_in_progress(directory: str) -> bool | None:
 
 
 # --- History rewrites and branch changes git does not refuse -------------------
-# A rebase of commits already pushed, a `switch -C`/`checkout -B` over a branch
-# whose commits are nowhere else, and a merging switch (`-m`, `--merge`,
-# `--conflict`) over staged work. Each is CONDITIONAL, like the discards above:
-# the same commands are routine when nothing is at stake, so each probes first.
+# A rebase (or a rebasing `git pull`) of commits already on a remote-tracking
+# branch, a `switch -C`/`checkout -B` over a branch whose commits are nowhere
+# else, and a merging switch (`-m`, `--merge`, `--conflict`) over staged work.
+# Each is CONDITIONAL, like the discards above: the same commands are routine
+# when nothing is at stake, so each probes first.
 #
 # What these protect is recoverable with effort (the reflog keeps the old tips,
 # the object store keeps a staged blob until `gc`), unlike the uncommitted work
 # above, which nothing keeps. So they fail OPEN: a probe that cannot run, a
 # refusal, a repository this hook cannot name and an exception are all silence.
-# Asking on every rebase whenever git is slow would make the prompt routine.
+# Asking on every rebase whenever git is slow would make the prompt routine. A
+# probe that did not run says so on stderr, so a missed check is visible.
+#
+# NO TEXT FROM THE COMMAND REACHES GIT AS AN ARGUMENT, except as the value of an
+# `=` option or behind `--end-of-options`. A quoted `"--output=<file>"` operand
+# once reached `git rev-list` bare, and rev-list opened that file for writing:
+# the hook truncated a file before the user was asked anything. Every revision
+# is first resolved to a commit SHA by `rev-parse --end-of-options`, only SHAs
+# reach the other probes, and an operand starting with `-` is silence.
 #
 # Budget: these probes run after the four above and spend only what those left
 # of `HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"]`, so that entry stays
 # true however many there are. `_reasons()` must keep them last for that.
 _PROBE_BUDGET_SECONDS = HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"]
 _REBASE = GitInvocation(r"rebase\b" + _TAIL, capture_opts=True)
+_PULL = GitInvocation(r"pull\b" + _TAIL, capture_opts=True)
 # Group 1 the global options, 2 the subcommand word, 3 the tail.
 _BRANCH_CHANGE = GitInvocation(r"(checkout|switch)\b" + _TAIL, capture_opts=True)
 
+# Every pattern below is FULL-matched against one word's unquoted text, with any
+# `=value` cut off first, so `"-i"` and `-i` read alike.
+#
 # `--continue`, `--abort`, `--skip`, `--quit`, `--edit-todo` and
 # `--show-current-patch` act on a rebase already under way and rewrite nothing
 # new. Floors read off `git rebase -h` (2.43) and checked against real git:
 # `--co` is ambiguous with `--committer-date-is-author-date`, `--qui` with
 # `--quiet`; `--ab`, `--sk`, `--ed` and `--sh` resolve.
-_REBASE_ACTION = re.compile(r"(?:^|\s)--(?:" + "|".join((
+_REBASE_ACTION = re.compile("--(?:" + "|".join((
     _abbrev("continue", 3), _abbrev("abort", 2), _abbrev("skip", 2), "quit",
     _abbrev("edit-todo", 2), _abbrev("show-current-patch", 2),
-)) + ")" + _END)
+)) + ")")
 _REBASE_ROOT = re.compile("--" + _abbrev("root", 2))
+# Options that rewrite commits even when the branch is already up to date with
+# its upstream, so the up-to-date shortcut must not apply. Measured on 2.43:
+# `-f`, `--no-ff`, `--signoff` and `--reset-author-date` replay an up-to-date
+# branch; `--onto` moves it (`--root` returns its own answer); `-i` and `--exec` hand the todo list
+# or a command the chance to. `--keep-base`, `-r` and `--autosquash` do not.
+_REBASE_REWRITES = re.compile("--(?:" + "|".join((
+    _abbrev("interactive", 2), _abbrev("exec", 2), _abbrev("force-rebase", 4), "no-ff",
+    _abbrev("signoff", 2), _abbrev("reset-author-date", 4), _abbrev("onto", 1),
+)) + ")")
+_REBASE_REWRITES_SHORT = "ifx"
 # Long options whose value is the NEXT word, so that word is not an operand.
 # `--strategy` has no abbreviation: every prefix is shared with
 # `--strategy-option`, whose own floor is `--strategy-`.
@@ -972,24 +1009,37 @@ _REBASE_VALUE_SHORT = "CxsX"
 # ... and these an optional one, attached only (`-Skey`, `-rcousins`).
 _REBASE_OPTIONAL_SHORT = "Sr"
 
-# `-C <name>`/`--force-create <name>` (switch) and `-B <name>` (checkout) reset
-# an existing branch to the start point. `--force-` is the floor: `--forc` is
-# ambiguous with `--force`, measured.
+# `git pull`: `-r`/`--rebase[=<mode>]` rebases, `--no-rebase` merges, and with
+# neither the `branch.<name>.rebase` / `pull.rebase` settings decide. Floors:
+# `--re` is ambiguous with `--recurse-submodules` and `--refmap`.
+_PULL_REBASE = re.compile("--" + _abbrev("rebase", 3))
+_PULL_NO_REBASE = re.compile("--" + _abbrev("no-rebase", 6))
+_PULL_VALUE_LONG = frozenset({
+    "--strategy", "--strategy-option", "--depth", "--deepen", "--shallow-since",
+    "--shallow-exclude", "--server-option", "--upload-pack", "--refmap",
+    "--negotiation-tip",
+})
+_PULL_VALUE_SHORT = "sXo"
+_PULL_OPTIONAL_SHORT = "rjS"
+# The values git reads as "do not rebase" for `--rebase=` and the settings.
+_NOT_REBASE = frozenset({"false", "no", "off", "0"})
+
+# `-C <name>`/`--force-create <name>` (switch only) and `-B <name>` (checkout)
+# reset an existing branch to the start point. `--force-` is the floor: `--forc`
+# is ambiguous with `--force`, measured.
 _FORCE_CREATE_LONG = re.compile("--" + _abbrev("force-create", 6))
 _BRANCH_VALUE_LONG = frozenset({"--create", "--orphan", "--conflict", "--pathspec-from-file"})
 # `--conflict=<style>` implies `--merge`. Floors: `--m` resolves for both
 # commands; `--c` resolves for checkout and is ambiguous for switch (git refuses
 # it there, so matching it costs nothing).
-_MERGE_SWITCH_LONG = re.compile(
-    r"(?:^|\s)--(?:" + _abbrev("merge", 1) + "|" + _abbrev("conflict", 1) + ")" + _END
-)
+_MERGE_SWITCH_LONG = re.compile("--(?:" + _abbrev("merge", 1) + "|" + _abbrev("conflict", 1) + ")")
 _REDIRECT = re.compile(r"\d*(?:>>?|<<?|>&|<&|>\|)")
 
 REBASE_REASON = (
-    "a `git rebase` that rewrites commits already on a remote-tracking branch — "
-    "publishing the result takes a force-push, and anyone who based work on the "
-    "old commits is left holding duplicates (a rebase of local-only commits does "
-    "not ask)"
+    "a rebase (`git rebase`, or `git pull` with rebase) that rewrites commits "
+    "already on a remote-tracking branch — publishing the result takes a "
+    "force-push, and anyone who based work on the old commits is left holding "
+    "duplicates (a rebase of local-only commits does not ask)"
 )
 BRANCH_RESET_REASON = (
     "`git switch -C` / `git checkout -B` over an existing branch holding commits "
@@ -1004,16 +1054,17 @@ MERGE_SWITCH_REASON = (
 )
 
 
-def _words(scanned_tail: str, raw_tail: str) -> list[tuple[str, str]]:
-    """A tail's shell words as `(scanned, real)` pairs, the way `_operands`
-    pairs them, minus what is not an argument: a `#` comment ends the list, and
-    a redirection drops out with its target (`2> log`, `>out`)."""
-    words: list[tuple[str, str]] = []
+def _words(scanned_tail: str, raw_tail: str) -> list[str]:
+    """A tail's shell words, unquoted, minus what is not an argument: a `#`
+    comment ends the list, and a redirection drops out with its target
+    (`2> log`, `>out`). Both are recognised on the quote-stripped text, so a
+    quoted `"#x"` or `">"` stays a word."""
+    words: list[str] = []
     target = False
     for m in re.finditer(r"\S+", scanned_tail):
-        flag = scanned_tail[m.start():m.end()].rstrip("\\)`")
+        flag = scanned_tail[m.start():m.end()]
         real = raw_tail[m.start():m.end()].rstrip("\\)`").strip("'\"`")
-        if not flag:
+        if not real:
             continue
         if target:
             target = False
@@ -1022,185 +1073,311 @@ def _words(scanned_tail: str, raw_tail: str) -> list[tuple[str, str]]:
         elif (redirect := _REDIRECT.match(flag)) is not None:
             target = redirect.end() == len(flag)
         else:
-            words.append((flag, real))
+            words.append(real)
     return words
 
 
-def _takes_next_word(letters: str) -> bool:
-    """True when a rebase short-option cluster ends in an option whose value is
-    the next word (`-ix`), not attached (`-xmake`) or optional (`-ri`)."""
+def _cluster(letters: str, required: str, optional: str) -> bool:
+    """True when a short-option cluster ends in an option whose value is the
+    next word (`-ix`), not attached (`-xmake`) or optional (`-ri`)."""
     for i, ch in enumerate(letters):
-        if ch in _REBASE_OPTIONAL_SHORT:
+        if ch in optional:
             return False
-        if ch in _REBASE_VALUE_SHORT:
+        if ch in required:
             return i == len(letters) - 1
     return False
 
 
-def _rebase_range(scanned_tail: str, raw_tail: str) -> tuple[str, str | None] | None:
-    """`(branch, upstream)` for the commits a rebase rewrites, `upstream..branch`;
-    `upstream` is None under `--root`, where it is all of `branch`. None for an
-    action on a rebase already under way.
+def _rebase_range(words: list[str]) -> tuple[str, str | None, bool] | None:
+    """`(branch, upstream, rewrites)` for the commits a rebase rewrites,
+    `upstream..branch`; `upstream` is None under `--root`, where it is all of
+    `branch`. `rewrites` is True when an option rewrites even an up-to-date
+    branch. None for an action on a rebase already under way.
 
     `git rebase [<upstream> [<branch>]]`: the upstream defaults to the current
     branch's `@{upstream}` and the branch to HEAD; `--onto` moves where the
     commits land, not which ones are rewritten. `-` is git's `@{-1}`.
     """
-    if _REBASE_ACTION.search(scanned_tail):
-        return None
     operands: list[str] = []
-    root = skip = False
-    for flag, real in _words(scanned_tail, raw_tail):
+    root = rewrites = skip = False
+    for word in words:
+        key = word.partition("=")[0]
         if skip:
             skip = False
-        elif flag.startswith("--"):
-            root = root or _REBASE_ROOT.fullmatch(flag) is not None
-            skip = _REBASE_VALUE_LONG.fullmatch(flag) is not None
-        elif flag.startswith("-") and flag != "-":
-            skip = _takes_next_word(flag[1:])
+        elif word.startswith("--"):
+            if _REBASE_ACTION.fullmatch(key):
+                return None
+            root = root or _REBASE_ROOT.fullmatch(key) is not None
+            rewrites = rewrites or _REBASE_REWRITES.fullmatch(key) is not None
+            skip = key == word and _REBASE_VALUE_LONG.fullmatch(key) is not None
+        elif word.startswith("-") and word != "-":
+            letters = word[1:]
+            rewrites = rewrites or any(ch in _REBASE_REWRITES_SHORT for ch in letters)
+            skip = _cluster(letters, _REBASE_VALUE_SHORT, _REBASE_OPTIONAL_SHORT)
         else:
-            operands.append("@{-1}" if real == "-" else real)
+            operands.append("@{-1}" if word == "-" else word)
     if root:
-        return (operands[0] if operands else "HEAD"), None
+        return (operands[0] if operands else "HEAD"), None, True
     return (
         operands[1] if len(operands) > 1 else "HEAD",
         operands[0] if operands else "@{upstream}",
+        rewrites,
     )
 
 
-def _rewrites_published(directory: str, branch: str, upstream: str | None, git) -> bool:
-    """True when the commits the rebase rewrites include one already reachable
-    from a remote-tracking branch: two counts over the same range, the second
-    leaving out everything `--remotes` reaches. Any remote counts, not only the
-    upstream, because a branch pushed without `-u` is published all the same."""
-    span = [branch] if upstream is None else [branch, "^" + upstream]
-    every = git(directory, ["rev-list", "--count", *span, "--"])
-    if every is None or every.returncode != 0:
-        return False
-    local = git(directory, ["rev-list", "--count", *span, "--not", "--remotes", "--"])
-    if local is None or local.returncode != 0:
-        return False
-    return int(every.stdout) > int(local.stdout)
+def _pull_rebase(words: list[str]) -> tuple[bool | None, list[str]]:
+    """`(rebase, operands)` of a `git pull`: `rebase` True or False when the
+    command says, None when the settings decide."""
+    rebase: bool | None = None
+    operands: list[str] = []
+    skip = False
+    for word in words:
+        key, eq, value = word.partition("=")
+        if skip:
+            skip = False
+        elif word.startswith("--"):
+            if _PULL_REBASE.fullmatch(key):
+                rebase = value.lower() not in _NOT_REBASE if eq else True
+            elif _PULL_NO_REBASE.fullmatch(key):
+                rebase = False
+            else:
+                skip = not eq and key in _PULL_VALUE_LONG
+        elif word.startswith("-"):
+            letters = word[1:]
+            r = letters.find("r")
+            if r >= 0 and not any(ch in _PULL_VALUE_SHORT + _PULL_OPTIONAL_SHORT for ch in letters[:r]):
+                rebase = letters[r + 1:].lower() not in _NOT_REBASE
+            skip = _cluster(letters, _PULL_VALUE_SHORT, _PULL_OPTIONAL_SHORT)
+        else:
+            operands.append(word)
+    return rebase, operands
 
 
-def _reset_target(scanned_tail: str, raw_tail: str, subcommand: str) -> tuple[str, str] | None:
+def _pull_upstream(operands: list[str]) -> str | None:
+    """What a rebasing pull rebases onto, as the refs stand BEFORE its fetch:
+    `<remote>/<branch>` for `git pull <remote> <branch>`, else `@{upstream}`.
+    None for more than one branch, which git refuses to rebase onto."""
+    if len(operands) > 2:
+        return None
+    if len(operands) < 2:
+        return "@{upstream}"
+    branch = operands[1].lstrip("+").partition(":")[0]
+    if branch.startswith("refs/heads/"):
+        branch = branch[len("refs/heads/"):]
+    return "refs/remotes/" + operands[0] + "/" + branch
+
+
+def _reset_target(words: list[str], subcommand: str) -> tuple[str, str] | None:
     """`(name, start point)` of a `switch -C`/`checkout -B`, else None.
 
     A short cluster is read letter by letter: the first value-taking letter owns
     the rest of the cluster or the next word, so `-cC` creates a branch named
     `C` rather than resetting one. The start point is the first operand, HEAD
-    when there is none. A name or start point git would reject (`--`, `-x`, a
-    typo) is passed on as it is: the probe's `rev-list` rejects it the same way,
-    which is silence.
+    when there is none. A name or start point git would reject is passed on as
+    it is: resolving it fails the same way, which is silence.
     """
     values = "cC" if subcommand == "switch" else "bB"
     reset = values[1]
-    words = _words(scanned_tail, raw_tail)
     name: str | None = None
     operands: list[str] = []
     i = 0
     while i < len(words):
-        flag, real = words[i]
-        nxt = words[i + 1][1] if i + 1 < len(words) else ""
-        if flag.startswith("--"):
-            _, eq, value = real.partition("=")
-            if _FORCE_CREATE_LONG.fullmatch(flag.partition("=")[0]):
+        word = words[i]
+        nxt = words[i + 1] if i + 1 < len(words) else ""
+        if word.startswith("--"):
+            key, eq, value = word.partition("=")
+            if subcommand == "switch" and _FORCE_CREATE_LONG.fullmatch(key):
                 name, i = (value, i) if eq else (nxt, i + 1)
-            elif flag in _BRANCH_VALUE_LONG:
+            elif word in _BRANCH_VALUE_LONG:
                 i += 1
-        elif flag.startswith("-"):
-            for j, ch in enumerate(flag[1:]):
+        elif word.startswith("-"):
+            for j, ch in enumerate(word[1:]):
                 if ch in values:
-                    value = real[j + 2:]
+                    value = word[j + 2:]
                     if not value:
                         value, i = nxt, i + 1
                     if ch == reset:
                         name = value
                     break
         else:
-            operands.append(real)
+            operands.append(word)
         i += 1
     if not name:
         return None
     return name, (operands[0] if operands else "HEAD")
 
 
-def _orphans_commits(directory: str, name: str, start: str, git) -> bool:
+def _merges_on_switch(words: list[str], subcommand: str) -> bool:
+    """True for a branch change with `-m`, `--merge` or `--conflict`. A
+    `checkout -m -- <path>` re-creates a conflict in a path instead, which the
+    discard check above already covers, so the `--` form is left to it."""
+    if "--" in words:
+        return False
+    values = "cC" if subcommand == "switch" else "bB"
+    for word in words:
+        if word.startswith("--"):
+            if _MERGE_SWITCH_LONG.fullmatch(word.partition("=")[0]):
+                return True
+        elif word.startswith("-"):
+            for ch in word[1:]:
+                if ch == "m":
+                    return True
+                if ch in values:
+                    break
+    return False
+
+
+class _Probes:
+    """The history checks' git calls: one shared deadline, each identical call
+    run once, and every revision from the command resolved to a SHA before it
+    goes anywhere else."""
+
+    def __init__(self, started: float) -> None:
+        self.deadline = started + _PROBE_BUDGET_SECONDS
+        self.asked: dict = {}
+        self.missed = False
+
+    def git(self, directory: str, args: list[str]):
+        key = (directory, tuple(args))
+        if key not in self.asked:
+            left = self.deadline - time.monotonic()
+            self.asked[key] = (
+                _run_git(directory, args, timeout=min(GIT_TIMEOUT_SECONDS, left))
+                if left > 0 else None
+            )
+            self.missed = self.missed or self.asked[key] is None
+        return self.asked[key]
+
+    def commit(self, directory: str, rev: str) -> str | None:
+        """`rev` as a full commit SHA, or None. `--end-of-options` keeps a
+        `--output=<file>` from being read as an option; a leading `-` is
+        refused outright."""
+        if not rev or rev.startswith("-"):
+            return None
+        out = self.git(directory, [
+            "rev-parse", "--verify", "--quiet", "--end-of-options", rev + "^{commit}",
+        ])
+        sha = out.stdout.strip() if out is not None and out.returncode == 0 else ""
+        return sha if re.fullmatch(r"[0-9a-f]{40,64}", sha) else None
+
+
+def _rewrites_published(
+    directory: str, branch: str, upstream: str | None, rewrites: bool, probes: _Probes
+) -> bool:
+    """True when the commits the rebase rewrites include one already reachable
+    from a remote-tracking branch: two counts over the same range, the second
+    leaving out everything `--remotes` reaches. Any remote counts, not only the
+    upstream, because a branch pushed without `-u` is published all the same.
+
+    A branch already up to date with its upstream (the upstream is an ancestor
+    of it) replays nothing, unless `rewrites` says an option forces it.
+    """
+    tip = probes.commit(directory, branch)
+    if tip is None:
+        return False
+    span = [tip]
+    if upstream is not None:
+        base = probes.commit(directory, upstream)
+        if base is None:
+            return False
+        if not rewrites:
+            up_to_date = probes.git(directory, ["merge-base", "--is-ancestor", base, tip])
+            if up_to_date is None or up_to_date.returncode == 0:
+                return False
+        span.append("^" + base)
+    every = probes.git(directory, ["rev-list", "--count", *span, "--"])
+    if every is None or every.returncode != 0:
+        return False
+    local = probes.git(directory, ["rev-list", "--count", *span, "--not", "--remotes", "--"])
+    if local is None or local.returncode != 0:
+        return False
+    return int(every.stdout) > int(local.stdout)
+
+
+def _pull_rebases(directory: str, rebase: bool | None, probes: _Probes) -> bool:
+    """Whether a `git pull` rebases: the command's own flag, else
+    `branch.<current>.rebase`, else `pull.rebase`. Both keys come from git's
+    own output, never from the command."""
+    if rebase is not None:
+        return rebase
+    head = probes.git(directory, ["symbolic-ref", "--quiet", "--short", "HEAD"])
+    keys = ["pull.rebase"]
+    if head is not None and head.stdout.strip():
+        keys.insert(0, "branch." + head.stdout.strip() + ".rebase")
+    for key in keys:
+        out = probes.git(directory, ["config", "--get", key])
+        if out is not None and out.returncode == 0:
+            return out.stdout.strip().lower() not in _NOT_REBASE
+    return False
+
+
+def _orphans_commits(directory: str, name: str, start: str, probes: _Probes) -> bool:
     """True when branch `name` exists and holds commits on no other branch, tag
     or remote-tracking branch, nor in `start` — what the reset would orphan.
-    A branch that does not exist yet makes git refuse the count: silence, since
-    creating it loses nothing."""
-    out = git(directory, [
-        "rev-list", "--count", "refs/heads/" + name, "--not",
-        "--exclude=" + name, "--branches", "--tags", "--remotes", start, "--",
+    A branch that does not exist yet does not resolve: silence, since creating
+    it loses nothing."""
+    if name.startswith("-"):
+        return False
+    tip = probes.commit(directory, "refs/heads/" + name)
+    target = probes.commit(directory, start)
+    if tip is None or target is None:
+        return False
+    out = probes.git(directory, [
+        "rev-list", "--count", tip, "--not",
+        "--exclude=" + name, "--branches", "--tags", "--remotes", target, "--",
     ])
     return out is not None and out.returncode == 0 and int(out.stdout) > 0
 
 
-def _merges_on_switch(scanned_tail: str, subcommand: str) -> bool:
-    """True for a branch change with `-m`, `--merge` or `--conflict`. A
-    `checkout -m -- <path>` re-creates a conflict in a path instead, which the
-    discard check above already covers, so the `--` form is left to it."""
-    if "--" in scanned_tail.split():
-        return False
-    if _MERGE_SWITCH_LONG.search(scanned_tail):
-        return True
-    values = "cC" if subcommand == "switch" else "bB"
-    for cluster in _SHORT_CLUSTER.findall(scanned_tail):
-        for ch in cluster:
-            if ch == "m":
-                return True
-            if ch in values:
-                break
-    return False
-
-
-def _holds_staged_work(directory: str, git) -> bool:
+def _holds_staged_work(directory: str, probes: _Probes) -> bool:
     """True when the index differs from HEAD anywhere: porcelain column X is not
     blank. `--untracked-files=no` keeps `??` lines, whose X is `?`, out."""
-    out = git(directory, ["status", "--porcelain", "--untracked-files=no"])
+    out = probes.git(directory, ["status", "--porcelain", "--untracked-files=no"])
     if out is None or out.returncode != 0:
         return False
     return any(line[:1].strip() for line in out.stdout.splitlines())
 
 
 def _history_reasons(command: str, scanned: str, cwd: str, started: float) -> list[str]:
-    """The rebase, branch-reset and merging-switch reasons in `command`.
-
-    Every probe shares one deadline, `started + _PROBE_BUDGET_SECONDS`, and an
-    identical probe runs once.
-    """
-    asked: dict = {}
-
-    def git(directory: str, args: list[str]):
-        key = (directory, tuple(args))
-        if key not in asked:
-            left = started + _PROBE_BUDGET_SECONDS - time.monotonic()
-            asked[key] = (
-                _run_git(directory, args, timeout=min(GIT_TIMEOUT_SECONDS, left))
-                if left > 0 else None
-            )
-        return asked[key]
-
+    """The rebase, branch-reset and merging-switch reasons in `command`."""
+    probes = _Probes(started)
     found: list[str] = []
     for m in _REBASE.finditer(scanned):
         directory = _invocation_dir(command[m.start(1):m.end(1)], scanned, cwd)
-        target = _rebase_range(m.group(2), command[m.start(2):m.end(2)])
+        target = _rebase_range(_words(m.group(2), command[m.start(2):m.end(2)]))
         if directory and target and REBASE_REASON not in found:
-            if _rewrites_published(directory, *target, git):
+            if _rewrites_published(directory, *target, probes):
+                found.append(REBASE_REASON)
+    for m in _PULL.finditer(scanned):
+        directory = _invocation_dir(command[m.start(1):m.end(1)], scanned, cwd)
+        rebase, operands = _pull_rebase(_words(m.group(2), command[m.start(2):m.end(2)]))
+        upstream = _pull_upstream(operands)
+        if directory and upstream and REBASE_REASON not in found:
+            # Always `rewrites`: the fetch can move the upstream past HEAD, so
+            # "up to date" before it says nothing about after.
+            if _pull_rebases(directory, rebase, probes) and _rewrites_published(
+                directory, "HEAD", upstream, True, probes
+            ):
                 found.append(REBASE_REASON)
     for m in _BRANCH_CHANGE.finditer(scanned):
         directory = _invocation_dir(command[m.start(1):m.end(1)], scanned, cwd)
         if directory is None:
             continue
-        tail, raw = m.group(3), command[m.start(3):m.end(3)]
-        target = _reset_target(tail, raw, m.group(2))
+        words = _words(m.group(3), command[m.start(3):m.end(3)])
+        target = _reset_target(words, m.group(2))
         if target and BRANCH_RESET_REASON not in found:
-            if _orphans_commits(directory, *target, git):
+            if _orphans_commits(directory, *target, probes):
                 found.append(BRANCH_RESET_REASON)
-        if _merges_on_switch(tail, m.group(2)) and MERGE_SWITCH_REASON not in found:
-            if _holds_staged_work(directory, git):
+        if _merges_on_switch(words, m.group(2)) and MERGE_SWITCH_REASON not in found:
+            if _holds_staged_work(directory, probes):
                 found.append(MERGE_SWITCH_REASON)
+    if probes.missed:
+        print(
+            "[ask-destructive-git] a rebase or branch-change probe did not run "
+            "(git missing, a timeout, or the hook's time budget spent) — not "
+            "asking about it. (hook: ask-destructive-git.py)",
+            file=sys.stderr,
+        )
     return found
 
 
