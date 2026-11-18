@@ -35,7 +35,6 @@ Leftover review suggestions. The inbox is emptied by regular sweep PRs.
 
 ## From the ship_check review (Suggestions, not fixed)
 
-- `_shared/references/chain-merge.md` "Record the head" still compares `git rev-parse HEAD` with `git ls-remote origin <branch>` by eye, and `multi-lite`'s candidate loop (step 7) points to it. Left for the chain head gate (audit check 2).
 - `multi-spec/references/phases.md` Phase 2 finds an existing branch with `git ls-remote --heads origin docs/propose-<batch-slug>`, which also matches a longer branch name ending in it.
 - Rule ledger: the `ship.md` rows for "must be EMPTY" and "They must be equal" are gone; those obligations remain in the text, held by `ship_check.py`, without absolute wording.
 - `ship_check.py`: the "no remote" branch of `_upstream_config`'s callers is untested; a `merge` set with no `remote` makes `preflight` exit 2, not 1.

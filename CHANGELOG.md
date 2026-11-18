@@ -20,6 +20,13 @@ the skills fall back to the default list of protected areas.
 
 ### Added
 
+- **A `chain_check.py` script** replaces the comparisons `multi-pr` and `multi-lite` made by eye before
+  they merge or resume a pull request: `before-merge` (the recorded head against the PR, the remote
+  branch and the checkout; a clean tree; the PR open, on the recorded branch, not a fork, against the
+  base), `after-merge` (merged, not queued), `fix-pushed` (the chain's own fix committed and pushed),
+  `resume` (still on the recorded head) and `deps` (every dependency merged into the base). It reads
+  the PR number, branch and head from the run-notes row and prints the reason the chain records. Exit
+  0 passes, 1 is a problem, 2 means it could not check and is never a pass (#PR).
 - **A `ship_check.py` script** replaces the git command lists that Ship, Revise, Archive, `lite-pr`,
   `multi-spec` and `multi-lite` compared by eye: `preflight` before a branch is made (no local,
   remote-tracking or remote branch of that name, no commits to lose on a rename, never a rename of the
