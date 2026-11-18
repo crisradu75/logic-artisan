@@ -74,7 +74,7 @@ Left, in order:
   change that touches a protected area or behaviour shipped to other repos. shape-decision and
   multi-spec recommend a path per change from the Stakes, and the owner can override. Audit B F8
   and C H15. Done when merged after one review.
-- [ ] 4g. **The rest of the audit, parts B and C:**
+- [x] 4g. **The rest of the audit, parts B and C:** (#PRNUM)
   - B F5, F6, F10, F11, F12
   - C H2-H6, H8-H12
   - the two `TODO.md` lines left by #511

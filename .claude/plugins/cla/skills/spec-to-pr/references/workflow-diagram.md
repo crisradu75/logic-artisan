@@ -48,7 +48,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
             ┌──────────────────────┐
             │  TEST                │   cap: --test-rounds (default 3)
             │  lint, then build +  │   ✓ exit 0 / ⚠ failures after cap
-            │  tests (commands from│   ✗ skipped (no source-affecting paths)
+            │  tests (commands from│   – skipped (no source-affecting paths)
             │  project-facts.md)   │   (browser smoke = optional/manual)
             └──────────┬───────────┘
                        │
@@ -108,8 +108,8 @@ step — it ran in Archive)
 |---|---|---|
 | ✓ clean | success criterion met | per-phase rule |
 | ⚠ proceeded with issues | criterion failed but workflow continued (continue-on-everything) | every other failure |
-| ✗ skipped | no work to do | e.g. doc-only change has no tests |
-| ✗ aborted | orchestration failure (rare; halt) | only user-decline at gate or bootstrap |
+| – skipped | no work to do; does not hold back the merge line | e.g. doc-only change has no tests |
+| ✗ aborted | orchestration failure (rare; halt); holds back the merge line | only user-decline at gate or bootstrap |
 
 ## Cap quick reference
 

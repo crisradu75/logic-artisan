@@ -29,7 +29,7 @@ Output, one JSON object on stdout:
                                           # still ended warn or fail, see `_cap_hit`)
       "revise_findings": {<agent>: {"found": int, "phantom": int, "runs": int}},
                                           # from routing.revise_findings_by_tier;
-                                          # found is Critical+Important
+                                          # found is blocking Critical+Important
       "asks": [{"header": str, "choices": {<choice>: int}}],
       "asks_unrecorded": int,             # asks the migration kept no header for
       "flags": {"recorded": int,          # runs whose record carries `flags`
