@@ -405,7 +405,7 @@ benchmark run.
 - keep | honesty | none found (text since 9cd5f32f 2026-10-08); a skipped full gate would read as tested | a smoke pass never skips `full`
 - guidance | none | #478 (a4a0c048, 2026-11-05) Full gate: final-commit-only; cost rule (orchestration-economy rule 3) | not the whole suite: the one full run comes later.
 - guidance | none | none found (predates extraction ee4034ad, 2026-07-23); test-notes.md gives the reason, no dev server | which needs a dev server and so is not a hard gate.
-- guidance | none | design-tradeoffs "Autonomy gate and turn liveness": pauses nothing authorized cost about 5 minutes each | only the exceptions below authorize a pause, and each other one costs minutes.
+- guidance | none | design-tradeoffs "Autonomy gate and turn liveness": pauses nothing authorized cost about 5 minutes each | only the exceptions below authorize a pause, and every other pause costs minutes.
 - guidance | none | #296 item 2 (6f437cf1, 2026-10-07); scope-asks.md: a coherent 30-task-group change needs no ask | Content-based: a large, coherent change needs no ask.
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); archive.md: a bare `openspec/` sweeps sibling changes into the commit | each touched `openspec/specs/<cap>/`, never `openspec/`
 - guidance | none | none found (predates extraction ee4034ad, 2026-07-23); Archive already ran the command | Leave out `openspec archive`: Archive already ran it.

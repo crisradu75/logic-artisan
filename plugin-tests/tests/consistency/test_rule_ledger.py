@@ -8,7 +8,8 @@ failed in every repo that had one (the same decision's evidence base).
 
 What it checks:
 - every whole word `never`, `always` or `must` in a shipped `.md` file sits inside the fragment of
-  one of that file's ledger entries, so each rule on a line needs its own entry;
+  one of that file's ledger entries, so a rule added to a line that already has an entry is caught
+  (one fragment may still span two words when they belong to one rule);
 - every fragment occurs in its file as many times as it has entries (once, unless the file repeats a
   rule word for word), so a reworded or deleted rule makes its entry fail;
 - verdicts and areas agree: a `keep` names a protected area, `guidance` and `remove?` name `none`.
