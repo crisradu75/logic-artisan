@@ -1,6 +1,6 @@
 # Review — sweeps and applying a round's fixes
 
-Read from the Review stub in `spec-to-pr`'s `SKILL.md` and from `multi-spec`'s `${CLAUDE_PLUGIN_ROOT}/skills/multi-spec/references/review-gate.md`: the doc-staleness sweeps run in every Review pass whose proposal retires something; "Applying a round's fixes" is read before the first fix of a FIX FIRST / RETHINK round. Review behaviour itself lives in `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` (agent prompts: `dispatch.md` beside it); edit it there, never here or in the orchestrator.
+Read from the Review stub in `spec-to-pr`'s `SKILL.md` and from `multi-spec`'s `${CLAUDE_PLUGIN_ROOT}/skills/multi-spec/references/review-gate.md`: the doc-staleness sweeps run in every Review pass whose proposal retires something; "Applying a round's fixes" is read before the first fix of a FIX FIRST / RETHINK round. Review behaviour itself lives in `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` (agent prompts: `dispatch.md` beside it); edit it there; copies elsewhere drift.
 
 ## Doc-staleness sweeps
 
@@ -10,7 +10,7 @@ Read from the Review stub in `spec-to-pr`'s `SKILL.md` and from `multi-spec`'s `
 
 **Reading what comes back** — a `path:line — symbol` hit list and a mandatory `Scanned: N files` footer:
 - **Check the footer first.** `Scanned: 0` for any supplied surface, or a non-empty `Unresolved` list, means it searched less than you asked: fix the path list and re-dispatch.
-- **A non-zero footer does not make a zero-hit result true.** Re-run the search yourself for every zero-count symbol — the whole result or one symbol's line — as one alternation over each supplied path or glob in turn (one search per entry; never widen to a repo-wide pattern). Any hit means the sweep under-searched: add the hits, plus one Handoff Issue naming the miss.
+- **A non-zero footer does not make a zero-hit result true.** Re-run the search yourself for every zero-count symbol — the whole result or one symbol's line — as one alternation over each supplied path or glob in turn (one per entry; a repo-wide pattern adds unlisted files). Any hit means the sweep under-searched: add the hits, plus one Handoff Issue naming the miss.
 - **Every hit is an Important Review finding.**
 
 **Large change.** Checks 0a–0h default to a `fact-gatherer` dispatch returning the context-brief rows as a pass/fail table (the checklist's "Cost offload for large changes"); you adjudicate every ✗ row. Both helpers return schema'd output, not prose.
@@ -20,7 +20,7 @@ Read from the Review stub in `spec-to-pr`'s `SKILL.md` and from `multi-spec`'s `
 1. **Capture the rejected-alternatives snapshot BEFORE the round's first fix.** Read the change's `design.md` rejected-alternatives / explicitly-rejected-decisions section and hold it for the round. The fixes routinely edit `design.md` itself, so a later read sees the edited file.
 2. **Apply** each blocking finding by Edit/Write under `openspec/changes/<name>/`: to design.md or tasks.md, and to spec text only when the finding is about an outcome or interface. For prose, prefer this repo's canonical terms from `cla.io/terminology.md` when it exists and covers the concept.
 3. **Re-validate each fix landed** — not a re-dispatch: grep the artifact for the symbol, heading or clause the finding named, or re-read the section. Still visible → a follow-up edit in the same round.
-4. **Check every applied remedy against the snapshot.** Each fix on this path is one the orchestrator both specified and judges, so confirm none reintroduces a rejected alternative. Never `git show HEAD:<path>`: Review runs before Ship, so a fresh change dir is not committed yet and the git form fails.
+4. **Check every applied remedy against the snapshot.** Each fix on this path is one the orchestrator both specified and judges, so confirm none reintroduces a rejected alternative. Avoid `git show HEAD:<path>`: Review runs before Ship, so a fresh change dir is not committed yet and the git form fails.
    - **No snapshot captured → the check has not run.** Review `warn`, recorded under *Issues encountered* as `rejected-alternatives check did not run (no snapshot captured)`, the round's remedies treated as unchecked.
    - **No `design.md`** → out of scope, not a breach.
    - **A hit is a Critical on the fix itself.** Withdraw or re-specify the remedy; it does not stand on having resolved the original finding. Where the *rejection* now looks wrong, amend `design.md` explicitly — "the fix brief said so" is not an amendment.

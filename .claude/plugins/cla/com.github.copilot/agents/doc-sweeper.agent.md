@@ -36,8 +36,8 @@ caller supplied — you are read-only and scope-only-what-you're-told.
 
 ## Method
 
-- Grep only; never open a file to "understand context" beyond the matched line and enough
-  surroundings to quote it. Speed and completeness over interpretation.
+- Grep only; read no more of a file than the matched line and enough surroundings to quote it.
+  The caller judges context, so speed and completeness beat interpretation.
 - Search the exact paths/globs the caller supplied — no others. Expand every glob FIRST (Glob tool)
   and count what it resolves to. A supplied path or glob that resolves to ZERO files is never
   skipped silently: name it in the accounting footer's `unresolved` list — the caller supplied it

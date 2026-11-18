@@ -39,7 +39,7 @@ called** (`lite-pr` reaches this skill both ways). The first rule that applies s
 
 Rule 3 errs safe: a wrong *attended* guess stalls a run on an unanswerable question; a wrong
 *unattended* guess costs one prune. **An unattended run inherits the parent's autonomy contract**
-and never stops to ask. Either way, hypotheses are ranked, falsifiable, and written down before
+and does not stop to ask. Either way, hypotheses are ranked, falsifiable, and written down before
 anything is touched; only who prunes them changes.
 
 ## Phase 1 — a deterministic pass/fail loop, before anything else
@@ -113,8 +113,8 @@ as the four-fixes-at-once shape the Test phases bound, one level down.
 
 **Done when:** the selected hypothesis is confirmed or falsified against the
 loop, with the output that settles it captured. Falsified → return to Phase 3
-and take the next one. Never edit past a falsified hypothesis on the grounds
-that the fix "probably still helps".
+and take the next one. Do not keep editing on a falsified hypothesis because
+the fix "probably still helps": the loop showed the cause is elsewhere.
 
 ## Phase 5 — the regression test comes before the fix
 

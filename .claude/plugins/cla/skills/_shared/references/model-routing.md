@@ -43,7 +43,7 @@ and file edits. That rule is the only safeguard, an accepted risk.
 
 | Dispatch | Model | Effort | Mechanism |
 |---|---|---|---|
-| Propose authoring, Review verdict, Revise triage | inline (session) | session | main loop — escalate-up (Propose authoring + verdict seconding of RETHINK or Critical-bearing FIX FIRST ONLY; triage never escalated) when session < Opus |
+| Propose authoring, Review verdict, Revise triage | inline (session) | session | main loop — escalate-up (Propose authoring + verdict seconding of RETHINK or Critical-bearing FIX FIRST ONLY; triage stays at session model) when session < Opus |
 | Review Step-2 fact-gathering offload (large changes) | haiku | inherited | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
 | Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | inherited | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
 | Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff; `model:` is passed on every dispatch) | inherited (medium only on the opted-in `Workflow` path) | `Agent`; `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter` (`Workflow` `agent()` only if opted in) |

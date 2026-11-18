@@ -87,7 +87,7 @@ Left, in order:
   - the 4e answers that change files
 
   The owner sees the output style before and after. Done when merged after one review. (#517)
-- [ ] 4i. **Tag each kept rule (principle 6).** Every absolute rule in the shipped skills (never,
+- [ ] 4i. **Tag each kept rule (principle 6).** (#519: every rule tagged in `docs/rule-ledger.md`; the removal list of 9 awaits the owner) Every absolute rule in the shipped skills (never,
   always, must) gets one line: the incident it came from and the protected area it covers. A rule
   with no protected area becomes guidance or goes on a removal list, and the owner approves each
   removal. Done when every such rule is tagged and the removal list is decided.

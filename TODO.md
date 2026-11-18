@@ -9,3 +9,9 @@ Leftover review suggestions. The inbox is emptied by regular sweep PRs.
 - `check_change_budget` checks every active change, whatever the `--base` or path filter.
 - `change_totals` reads `.md` files as `utf-8`, not `utf-8-sig`, so a byte-order mark adds a stray character to the first word.
 - `Budget: protected` inside a code fence in `proposal.md` still selects the override (`_BUDGET_LINE` in `check_spec_proof.py` reads every line).
+- Rule ledger: about 70 `keep` entries use the area "shipped to other repos" as a catch-all; at the next ledger review, keep that area only where breaking the rule makes the plugin misbehave in a consumer repo.
+- Rule ledger: "never `git show HEAD:<path>`" is `keep` in `spec-to-pr/references/revise.md` and `multi-spec/references/review-gate.md` but softened to "Avoid" in `_shared/references/review-sweeps.md`; make the three agree.
+- `test_rule_ledger.py`'s keyword regex misses "mustn't", and it scans only `.md` files.
+- `codify-learnings/SKILL.md`: "not a made-up slug no file has" reads awkwardly.
+- `test_autonomy_gate_exceptions.py` passes rewordings like "no exceptions authorize a pause"; pin the exact clause if the gate is reworded again.
+- Rule ledger: a few `not-a-rule` fragments also span a real rule's keyword (`agents/doc-sweeper.md` and its Copilot copy, `cla-setup/SKILL.md` "never-clobber. ALWAYS guard"); narrow them so deleting the rule's own `keep` entry would fail the test.

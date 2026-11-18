@@ -63,7 +63,7 @@ Gated on the phase tally **and on "Rejected remedies, still open" being empty.**
 - **Any ⚠:** print "**Review warnings before merging.**" FIRST, then each ⚠ phase's one-line summary indented, and only then, on a new line, `gh pr merge` as the eventual command.
 - **Any ✗:** print "**This PR is NOT ready to merge.**", list the failing phases, and do NOT name `gh pr merge`.
 
-Never name `openspec archive` (Archive did it).
+Leave out `openspec archive`: Archive already ran it.
 
 ## 5. Append the per-run record to the JSONL log
 

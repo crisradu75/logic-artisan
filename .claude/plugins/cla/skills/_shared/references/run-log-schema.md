@@ -57,8 +57,8 @@ append stays atomic against a concurrent run.
 - `rounds_used` / `rounds_cap` — always as a pair. Required on Test and Revise whenever their status
   is not `skip`; optional on Review. A phase that used its whole cap, with a cap above 1, is a cap
   exhaustion — on Revise, whose round 2 follows a protected-area fix, only when it also ended `warn` or `fail`.
-- Revise: `findings_by_round` — one entry per round, built as each round closes, never
-  reconstructed at Handoff. `found` is that round's deduplicated count of blocking Critical+Important findings after
+- Revise: `findings_by_round` — one entry per round, built as each round closes, not
+  rebuilt from memory at Handoff. `found` is that round's deduplicated count of blocking Critical+Important findings after
   triage (the non-blocking ones go to TODO.md and are not counted; a record from before the filter counted every Critical and Important, and the retro reads both alike). Every round after the first also carries `trigger`, what started it, the first that
   applies: `protected` (the round before applied a protected-area fix), `reentry` (still-open findings
   re-attempted); `unknown` only when the run cannot

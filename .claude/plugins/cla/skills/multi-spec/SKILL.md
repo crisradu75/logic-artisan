@@ -51,7 +51,7 @@ Derive an ordered change plan (each change's `name`, decisions covered, one-line
 
 ## Phase 2 — Batch branch preflight, then persist the plan
 
-All N proposals (the `spec` changes only) land in **one** PR on **one** dedicated branch, `docs/propose-<batch-slug>` (not one branch per change). Full branch-slug derivation, preflight, and plan-persist-commit recipe: `references/phases.md`. This phase's first push **must** set the upstream (`-u`) — every push after it is bare.
+All N proposals (the `spec` changes only) land in **one** PR on **one** dedicated branch, `docs/propose-<batch-slug>` (not one branch per change). Full branch-slug derivation, preflight, and plan-persist-commit recipe: `references/phases.md`. Its first push sets the upstream (`-u`), as the branch is new; later pushes are bare.
 
 ## Phase 3 — Author each change, sequentially, committing as you go
 
