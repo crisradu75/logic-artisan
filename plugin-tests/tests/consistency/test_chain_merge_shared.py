@@ -269,7 +269,12 @@ def test_chain_merge_runs_the_script_at_each_comparison() -> None:
     for path in (_SHARED, *_chain_files()):
         text = _read(path)
         assert "`chain check could not run`" not in text, f"{path.name} drops `: <first line>`"
-    assert "a relative path is read from the primary clone" in names.lower()
+    assert "a relative path\nis read from the primary clone" in names.lower()
+    assert "never written\ninside a worktree" in names and "expands no glob" in names
+    merge_error = _between(shared, "### If `gh pr merge` exits non-zero", "## A fix needed after a merge")
+    assert "`merged at a head this run did not check`" in merge_error.split("Exit 0 (`MERGED`)")[0], (
+        "a merge of another head must be recorded as such, not as `merge error: …`"
+    )
     assert "`--root <worktree>`" in names
 
 
@@ -277,29 +282,38 @@ def test_chain_merge_runs_the_script_at_each_comparison() -> None:
 def test_multi_lite_runs_the_script_at_resume_dependencies_and_its_fix() -> None:
     loop = _read(_LITE_LOOP)
     step_2 = _between(loop, "2. **Resume check", "3. **Ensure the right base.**")
-    assert _CALL + "resume --notes cla.io/retro/multi-lite-run-notes-<date>.md --id <id> --base <base-branch>" in step_2
+    assert _CALL + "resume --notes <ledger> --id <id> --base <base-branch>" in step_2
+    assert "<date>" not in loop, "a dated path invites today's date in place of this run's ledger"
+    assert "whatever date it carries" in step_2
     assert "gh pr view <recorded-pr-number>" not in step_2
     assert "or exit 2** →" in step_2, "exit 2 at resume must leave the PR unmerged"
     step_3 = _between(loop, "3. **Ensure the right base.**", "4. **Run `/cla:lite-pr`")
-    assert _CALL + "deps --notes cla.io/retro/multi-lite-run-notes-<date>.md --ids <every id in depends_on>" in step_3
+    assert _CALL + "deps --notes <ledger> --ids <every id in depends_on>" in step_3
     assert "--against origin/<base-branch>" in step_3
     blocked = next(line for line in step_3.splitlines() if "deps --notes" in line)
     assert "Exit 1 → mark this candidate `blocked-by-upstream-failure`" in blocked
     assert "Exit 2 → the same" in blocked
     step_7 = _between(loop, "7. **Enforce `/cla:lite-pr`'s deferred review findings", "8. **Merge per the confirmed policy")
-    assert _CALL + "fix-pushed --notes cla.io/retro/multi-lite-run-notes-<date>.md --id <id>" in step_7
+    assert _CALL + "fix-pushed --notes <ledger> --id <id>" in step_7
 
 
 # requirement: change-chains / A resumed chain acts only on its own pull request at the recorded head
 def test_multi_pr_runs_the_script_at_resume_and_its_fix() -> None:
     loop = _read(_PR_LOOP)
     step_1 = _between(loop, "1. **Resume check.**", "2. **Capture a real start timestamp**")
-    # A resume on a later date writes a new dated file; the change's row stays in the older one.
-    notes = "--notes 'cla.io/retro/multi-pr-run-notes-*.md'"
+    # One file, this chain's: a glob over every dated file would read an old chain's row for a
+    # reused change name, and its merged PR would pass as this change's.
+    notes = "--notes <run notes>"
     assert _CALL + f"resume {notes} --id <name> --base <base-branch>" in step_1
+    assert "the one holding its `## Chain start` line" in step_1
+    assert "multi-pr-run-notes-*" not in step_1
     assert "`chain check could not run: <first line>` on exit 2 are each a Tier A halt" in step_1
     step_5 = _between(loop, "5. **Merge", "6. **Capture a real end timestamp**")
-    assert f"takes `{notes}` as its `<run notes>`" in step_5
-    assert "goes on updating the row in the file that already holds it" in _read(_PR / "SKILL.md")
+    assert "takes this chain's notes file as its `<run notes>`, never another chain's" in step_5
+    skill = _read(_PR / "SKILL.md")
+    assert "**This chain's notes file is the one holding its `## Chain start` line**" in skill
+    assert "never a glob" in skill
+    gate = _read(_PR / "references" / "discover-and-gate.md")
+    assert "The file holding that line is this run's notes file from then on" in gate
     step_4 = _between(loop, "4. **No-unresolved-issues enforcement", "4a. **Record the obligations")
     assert _CALL + f"fix-pushed {notes} --id <name>" in step_4

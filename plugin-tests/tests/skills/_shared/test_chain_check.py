@@ -99,6 +99,7 @@ class Chain:
             "with open(here / 'gh-args.log', 'a', encoding='utf-8') as log:\n"
             "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
             "r = json.loads((here / 'gh-response.json').read_text(encoding='utf-8'))\n"
+            "r = r['by_number'][sys.argv[3]] if 'by_number' in r else r\n"
             "sys.stdout.write(r['stdout']); sys.stderr.write(r['stderr']); sys.exit(r['code'])\n",
             encoding="utf-8",
         )
@@ -112,6 +113,15 @@ class Chain:
         }
         pr.update(fields)
         self.gh(json.dumps(pr))
+
+    def gh_prs(self, prs: dict[int, dict]) -> None:
+        """Answer `gh pr view <n>` per number: an old chain's PR and this one's can both exist."""
+        self.gh()
+        base = {"headRefName": "feature/a", "baseRefName": "main", "isCrossRepository": False,
+                "mergeCommit": None, "autoMergeRequest": None}
+        answers = {str(n): {"stdout": json.dumps({**base, "number": n, **pr}), "stderr": "", "code": 0}
+                   for n, pr in prs.items()}
+        (self.bin / "gh-response.json").write_text(json.dumps({"by_number": answers}), encoding="utf-8")
 
     def gh_calls(self) -> list[list[str]]:
         log = self.bin / "gh-args.log"
@@ -629,38 +639,63 @@ def _pr_row(chain: Chain, change: str = "add-x", head: str | None = None) -> tup
     return (change, "feature/a", "7", chain.head if head is None else head, "enforced", "", "")
 
 
-# requirement: change-chains / A chain checks a pull request's head before it merges it
-def test_a_row_only_in_an_older_dated_file_is_found_through_a_glob(chain: Chain):
-    """multi-pr writes a new dated notes file when it resumes on a later date; the row stays in the old one."""
+def _two_chains(chain: Chain) -> tuple[str, str]:
+    """An old chain's notes with `add-x` merged as #3, and this chain's own file with `add-x` as #7.
+
+    A change name returns in a later, unrelated chain, and old notes files stay for timing.
+    """
     retro = chain.notes.parent
     chain.notes.unlink()
-    chain.write_notes([_pr_row(chain)], header=_PR, to=retro / "multi-pr-run-notes-2026-11-17.md")
-    chain.write_notes([("other-change", "feature/o", "9", "", "running", "", "")], header=_PR,
-                      to=retro / "multi-pr-run-notes-2026-11-18.md")
-    (retro / "multi-pr-run-notes-2026-11-16.md").write_text("an early file with no table\n", encoding="utf-8")
-    r = chain.run("before-merge", "--notes", "cla.io/retro/multi-pr-run-notes-*.md", "--id", "add-x", "--base", "main")
+    old = retro / "multi-pr-run-notes-2026-03-01.md"
+    mine = retro / "multi-pr-run-notes-2026-11-17.md"  # this chain started yesterday
+    chain.write_notes([("add-x", "feature/a", "3", "e" * 40, "merged", "f" * 40, "")], header=_PR, to=old)
+    chain.write_notes([_pr_row(chain)], header=_PR, to=mine)
+    chain.gh_prs({
+        3: {"state": "MERGED", "headRefOid": "e" * 40, "mergeCommit": {"oid": "f" * 40}},
+        7: {"state": "OPEN", "headRefOid": chain.head},
+    })
+    return "cla.io/retro/" + old.name, "cla.io/retro/" + mine.name
+
+
+# requirement: change-chains / A chain checks a pull request's head before it merges it
+def test_an_old_chains_row_for_the_same_change_does_not_halt_this_chain(chain: Chain):
+    _, mine = _two_chains(chain)
+    r = chain.run("before-merge", "--notes", mine, "--id", "add-x", "--base", "main")
     assert r.returncode == 0, r.stdout
-    # Today's file alone has no row for it: that is a could-not-check, never a pass.
-    r = chain.run("before-merge", "--notes", str(retro / "multi-pr-run-notes-2026-11-18.md"), "--id", "add-x",
-                  "--base", "main")
-    assert r.returncode == 2
+    assert [c[:3] for c in chain.gh_calls()] == [["pr", "view", "7"]]
 
 
-# requirement: change-chains / A chain checks a pull request's head before it merges it
-def test_rows_for_one_item_in_two_files_cannot_be_checked(chain: Chain):
-    retro = chain.notes.parent
-    chain.notes.unlink()
-    for day in ("17", "18"):
-        chain.write_notes([_pr_row(chain)], header=_PR, to=retro / f"multi-pr-run-notes-2026-11-{day}.md")
+# requirement: change-chains / A resumed chain acts only on its own pull request at the recorded head
+def test_an_old_chains_merged_pr_is_never_this_chains_resume_result(chain: Chain):
+    _, mine = _two_chains(chain)
+    r = chain.run("resume", "--notes", mine, "--id", "add-x", "--base", "main")
+    assert r.returncode == 0, r.stdout
+    assert _first(r) == f"OK resume open: #7 at {chain.head}"
+    assert [c[:3] for c in chain.gh_calls()] == [["pr", "view", "7"]]
+
+
+def test_notes_take_one_file_and_no_glob(chain: Chain):
+    _, mine = _two_chains(chain)
     r = chain.run("resume", "--notes", "cla.io/retro/multi-pr-run-notes-*.md", "--id", "add-x", "--base", "main")
     assert r.returncode == 2
-    assert _first(r).startswith("UNCHECKED notes: rows for 'add-x' in 2 files")
-
-
-def test_a_glob_that_matches_nothing_cannot_be_checked(chain: Chain):
-    r = chain.run("resume", "--notes", "cla.io/retro/nothing-*.md", "--id", "a", "--base", "main")
+    assert _first(r).startswith("UNCHECKED notes:") and "does not exist" in _first(r)
+    # Two paths (an unquoted glob the shell expanded) are refused by the parser: exit 2 as well.
+    r = chain.run("resume", "--notes", mine, mine, "--id", "add-x", "--base", "main")
     assert r.returncode == 2
-    assert _first(r).startswith("UNCHECKED notes: no file matches")
+
+
+def test_a_relative_notes_path_works_under_a_folder_with_a_bracket(chain: Chain, tmp_path: Path):
+    odd = tmp_path / "re[po]"
+    odd.mkdir()
+    for name in ("origin.git", "work", "bin"):
+        shutil.copytree(chain.tmp / name, odd / name, symlinks=True)
+    env = dict(os.environ, PATH=str(odd / "bin") + os.pathsep + os.environ.get("PATH", ""))
+    r = subprocess.run(
+        [sys.executable, str(_SCRIPT), "before-merge", "--notes", "cla.io/retro/multi-lite-run-notes-2026-11-18.md",
+         "--id", "a", "--base", "main", "--root", str(odd / "work")],
+        cwd=Path(__file__).parent, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+    )
+    assert r.returncode == 0, r.stdout
 
 
 # requirement: change-chains / A chain checks a pull request's head before it merges it

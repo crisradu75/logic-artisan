@@ -208,6 +208,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | security | dec3edcb 2026-11-17 (#511); the floor a test holds the copies to | The floor, always protected whatever the Stakes list says
 
 ## skills/_shared/references/chain-merge.md
+- keep | user's files | add-chain-check-script review round 1, 2026-11-18: notes written in a worktree die with it | The run notes stay in the primary clone and are never written
 - keep | user's files | 6df50092 2026-10-08 shared chain-merge reference (head-commit guards) | Never a re-derived branch name or an in-context number.
 - keep | user's files | 6df50092 2026-10-08; ask-destructive-git incident: two unrequested merges shipped (line 166) | **It never widens merging.**
 - keep | user's files | 751bed9e 2026-09-16 review findings; shared environment state (migration, seeded data) | **The shared-state answer is never pre-answered.**
@@ -532,6 +533,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | Steps 1–3 do not always produce a fix commit.
 
 ## skills/multi-pr/SKILL.md
+- keep | user's files | add-chain-check-script review round 2, 2026-11-18: a glob over every dated notes file read an old chain's merged PR for a reused change name as this one's | Every `chain_check.py` call passes that one file, never a glob
 - keep | user's files | #18 (cdf0795e 2026-08-06, Field Guide audit): skill merges PRs | Merges pull requests, so it must never self-trigger on a description match
 - not-a-rule | - | - | always-loaded skill listing until the command is actually typed
 - not-a-rule | - | - | figure out which order the open changes must ship in
@@ -558,6 +560,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | a fresh session always re-asks, since it has no way to know
 
 ## skills/multi-pr/references/change-loop.md
+- keep | user's files | add-chain-check-script review round 2, 2026-11-18: a glob over every dated notes file read an old chain's merged PR for a reused change name as this one's | takes this chain's notes file as its `<run notes>`, never another chain's.
 - keep | user's files | ca5a9ac7 2026-10-08, review findings on chain-merge (resume never merges unfixed findings) | a moved head is never merged (`chain-merge.md`, "Record the head")
 - keep | user's files | ca5a9ac7 2026-10-08, fix: review findings on chain-merge — resume never merges unfixed... | **Never infer them fixed.**
 - not-a-rule | - | - | because the review that must act on them runs inside

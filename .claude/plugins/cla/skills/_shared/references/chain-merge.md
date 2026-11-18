@@ -26,11 +26,12 @@ from the item's row itself, so it takes the notes path and the item's id, not a 
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" <subcommand> --notes <run notes> --id <id>
 ```
 
-`--notes` takes the skill's notes file, or a quoted glob over its dated files when the skill says so
-(`multi-pr` resumes on a later date into a new file, so a change's row can sit in an older one; a
-row for the id in two files exits 2). A relative path is read from the primary clone, where the run
-notes live. In a worktree pivot, run the command from the worktree holding `<branch>`, or pass
-`--root <worktree>`: the git checks look at that checkout, and the notes path stays the same.
+`--notes` takes one file: this run's notes, whatever date its name carries. A resume keeps writing
+to the file the run started; the skill's own file says how to find it. An older chain's file can
+hold a row for the same id, so the script reads no other file and expands no glob. A relative path
+is read from the primary clone. The run notes stay in the primary clone and are never written
+inside a worktree. In a worktree pivot, run the command from the worktree holding `<branch>`, or
+pass `--root <worktree>`: the git checks look at that checkout, and the notes path stays the same.
 
 - Exit 0 → the check passed. The first line says what holds.
 - Exit 1 → do not take the step it guards. The first line is `FAIL <subcommand>: <reason>`;
@@ -231,7 +232,10 @@ design. Never set `ALLOW_DESTRUCTIVE_GIT=1` to get one through.
 
 ### If `gh pr merge` exits non-zero
 
-Check the PR before reading the error: `python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" after-merge --notes <run notes> --id <id> --base <base-branch>`. Exit 0 (`MERGED`)
+Check the PR before reading the error: `python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py" after-merge --notes <run notes> --id <id> --base <base-branch>`.
+Exit 1 with `merged at a head this run did not check`, `wrong base (<base>)` or `head unverifiable
+(ledger lost)` → the PR merged, but not as this run checked it: that is the reason, and the arms
+below do not apply. Exit 0 (`MERGED`)
 means the merge happened and only a later part failed — `--delete-branch` fails this way when
 `<base-branch>` is checked out in another worktree. Take the confirmation steps above; if the remote
 branch survived, delete it with `git push origin --delete <branch>`. Otherwise, take the first arm

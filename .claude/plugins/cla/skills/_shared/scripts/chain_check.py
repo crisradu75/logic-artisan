@@ -18,13 +18,12 @@ first line reports. Every subcommand takes ``--root <dir>`` (default: the workin
 checkout it checks against the remote ``origin``. ``gh`` runs there too. The clean-tree checks
 cover the whole working tree of that checkout, whatever subdirectory ``--root`` names.
 
-``--notes`` takes one or more files or quoted globs (``'cla.io/retro/multi-pr-run-notes-*.md'``),
-which the script expands itself. A relative one is read from the PRIMARY checkout of ``--root``
-(the folder that holds the shared ``.git``), because the run notes live there: from a linked
-worktree, the same relative path still finds them. A chain that resumes on a later date writes a
-new dated file, so an item's row may sit in an older one; the script looks in every file given,
-and a row for the id in more than one file is ambiguous and exits 2. A globbed file with no
-run-notes table is skipped; no table in any file exits 2.
+``--notes`` is ONE file: this run's own notes, whatever date its name carries. A chain that
+resumes on a later date keeps writing to the file it started, so this run's rows are all in it; an
+older chain's file can hold a row for the same id (a change name returns in a later chain) and is
+never read. A glob is not expanded. A relative path is read from the PRIMARY checkout of
+``--root`` (the folder that holds the shared ``.git``), because the run notes live there and are
+never written inside a linked worktree: from a worktree, the same relative path still finds them.
 
 THE RUN NOTES. The chain's own file, ``cla.io/retro/<skill>-run-notes-<date>.md``, read as it is.
 The script reads the markdown table whose header names ``branch``, ``pr_number`` and ``head_sha``
@@ -106,7 +105,6 @@ dependency that fails: ``not merged into <against>: <id>, ...``.
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import os
 import re
@@ -263,67 +261,42 @@ def _primary(root: Path) -> Path:
     return common.parent
 
 
-def notes_files(root: Path, specs: list[str]) -> list[Path]:
-    """The files ``--notes`` names: relative ones from the primary checkout, globs expanded."""
-    base = _primary(root)
-    files: list[Path] = []
-    for spec in specs:
-        path = Path(spec) if Path(spec).is_absolute() else base / spec
-        if any(c in spec for c in "*?["):
-            found = sorted(Path(f) for f in glob.glob(str(path)))
-            if not found:
-                raise Unchecked("notes", f"no file matches {path}")
-            files += found
-        else:
-            files.append(path)
-    unique: list[Path] = []
-    for f in files:
-        if f.resolve() not in [u.resolve() for u in unique]:
-            unique.append(f)
-    return unique
+def notes_file(root: Path, spec: str) -> Path:
+    """The one file ``--notes`` names; a relative one is read from the primary checkout."""
+    path = Path(spec)
+    return path if path.is_absolute() else _primary(root) / path
 
 
-def find_row(files: list[Path], item: str, need: tuple[str, ...] = ()) -> Row | None:
-    """The row whose first cell is ``item``, across ``files``; None when no row names it.
-
-    A malformed row, two rows in one file, or rows in two files raise: a chain that resumed on a
-    later date writes a new file, and the script cannot tell which row is the item's.
-    """
-    found: dict[Path, list[Row]] = {}
-    tables_seen = 0
-    for notes in files:
-        tables = _ledger(notes)
-        tables_seen += len(tables)
-        for header, rows in tables:
-            missing = [c for c in need if c not in header]
-            if missing:
-                raise Unchecked("notes", f"{notes}: the run-notes table has no {', '.join(missing)} column")
-            for lineno, cells in rows:
-                if _clean(cells[0]) != item:
-                    continue
-                if len(cells) != len(header):
-                    raise Unchecked(
-                        "notes", f"{notes}:{lineno}: row {item!r} has {len(cells)} cells, the header has {len(header)}",
-                    )
-                values = {name: _clean(cell) for name, cell in zip(header, cells)}
-                if values.get("pr_number", "").startswith("#"):
-                    values["pr_number"] = values["pr_number"][1:]
-                found.setdefault(notes, []).append(Row(item, values))
-    if not tables_seen:
-        names = ", ".join(str(f) for f in files)
-        raise Unchecked("notes", f"{names}: no table with branch, pr_number and head_sha columns")
-    for notes, rows in found.items():
-        if len(rows) > 1:
-            raise Unchecked("notes", f"{notes} has {len(rows)} rows for {item!r}")
-    if len(found) > 1:
-        raise Unchecked("notes", f"rows for {item!r} in {len(found)} files: {', '.join(str(f) for f in found)}")
-    return next(iter(found.values()))[0] if found else None
+def find_row(notes: Path, item: str, need: tuple[str, ...] = ()) -> Row | None:
+    """The row whose first cell is ``item``; None when no row names it. A malformed one raises."""
+    tables = _ledger(notes)
+    if not tables:
+        raise Unchecked("notes", f"{notes} has no table with branch, pr_number and head_sha columns")
+    matches = []
+    for header, rows in tables:
+        missing = [c for c in need if c not in header]
+        if missing:
+            raise Unchecked("notes", f"{notes}: the run-notes table has no {', '.join(missing)} column")
+        for lineno, cells in rows:
+            if _clean(cells[0]) != item:
+                continue
+            if len(cells) != len(header):
+                raise Unchecked(
+                    "notes", f"{notes}:{lineno}: row {item!r} has {len(cells)} cells, the header has {len(header)}",
+                )
+            values = {name: _clean(cell) for name, cell in zip(header, cells)}
+            if values.get("pr_number", "").startswith("#"):
+                values["pr_number"] = values["pr_number"][1:]
+            matches.append(Row(item, values))
+    if len(matches) > 1:
+        raise Unchecked("notes", f"{notes} has {len(matches)} rows for {item!r}")
+    return matches[0] if matches else None
 
 
-def row_for(files: list[Path], item: str) -> Row:
-    row = find_row(files, item)
+def row_for(notes: Path, item: str) -> Row:
+    row = find_row(notes, item)
     if row is None:
-        raise Unchecked("notes", f"{', '.join(str(f) for f in files)}: no row for {item!r}")
+        raise Unchecked("notes", f"{notes}: no row for {item!r}")
     # Every subcommand that reads a row checks all three cells, so a malformed row is never half-read.
     row.pr(), row.branch(), row.head()
     return row
@@ -536,7 +509,7 @@ def resume(root: Path, row: Row, base: str, out: Out) -> str:
     return f"OK resume open: #{number} at {head}"
 
 
-def deps(root: Path, notes: list[Path], ids: list[str], against: str, out: Out) -> str:
+def deps(root: Path, notes: Path, ids: list[str], against: str, out: Out) -> str:
     target = _rev(root, against)
     if target is None:
         raise Unchecked("against", f"{against!r} names no commit")
@@ -550,7 +523,7 @@ def deps(root: Path, notes: list[Path], ids: list[str], against: str, out: Out) 
     return f"OK deps: {', '.join(ids)} merged into {against}"
 
 
-def _deps(root: Path, notes: list[Path], ids: list[str], against: str, target: str, unmet: list[str], out: Out) -> None:
+def _deps(root: Path, notes: Path, ids: list[str], against: str, target: str, unmet: list[str], out: Out) -> None:
     for dep in ids:
         row = find_row(notes, dep, need=("status", "merge_commit"))
         if row is None:
@@ -585,8 +558,8 @@ def _deps(root: Path, notes: list[Path], ids: list[str], against: str, target: s
 def main(argv: list[str] | None = None) -> int:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--root", default=".", help="the checkout to check (default: the working directory)")
-    common.add_argument("--notes", nargs="+", required=True,
-                        help="the chain's run-notes files or quoted globs; relative ones from the primary checkout")
+    common.add_argument("--notes", required=True,
+                        help="this run's notes file; a relative path is read from the primary checkout")
     ap = argparse.ArgumentParser(
         description="Check a chain item's recorded head. Exit 0 pass, 1 problem, 2 could not check.",
     )
@@ -610,7 +583,7 @@ def main(argv: list[str] | None = None) -> int:
     out = Out()
     try:
         _require_repo(root)
-        notes = notes_files(root, args.notes)
+        notes = notes_file(root, args.notes)
         if args.cmd == "deps":
             ok = deps(root, notes, args.ids, args.against, out)
         else:

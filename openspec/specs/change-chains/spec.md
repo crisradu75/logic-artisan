@@ -137,7 +137,7 @@ Before a chain merges a pull request, the chain check's `before-merge` SHALL exi
 
 ### Requirement: A chain counts a merge only when the host reports it merged
 
-After a chain's merge command, the chain check's `after-merge` SHALL exit 0, naming the merge commit, only when the host reports the pull request merged into the base at the recorded head, SHALL exit 1 with the reason otherwise, `queued: merges later outside this run` when an automatic merge is pending, and SHALL exit 2 when the host names no merge commit.
+After a chain's merge command, the chain check's `after-merge` SHALL exit 0 and name the merge commit only when the host reports the pull request merged into the base at the recorded head, SHALL exit 1 with `queued: merges later outside this run` when an automatic merge is pending and with another reason in every other case, and SHALL exit 2 when the host names no merge commit.
 
 #### Scenario: Auto-merge turned on instead of a merge
 

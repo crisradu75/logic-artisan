@@ -45,3 +45,4 @@ Leftover review suggestions. The inbox is emptied by regular sweep PRs.
 - "Opened by this chain" is branch match plus not-a-fork. A teammate's or bot's PR on the chain's branch at the same head would pass. An `author.login` check needs `gh api user`, which fails under some tokens.
 - A fork workflow (gh resolving to an `upstream` remote) now blocks every merge as `not opened by this chain`. It fails closed, but it is new.
 - Untested: `after-merge` on a not-found PR, the crash path, and a 64-hex head.
+- `chain_check.py`: a bare-repo worktree layout or a submodule exits 2, because the common git dir is not named `.git` (`_primary`). It fails safe.
