@@ -570,6 +570,7 @@ def test_failure_wording_of_every_dispatcher_matches_the_adapter_markers(tmp_pat
         ("dispatch-bash-pretooluse.py", bash_event, "block-cd-in-bash.py"),
         ("dispatch-edit-write-pretooluse.py", edit_event, "block-worktree-path-escape.py"),
         ("dispatch-edit-write-pretooluse.py", edit_event, "ask-plugin-cache-edit.py"),
+        ("dispatch-edit-write-pretooluse.py", edit_event, "ask-secret-in-checkpoint.py"),
     ]
     for index, (dispatcher, event, guard) in enumerate(cases):
         # An enforcing guard that is missing: the escalation inside main().
@@ -992,6 +993,22 @@ def test_copilot_pretooluse_asks_before_an_edit_inside_an_installed_plugin_copy(
     assert decision["permissionDecision"] == "ask", decision
     assert "ask-plugin-cache-edit.py" in decision["permissionDecisionReason"]
     _silent(_edit(tmp_path, tmp_path / "README.md", extra_env=env))
+
+
+# requirement: guard-hooks / A secret written into a committed briefing asks first
+def test_copilot_pretooluse_asks_before_a_secret_lands_in_a_checkpoint(tmp_path):
+    # A real ask, so Copilot keeps it an ask rather than turning it into a deny.
+    target = tmp_path / "cla.io" / "checkpoints" / "x.md"
+    secret = "".join(("postgres://app:", "s3cr3t", "Passw0rd", "@db.internal/app"))
+    result = _run_hook(_ADAPTER, _pre_event("Write", {"file_path": str(target), "content": secret}, tmp_path),
+                       tmp_path)
+    assert result.returncode == 0, result.stderr
+    decision = json.loads(result.stdout)
+    assert decision["permissionDecision"] == "ask", decision
+    assert "ask-secret-in-checkpoint.py" in decision["permissionDecisionReason"]
+    assert secret not in result.stdout
+    _silent(_run_hook(_ADAPTER, _pre_event("Write", {"file_path": str(target), "content": "clean"}, tmp_path),
+                      tmp_path))
 
 
 def test_copilot_pretooluse_allows_a_clean_edit_with_no_dates(tmp_path):
