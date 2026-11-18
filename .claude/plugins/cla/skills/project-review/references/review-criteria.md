@@ -116,11 +116,11 @@ Evaluation rubric for a CTO-level review of this repo's workspace. Each dimensio
 
 ## Overall Verdict
 
-Derived from dimension grades:
+Derived from dimension grades. Leave N/A dimensions out of every count. Take the first row that matches:
 
 | Verdict | Criteria |
 |---------|----------|
-| **EXEMPLARY** | All dimensions A or B, no dimension below B |
-| **STRONG** | Majority A/B, at most one C, no D |
-| **SOLID** | Majority B/C, no more than one D |
-| **NEEDS WORK** | Two or more D grades, or majority C/D |
+| **NEEDS WORK** | Two or more D grades, or more than half of the graded dimensions C or D |
+| **EXEMPLARY** | Every graded dimension A or B |
+| **STRONG** | No D, at most one C |
+| **SOLID** | Any other set of grades |

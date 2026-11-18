@@ -45,13 +45,13 @@ Announce: `[Project Review] Launching 5 review agents...`
 
 Wait for all five agents, then deduplicate/merge/extract-recommendations and print the report per the recipe in `references/aggregate-and-log.md` — **read that reference first**; this stub carries only the verdict rubric (the one correctness-gating piece of Step 3):
 
-**Compute verdict from dimension grades:**
+**Compute verdict from dimension grades.** Leave N/A dimensions out of every count. Take the first row that matches:
 | Verdict | Criteria |
 |---------|----------|
-| **EXEMPLARY** | All dimensions A or B, none below B |
-| **STRONG** | Majority A/B, at most one C, no D |
-| **SOLID** | Majority B/C, no more than one D |
-| **NEEDS WORK** | Two or more D grades, or majority C/D |
+| **NEEDS WORK** | Two or more D grades, or more than half of the graded dimensions C or D |
+| **EXEMPLARY** | Every graded dimension A or B |
+| **STRONG** | No D, at most one C |
+| **SOLID** | Any other set of grades |
 
 The report is the whole output — this skill persists no state across runs.
 
