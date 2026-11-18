@@ -20,6 +20,14 @@ the skills fall back to the default list of protected areas.
 
 ### Added
 
+- **Two warn hooks check subagent dispatches.** `warn-agent-dispatch` warns before an Agent call
+  that passes no `model` (it would run on an unplanned model), whose prompt holds a line starting
+  `diff --git ` (pass the diff file's path instead), or whose review brief fills the protected-areas
+  slot with `(none recorded)`. `warn-agent-reply-format` warns after a completed `doc-sweeper`
+  reply with no `Scanned:` footer line, and after a reply with no `Fact corrections:` field when the
+  brief asked for one; it checks that the line is there, not that it is true. Both only warn, are
+  silent on bad input, and do not run under Copilot CLI, whose adapter handles shell and file tools
+  only (#PR).
 - **A `setup_guard.py` script** checks that `/cla:cla-setup` left alone the files it promises to:
   `snapshot` records them before the run writes anything, and `verify` at the end reports each
   instruction file, settings file, rules file of the repo's own, existing `notes.md`, `*.local.md`
