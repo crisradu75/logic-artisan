@@ -26,7 +26,7 @@ Each entry: `- <verdict> | <area> | <origin> | <fragment>`.
   ` | `, so the fragment may contain `|`.
 
 Rules marked `keep` with origin `none found` are the candidates principle 6 asks to review at each
-benchmark run.
+benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the command and the procedure.
 
 
 ## README.md

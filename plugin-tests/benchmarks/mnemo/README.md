@@ -36,6 +36,11 @@ Nothing here runs under pytest.
 4. Run `judge-prompt.md` on an Opus agent. Take the critical outcomes a-h from its report, and the
    rough invented-item count.
 5. Compare with `baseline/score.md` and apply the pass rule. Report failures; do not auto-fix.
+6. Review the rule ledger (principle 6). From the repo root, list the `keep` rules with no known
+   origin: `grep -nE '^- keep \| [^|]* \| [^|]*none found' docs/rule-ledger.md`. Propose for
+   removal any that no incident, decision or benchmark outcome supports, as a list for the owner.
+   The owner decides each one; an approved removal edits the shipped line and its ledger entry in
+   the same PR. Nothing is removed without that decision.
 
 A judge's single run is noisy. Re-run only to settle a close call, with the same judge prompt.
 
