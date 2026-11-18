@@ -12,7 +12,7 @@ criteria from `references/review-criteria.md`, (4) the standard instructions bel
 `cla.io/project-facts.md` for facts (members, paths, commands, test locations), from the repo's own
 guidance docs and code for conventions, formulas and recipes, and from
 `cla.io/overlays/project-review.md` when that file is present and covers it. A placeholder nothing
-covers is replaced with `(none recorded)` — never left for the agent, which reads none of these
+covers is replaced with `(none recorded)`, not left for the agent, which reads none of these
 files.
 
 **Standard instructions for ALL agents:**
@@ -21,7 +21,7 @@ files.
 >
 > **Attribution:** Where the repo has several apps or packages, every finding MUST name the app/package it applies to (e.g. one worked example per app/package this repo has), and its evidence MUST cite a specific path + line or grep result. A dimension whose quality differs sharply across components should say so in its summary rather than averaging it into one bland grade.
 >
-> **Not applicable:** A criterion whose subject does not exist in this repo (no engine, gateway, i18n layer, datastore or tenant model) is reported N/A with one line of why, never graded down for absence.
+> **Not applicable:** A criterion whose subject does not exist in this repo (no engine, gateway, i18n layer, datastore or tenant model) is reported N/A with one line of why, not graded down for absence.
 >
 > **Findings:** Report the strengths and gaps that would change a grade or a decision, most impactful first. The orchestrator reads five reports, so leave out what would not move one.
 >
@@ -58,7 +58,7 @@ about the dispatch (five agents, one message, the model routing, the caps) is un
 | 5 — Validation | The aggregating test runner and its scopes; what the conformance/consistency guards actually cover; the markdown gap (prose ships like code with nothing compiling it) and the compensating checks; mutation-testing practice; platform-divergence risk with no CI. |
 
 Two rules that survive the substitution: **grade the repo in front of you, not the
-application it is missing** — "no product code" is this repo's design, never a Vision gap;
+application it is missing** — "no product code" is this repo's design, not a Vision gap;
 and a dimension whose subject genuinely does not exist here (a datastore, an i18n layer)
 is reported as **N/A with one line of why**, never graded D for absence.
 

@@ -13,7 +13,7 @@ Run a comprehensive CTO-level review of this repo. Spine: **Step 0 build, lint a
 
 **When to run:** After several incremental changes, before a pitch/demo, or when you want a fresh first-principles assessment.
 
-**Run thin (standing discipline — hoisted).** This skill IS an orchestrator: Step 2 dispatches five parallel review agents and Step 3 aggregates only their conclusions, never their raw reads. Follow `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`'s standing disciplines throughout — delegate raw-material handling so only conclusions return, read file slices not whole files, batch independent tool calls into one message, and prefer terse schema'd agent output over prose.
+**Run thin (standing discipline — hoisted).** This skill IS an orchestrator: Step 2 dispatches five parallel review agents and Step 3 aggregates only their conclusions, not their raw reads. Follow `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`'s standing disciplines throughout — delegate raw-material handling so only conclusions return, read file slices not whole files, batch independent tool calls into one message, and prefer terse schema'd agent output over prose.
 
 ## What the repo is (read before reviewing)
 

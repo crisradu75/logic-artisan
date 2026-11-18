@@ -22,7 +22,7 @@ Markdown or plain-text document's page,
 whole change's, and [scripts/annotate_server.py](scripts/annotate_server.py)
 serves either and records annotations. **The corpus's format — the kinds of line and the merge
 rule — is [scripts/annotations_store.py](scripts/annotations_store.py) and is
-read there, never restated.**
+read there, not restated here.**
 
 **The document is never written to.** Not by the render, not by the server, not
 by this skill while annotations are being collected. Annotating is a *read* of
@@ -66,7 +66,7 @@ knowing before you pass one through, because each is a state the reader cannot s
 
 - **It has to be SERVED.** A page opened from disk gives both documents opaque
   origins, so the layer cannot reach the document and the page renders empty. The
-  page detects this and says so, but the fix is always to run the server and open
+  page detects this and says so, but the fix is to run the server and open
   the URL it prints.
 - **A document already using `data-blk`, `data-line` or `data-sec` is refused.** A
   repeated attribute resolves to the author's value, so every annotation in that
@@ -252,7 +252,7 @@ and keeps the window.
   `annotate_server.py` never opens it for writing at all; **that is the
   guarantee, and it is pinned by a test that hashes the file across a full
   annotate-and-rebuild cycle** — not a habit to be re-argued per change.
-- **Never rewrite the page by hand.** A defect in the rendering is a defect in
+- **Fix the renderer, not the page by hand.** A defect in the rendering is a defect in
   `render_doc.py`, and fixing it there is what makes the next document right too.
   The same holds for the server.
 - **Never bind the server to anything but `127.0.0.1`.** It has no authentication
