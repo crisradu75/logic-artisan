@@ -25,8 +25,9 @@ that was not run to completion.
   OpenSpec proposal, a pre-build review and `spec-to-pr`. Batches of either run unattended.
 - **Review built in.** Every PR gets an automated review pass, sized by the risk the change
   declares.
-- **Guardrails always on.** Nine hooks block, ask about or warn on risky tool calls: a force-push,
-  an `rm -rf` through a symlink, a `git stash` mid-merge, a file rewritten shorter.
+- **Guardrails always on.** Seventeen hooks block, ask about or warn on risky tool calls: a
+  force-push or a rebase of pushed commits, an `rm -rf` through a symlink, a broad `git add`, a
+  secret in a checkpoint, a commit that claims a check nobody ran, a file rewritten shorter.
 - **Portable procedure, local facts.** The plugin carries only steps that work in any repo. Each
   repo's commands, paths and ports live in its own `cla.io/project-facts.md`.
 - **It learns.** `codify-learnings` turns a session's failures into fixes, and `spec-to-pr-retro`
@@ -47,7 +48,7 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 
 ## Engineering highlights
 
-**19 skills · 9 guard hooks · 2,980 tests · 56 mutation batches · 17 live OpenSpec specs ·
+**19 skills · 17 guard hooks · 4,865 tests · 67 mutation batches · 17 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
@@ -59,7 +60,7 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   documented `ALLOW_PUSH_TO_MAIN=1` emergency override skips it, and a session is asked first
   ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet)).
 - **An allowlist decides what ships.** The obvious denylist was measured to miss 7 of 72 dev-only
-  files, including the release skill itself. A 16-pattern allowlist is checked before every tag
+  files, including the release skill itself. An 18-pattern allowlist is checked before every tag
   ([the script](.claude/skills/release/scripts/check_shipped_tree.py) records the measurement).
 - **A flaky parallel run was investigated, not retried.** Plain `pytest -n auto` failed 3 tests
   once and passed on the next run. The suspect shared state, a cache the tests wrote in the
@@ -78,11 +79,11 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
 
 <details>
-<summary>Where the numbers come from (counted 2026-11-12 on <code>main</code> at <code>1d81681</code>)</summary>
+<summary>Where the numbers come from (counted 2026-11-18 on <code>main</code> at <code>ec7b7e1</code>)</summary>
 
 ```bash
 git ls-files .claude/plugins/cla/skills | cut -d/ -f5 | grep -v '^_' | sort -u | wc -l   # skills (tracked only)
-ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn)-.*\.py$' | wc -l    # guard hooks
+ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn|guard)-.*\.py$' | wc -l    # guard hooks
 pytest plugin-tests --collect-only -q | tail -1                            # tests
 find plugin-tests/mutants -name '*.py' | wc -l                             # mutation batches
 ls openspec/specs | wc -l                                                  # live specs
