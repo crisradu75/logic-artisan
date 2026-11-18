@@ -9,10 +9,11 @@ hooks, so a force-push, a push straight to main, or a wrong-identity commit
 issued through it bypassed every git guard in the tree.
 
 Runs block-cd-in-bash, ask-destructive-git, block-unsafe-recursive-delete,
-ask-broad-git-add, warn-stacked-pr-merge, warn-stray-scratch-artifact, and
-warn-heredoc-escape-mangling in ONE Python process instead of seven, reading the
+block-dishonest-commit, ask-broad-git-add, ask-staged-debug-tag,
+warn-stacked-pr-merge, warn-stray-scratch-artifact, and
+warn-heredoc-escape-mangling in ONE Python process instead of nine, reading the
 tool-call JSON from stdin once and handing it to each in turn via
-`_dispatch_lib`. Cuts per-Bash-call hook overhead from 7 interpreter spawns to
+`_dispatch_lib`. Cuts per-Bash-call hook overhead from 9 interpreter spawns to
 1 — commonly cited as ~100-200ms of process-start cost each on Windows, though
 not independently benchmarked for this repo.
 
@@ -100,7 +101,9 @@ _HOOK_FILES = [
     "block-cd-in-bash.py",
     "ask-destructive-git.py",
     "block-unsafe-recursive-delete.py",
+    "block-dishonest-commit.py",
     "ask-broad-git-add.py",
+    "ask-staged-debug-tag.py",
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",
     "warn-heredoc-escape-mangling.py",
@@ -131,11 +134,14 @@ _ADVISORY_HOOKS = frozenset({
 # hook not named here, and ordered ahead of the advisory hooks so warnings are
 # what budget pressure costs first.
 #
-# `ask-broad-git-add.py` is here because the enforcing hooks above already spend
-# the whole budget (`HOOK_WORST_CASE_SECONDS`), so it cannot be enforcing without
-# raising the handler timeout for every consuming repo.
+# `ask-broad-git-add.py` and `ask-staged-debug-tag.py` are here because the
+# enforcing hooks above already spend the whole budget (`HOOK_WORST_CASE_SECONDS`),
+# so neither can be enforcing without raising the handler timeout for every
+# consuming repo. (The text-only half of the commit checks,
+# `block-dishonest-commit.py`, costs nothing and is enforcing.)
 _BEST_EFFORT_HOOKS = frozenset({
     "ask-broad-git-add.py",
+    "ask-staged-debug-tag.py",
 })
 _SKIPPABLE_HOOKS = _ADVISORY_HOOKS | _BEST_EFFORT_HOOKS
 

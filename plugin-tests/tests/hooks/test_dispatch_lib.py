@@ -501,6 +501,8 @@ def test_ensure_hooks_dir_importable_is_idempotent_and_adds_the_hooks_dir():
 _GIT_HOOK_FILES = [
     "warn-stray-scratch-artifact.py",
     "ask-destructive-git.py",
+    "block-dishonest-commit.py",
+    "ask-staged-debug-tag.py",
 ]
 
 
