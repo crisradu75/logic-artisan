@@ -528,6 +528,58 @@ def test_an_ask_survives_a_spent_budget(monkeypatch, capsys, tmp_path):
     assert nested["permissionDecision"] == "ask"
 
 
+# requirement: git-guards / A broad git add that would stage untracked files asks first
+def test_bash_dispatch_reemits_the_broad_git_add_ask(tmp_path):
+    """End to end: the leaf hook's ask leaves the real dispatcher process."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "stray.txt").write_text("x", encoding="utf-8")
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": "git add -A"}, "cwd": str(repo)}, cwd=repo)
+    assert r.returncode == 0, "an ask must not block the call"
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert "`stray.txt`" in nested["permissionDecisionReason"]
+    assert "ask-broad-git-add.py" in nested["permissionDecisionReason"]
+
+
+def test_bash_dispatch_stays_silent_on_a_named_git_add(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "stray.txt").write_text("x", encoding="utf-8")
+    (repo / "wanted.txt").write_text("x", encoding="utf-8")
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": "git add wanted.txt"}, "cwd": str(repo)}, cwd=repo)
+    assert r.returncode == 0
+    assert "permissionDecision" not in r.stdout
+
+
+def test_a_spent_budget_skips_the_best_effort_hook_and_says_so(monkeypatch, capsys, tmp_path):
+    """The trade `_BEST_EFFORT_HOOKS` makes, pinned: under a spent budget the
+    broad-add check is skipped (as its own git timeout would), named in the
+    debug log, and no context is injected into the call."""
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    assert mod._BEST_EFFORT_HOOKS == {"ask-broad-git-add.py"}
+    rc = _run_in_process(mod, {"tool_input": {"command": "ls"}, "cwd": str(tmp_path)}, monkeypatch)
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "ask-broad-git-add.py" in captured.err
+    assert captured.out.strip() == ""
+
+
+def test_an_errored_best_effort_hook_stays_a_warning(monkeypatch):
+    """A best-effort hook that failed to load is reported like an advisory one:
+    as context, not as the ENFORCING-guard ask, which would fire on every call."""
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "ask-broad-git-add.py",
+        {"tool_name": "Bash", "tool_input": {"command": "echo hi"}},
+    )
+    assert rc == 0
+    assert "permissionDecision" not in nested
+    assert "additionalContext" in nested
+
+
 def test_advisory_warnings_travel_on_the_channel_claude_actually_reads(tmp_path):
     """The defect this closes: the whole Bash warn tier reached nobody.
 
