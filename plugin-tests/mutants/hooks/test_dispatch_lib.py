@@ -414,4 +414,72 @@ MUTANTS = [
         "return None",
         GIT_TARGETS,
     ),
+    (
+        # Killed by the differential test (group 0 spans) and the groups test.
+        "a match starts after `git` instead of at it",
+        LIB,
+        "spans = [(head.start(), m.end())]",
+        "spans = [(head.end(), m.end())]",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by the differential test: the subcommand is found anywhere later.
+        "the subcommand pattern is searched for instead of matched where the options end",
+        LIB,
+        "m = self.after.match(text, pos)",
+        "m = self.after.search(text, pos)",
+        GIT_TARGETS,
+    ),
+    (
+        "an option step no longer consumes the separator after the option",
+        LIB,
+        "re.compile(shape + GIT_SEP)",
+        "re.compile(shape)",
+        GIT_TARGETS,
+    ),
+    (
+        "a git command is found only at the very start of the text",
+        LIB,
+        "head = _GIT_HEAD.search(text, pos)",
+        "head = _GIT_HEAD.match(text, pos)",
+        GIT_TARGETS,
+    ),
+    (
+        "the options group is captured when it was not asked for, and not when it was",
+        LIB,
+        "if self.capture_opts:",
+        "if not self.capture_opts:",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by test_git_invocation_groups_read_like_a_match (`start(2)`).
+        "GitMatch.start returns the end",
+        LIB,
+        "return self._spans[group][0]",
+        "return self._spans[group][1]",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by test_git_invocation_groups_read_like_a_match (`end()`).
+        "GitMatch.end returns the start",
+        LIB,
+        "return self._spans[group][1]",
+        "return self._spans[group][0]",
+        GIT_TARGETS,
+    ),
+    (
+        "long options such as `--no-pager` stop being skipped",
+        LIB,
+        "        _GIT_OPT_LONG,",
+        "",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by test_git_invocation_refuses_a_subcommand_pattern_that_can_start_at_a_separator.
+        "a subcommand pattern that can start at a separator is accepted",
+        LIB,
+        'if any(self.after.match(probe) for probe in (" x", "\\tx", "\\\\x")):',
+        "if False:",
+        GIT_TARGETS,
+    ),
 ]

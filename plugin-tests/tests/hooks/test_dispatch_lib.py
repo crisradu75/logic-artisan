@@ -155,10 +155,16 @@ def test_git_invocation_matches_what_the_old_pattern_matched(after, capture_opts
     tokens = ["git", "git", "GIT.exe", "-c", "-C", "x=y", "--git-dir", "--git-dir=x", "--work-tree",
               "--namespace", "--no-pager", "--bare", "-p", "push", "reset", "--hard", "stash", "status",
               "add", "commit", "checkout", "-b", "switch", "-cfoo", "--git-dirx", "--git-dir-x",
-              "--foo=bar", "a.git", "x;git", "=", "-", "--", "-c=x", "\\", "pushx", "c"]
-    seps = [" ", " ", " ", "  ", "\t", "\\\n", " \\\n ", "\n", ";", " && ", "", "\\\r\n", "\r"]
+              "--foo=bar", "a.git", "x;git", "=", "-", "--", "-c=x", "\\", "pushx", "c",
+              # An option value ending in `\`, which a following newline turns
+              # into a continuation.
+              "a\\", "k=v\\", "--git-dir=x\\"]
+    seps = [" ", " ", " ", "  ", "\t", "\\\n", " \\\n ", "\n", ";", " && ", "", "\\\r\n", "\r", "\r\n"]
+    # The `git `-prefixed half favours separators that continue a command, and
+    # still draws every one, `\r` and `\\\r\n` included.
+    git_seps = seps[:6] * 3 + seps
     rng = random.Random(20261118)
-    commands = ["git " + "".join(rng.choice(tokens) + rng.choice(seps[:6]) for _ in range(rng.randint(1, 12)))
+    commands = ["git " + "".join(rng.choice(tokens) + rng.choice(git_seps) for _ in range(rng.randint(1, 12)))
                 for _ in range(1500)]
     commands += ["".join(rng.choice(tokens) + rng.choice(seps) for _ in range(rng.randint(1, 12)))
                  for _ in range(1500)]
@@ -171,6 +177,22 @@ def test_git_invocation_matches_what_the_old_pattern_matched(after, capture_opts
         found = new.search(command)
         assert (found.span() if found else None) == (want[0][0] if want else None), repr(command)
     assert 0 < hits < len(commands), "the generated commands must hold both hits and misses"
+
+
+@pytest.mark.parametrize("after", [r"(?:push)?", r"\s*", r"\s+\w+", r"\\?\w*", r"[ \t]*x", r".*"])
+def test_git_invocation_refuses_a_subcommand_pattern_that_can_start_at_a_separator(after):
+    # Each option step has one useful end only because the subcommand cannot
+    # start where a shorter separator would leave the next item. The check
+    # probes three short strings, so it catches a pattern that matches empty
+    # or a separator before a word; it is not a proof for every pattern.
+    with pytest.raises(ValueError, match="whitespace or a backslash"):
+        lib.GitInvocation(after)
+
+
+def test_git_invocation_accepts_every_subcommand_pattern_the_guards_use():
+    for after in (r"push\b" + _TAIL, r"stash\b" + _TAIL, r"(?:add|commit)\b",
+                  r"(?:checkout\s+-b|switch\s+(?:-c|--create))\s+(\S+)"):
+        lib.GitInvocation(after)
 
 
 def test_git_invocation_groups_read_like_a_match():

@@ -31,7 +31,7 @@ Why not a `deny` rule in settings.json instead
 ----------------------------------------------
 Argument-shaped deny rules are fragile: `Bash(git push --force *)` matches
 neither `git push -f` nor `git push origin main --force`. Matching the command
-SHAPE (via the shared `GIT_GLOBAL_OPTS` blob, after quote-stripping) closes
+SHAPE (via the shared `GitInvocation` matcher, after quote-stripping) closes
 both, and puts the rule in the same place as every other git guard here.
 
 Detection scope

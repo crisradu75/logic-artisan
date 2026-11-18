@@ -856,6 +856,15 @@ class GitInvocation:
     def __init__(self, after: str, capture_opts: bool = False) -> None:
         self.after = re.compile(after)
         self.capture_opts = capture_opts
+        # Each step's one-end reading holds only while `after` cannot match at
+        # whitespace or a backslash, so such a pattern is refused here rather
+        # than matched wrongly later. Three probes catch a pattern that matches
+        # empty or a separator before a word; they are a check, not a proof.
+        if any(self.after.match(probe) for probe in (" x", "\tx", "\\x")):
+            raise ValueError(
+                f"GitInvocation: {after!r} can match at whitespace or a backslash; "
+                "start it at the subcommand word"
+            )
 
     def _resolve(self, text: str, start: int, failed: set) -> tuple | None:
         """`(position, after_match)` for the first place, in the regex's
