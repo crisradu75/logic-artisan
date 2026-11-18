@@ -45,7 +45,7 @@ Rewrite the deliverable **in place** — the "Raw captured notes" section is con
 
 1. **Group by area/screen.** Cluster notes under headings for the surface they touch (e.g. "Assistant rail", "Clients screen", "Charts (Planning/Buying)").
 2. **Severity-tag every entry** using the Phase 1 tags, so a downstream `/cla:shape-decision` pass can prioritize.
-3. **Merge near-duplicates — but only with per-merge confirmation.** When two or more notes are the same issue (e.g. the same crash reported three times, as really happens in `notes.md`), propose the merge to the user first — show which notes would be fused and the combined entry (union of all repro context) — and merge only on confirmation. Never silently fuse two distinct issues. If no merge candidates are detected, this step is silent.
+3. **Merge near-duplicates — but only with per-merge confirmation.** When two or more notes are the same issue (e.g. the same crash reported three times, as really happens in `notes.md`), propose the merge to the user first — show which notes would be fused and the combined entry (union of all repro context) — and merge only on confirmation. If no merge candidates are detected, this step is silent.
 4. Write the final doc: a short header (session slug, date, source — including whether `notes.md` was seeded), then the grouped/tagged/merged entries, each with its file/component context and any labeled probable-cause hypothesis.
 
 ## Phase 3 — Report & hand off

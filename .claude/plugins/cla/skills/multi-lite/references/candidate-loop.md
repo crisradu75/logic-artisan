@@ -44,7 +44,7 @@ For each candidate in the confirmed order:
 
    Set `deferred` to that count (`0` when there are none). Copy each one verbatim — severity, file:line, the finding, and why it counts as deferred — under the ledger's `## Deferred findings` section, headed by this candidate's id. If the agents' reports are not in context (the context was compacted, or this is a resume), do not guess a count from the summary. Leave `deferred` empty, which step 7 treats as unresolved.
 
-   Every later step that needs to act on this PR (step 8's merge, a resume in step 2) keys off these recorded values — never a re-derived branch name or an "in-context" PR number.
+   Every later step that needs to act on this PR (step 8's merge, a resume in step 2) keys off these recorded values.
 
 7. **Enforce `/cla:lite-pr`'s deferred review findings (the thin layer it doesn't do itself).** `/cla:lite-pr` opens the PR even when its Review phase *defers* blocking findings — it never halts on them, and it has already spent its own fix rounds (one, or two for a protected-area fix) before deferring. Work from the findings step 6 recorded in the ledger — the same list whether this is the first pass or a resume:
    - **`deferred` is empty** → step 6 could not determine the findings. Write `review: unresolved` with the reason `deferred findings not determinable`, and take the unresolved branch below.

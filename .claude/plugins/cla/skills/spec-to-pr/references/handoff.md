@@ -4,7 +4,7 @@ The Handoff phase's procedure. Why its gates are shaped as they are: `design-tra
 
 ## 1. Emit the terminal report inline
 
-From your working memory of each phase, as rendered Markdown in the assistant turn — never a file or a script. Sections in this order, "(none)" under an empty one:
+From your working memory of each phase, as rendered Markdown in the assistant turn, where the user reads it; a report left in a file is easy to miss. Sections in this order, "(none)" under an empty one:
 
 - Header: `## <change-name> — workflow complete` (`… completed with issues` if any phase is `warn` or `fail`).
 - PR URL + branch + mode + caps. When `<inherits>` was non-empty: one verdict line per supplied entry, `HONOURED` ones included, here ahead of the phase table, even on a resumed run that skipped Review.
