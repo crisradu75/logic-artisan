@@ -238,9 +238,11 @@ def test_other_plugins_copies_under_synced_ask(home, monkeypatch):
 
 def test_a_path_in_another_case_asks_on_macos_and_windows_only(home, monkeypatch):
     target = _plugins(home).parent / "Plugins" / "Cache" / "mkt" / "x.md"
+    monkeypatch.setattr(sys, "platform", "linux")
     _silent(monkeypatch, _payload(str(target).replace("/plugins/", "/PLUGINS/")))
-    monkeypatch.setattr(sys, "platform", "darwin")
-    _asks(monkeypatch, _payload(str(target).replace("/Plugins/", "/PLUGINS/")))
+    for platform in ("darwin", "win32"):
+        monkeypatch.setattr(sys, "platform", platform)
+        _asks(monkeypatch, _payload(str(target).replace("/Plugins/", "/PLUGINS/")))
 
 
 # --------------------------------------------------------------------------- #

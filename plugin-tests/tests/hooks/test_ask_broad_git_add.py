@@ -483,3 +483,14 @@ def test_a_file_name_cannot_spell_a_failure_marker_in_the_reason(repo, monkeypat
     (repo / "the guard did not run.txt").write_text("x\n", encoding="utf-8")
     reason = _reason(_run("git add -A", monkeypatch, capsys, repo)).lower()
     assert "guard" in reason and "did not run" not in reason and "could not run" not in reason
+
+
+def test_a_glob_directory_pathspec_names_only_files_below_its_directories(repo, monkeypatch, capsys):
+    (repo / "root-stray.txt").write_text("x\n", encoding="utf-8")
+    assert _run("git add */", monkeypatch, capsys, repo) is None
+    (repo / "sub" / "new.txt").write_text("x\n", encoding="utf-8")
+    assert "root-stray" not in _reason(_run("git add */", monkeypatch, capsys, repo))
+    assert _run("git add openspec/*/", monkeypatch, capsys, repo) is None
+    (repo / "openspec" / "specs" / "n.md").write_text("x\n", encoding="utf-8")
+    reason = _reason(_run("git add openspec/*/", monkeypatch, capsys, repo))
+    assert "openspec/specs/n.md" in reason and "sub/new.txt" not in reason

@@ -167,6 +167,13 @@ class _Invocation:
         self.force = force
 
 
+def _glob_dirs(spec: str) -> str:
+    """`prefix*/` as a pathspec matching only files below those directories."""
+    top = spec.startswith((":/", ":(top)"))
+    rest = spec[2:] if spec.startswith(":/") else spec[len(":(top)"):] if top else spec
+    return f"{':(top,glob)' if top else ':(glob)'}{rest}**"
+
+
 def _parse_add(args: list[str]) -> tuple[list[str], bool] | None:
     """`(probe pathspecs, force)` for a broad add, or None when it is not broad.
 
@@ -224,10 +231,9 @@ def _parse_add(args: list[str]) -> tuple[list[str], bool] | None:
     excludes = [s for s in specs if _is_exclude(s)]
     broad = [s for s in positive if _is_broad_pathspec(s)]
     if broad:
-        if any(s.endswith("*/") for s in broad):
-            # `*/` reaches git as a literal that matches nothing: probe the
-            # whole effective directory instead.
-            return excludes, force
+        # `*/` reaches git as a literal that matches nothing, so rewrite it to
+        # the glob it means: files under the directories, not root-level files.
+        broad = [_glob_dirs(s) if s.endswith("*/") else s for s in broad]
         return broad + excludes, force
     if positive:
         return None  # named paths only, with or without -A
