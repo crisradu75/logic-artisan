@@ -18,9 +18,9 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 
 **Branch-slug derivation.** Strip a trailing `-YYYY-MM-DD` from the decisions filename stem (e.g. `payments-provider-migration-2026-08-01.md` → `payments-provider-migration`); if the stem is ambiguous, derive a short kebab-slug from the file's own `# Title` heading instead. Branch name: `docs/propose-<batch-slug>`.
 
-**Preflight (plain git calls — this branch is `docs/propose-…`, not a `feature/` branch):**
+**Preflight (this branch is `docs/propose-…`, not a `feature/` branch):**
 1. `git rev-parse --abbrev-ref HEAD` — already on `docs/propose-<batch-slug>` → this is a resume with the upstream already set; skip straight to the persist step below.
-2. On `<base-branch>`: `git rev-parse --verify docs/propose-<batch-slug>` (local) and `git ls-remote --exit-code --heads origin docs/propose-<batch-slug>` (remote). Either existing → resume, `git checkout docs/propose-<batch-slug>`. Neither → `git checkout -b docs/propose-<batch-slug>`.
+2. On `<base-branch>`: `python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" preflight --branch docs/propose-<batch-slug> --base <base-branch>`. It matches the exact branch name, locally and on `origin` (a bare `git ls-remote --heads` pattern also matches a longer name ending in it). Exit 0 → it exists nowhere: `git checkout -b docs/propose-<batch-slug>`. Exit 1 with a `PROBLEM local-branch`, `remote-tracking` or `remote-branch` line → it exists: resume with `git fetch origin docs/propose-<batch-slug>` (when only the remote has it), then `git checkout docs/propose-<batch-slug>`. Exit 2 → it could not ask the remote: stop and report, since a new branch could then fork an existing one.
 3. `git_state.py --expect-branch docs/propose-<batch-slug>` before the first commit (branch-name-agnostic, fully reusable).
 
 **Persist the plan, on the branch.** Assemble the plan JSON (Phase 1's grouping plus `batch_slug`/`branch`) per `references/plan-schema.md`, write to `cla.io/decisions/<stem>.multi-spec-plan.json`, then commit and push:
