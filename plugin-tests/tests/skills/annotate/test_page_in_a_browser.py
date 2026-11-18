@@ -112,7 +112,9 @@ def served(tmp_path_factory):
     annotate_server.Handler.is_change = False
     srv = ThreadingHTTPServer(
         ("127.0.0.1", 0), partial(annotate_server.Handler, directory=str(pages)))
-    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    # poll_interval: `shutdown()` waits for the serve loop's next poll, and the
+    # 0.5 s default added half a second to every test's teardown.
+    thread = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     thread.start()
     yield "http://127.0.0.1:%d/doc.html" % srv.server_address[1]
     srv.shutdown()
@@ -381,7 +383,7 @@ def served_html(tmp_path_factory):
 
     srv = ThreadingHTTPServer(
         ("127.0.0.1", 0), partial(HtmlHandler, directory=str(pages)))
-    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     thread.start()
     yield "http://127.0.0.1:%d/designed-page.html" % srv.server_address[1]
     srv.shutdown()
@@ -705,7 +707,7 @@ def served_vh(tmp_path_factory):
 
     srv = ThreadingHTTPServer(
         ("127.0.0.1", 0), partial(VhHandler, directory=str(pages)))
-    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     thread.start()
     yield "http://127.0.0.1:%d/vh-page.html" % srv.server_address[1]
     srv.shutdown()
@@ -942,7 +944,7 @@ def test_a_frame_that_never_loads_is_reported(browser, tmp_path_factory):
 
     open(Quiet.out_path, "w", encoding="utf-8").close()
     srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(pages)))
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     t.start()
     p = browser.new_page(viewport={"width": 1280, "height": 800})
     try:
@@ -1099,7 +1101,7 @@ def served_change(tmp_path_factory):
 
     srv = ThreadingHTTPServer(
         ("127.0.0.1", 0), partial(ChangeHandler, directory=str(pages)))
-    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     thread.start()
     yield {"url": "http://127.0.0.1:%d/change-demo.html" % srv.server_address[1],
            "ctxs": ctxs}

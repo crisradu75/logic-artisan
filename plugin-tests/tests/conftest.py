@@ -103,3 +103,37 @@ def run_temp_dir(tmp_path_factory):
         else:
             os.environ[k] = v
 
+
+
+# ------------------------------------------------------------ cached git repos
+#
+# A fixture that runs `git init`, a few `git config` calls and a first commit
+# spawns about seven processes per test. Building the repo once per session and
+# copying it is cheaper, more so on Windows, where each process spawn costs
+# more. Only for a fixture whose repo is the same for every test that uses it.
+# Under xdist each worker builds its own copy.
+
+
+@pytest.fixture(scope="session")
+def _git_repo_templates(tmp_path_factory):
+    return {}
+
+
+@pytest.fixture
+def cached_git_repo(_git_repo_templates, tmp_path_factory):
+    """`cached_git_repo(key, build, dest)`: run `build(dir)` once per session for
+    `key`, then copy that repo, `.git` included, into `dest` and return `dest`.
+    `dest` may already exist, as `tmp_path` does."""
+    import shutil
+
+    def make(key: str, build, dest: Path) -> Path:
+        template = _git_repo_templates.get(key)
+        if template is None:
+            template = tmp_path_factory.mktemp("repo-template") / "repo"
+            template.mkdir()
+            build(template)
+            _git_repo_templates[key] = template
+        shutil.copytree(template, dest, symlinks=True, dirs_exist_ok=True)
+        return dest
+
+    return make

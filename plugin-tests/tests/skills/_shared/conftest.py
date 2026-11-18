@@ -32,14 +32,17 @@ def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _build_tmp_repo(root: Path) -> None:
+    _git("init", "-q", "-b", "master", cwd=root)
+    _git("config", "user.email", "test@example.com", cwd=root)
+    _git("config", "user.name", "Test", cwd=root)
+    (root / "README.md").write_text("# tmp repo\n", encoding="utf-8")
+    _git("add", "README.md", cwd=root)
+    _git("commit", "-q", "-m", "initial", cwd=root)
+
+
 @pytest.fixture
-def tmp_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def tmp_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cached_git_repo) -> Path:
     """A git repo with identity configured and exactly one commit."""
     monkeypatch.chdir(tmp_path)
-    _git("init", "-q", "-b", "master", cwd=tmp_path)
-    _git("config", "user.email", "test@example.com", cwd=tmp_path)
-    _git("config", "user.name", "Test", cwd=tmp_path)
-    (tmp_path / "README.md").write_text("# tmp repo\n", encoding="utf-8")
-    _git("add", "README.md", cwd=tmp_path)
-    _git("commit", "-q", "-m", "initial", cwd=tmp_path)
-    return tmp_path
+    return cached_git_repo("_shared/tmp_repo", _build_tmp_repo, tmp_path)
