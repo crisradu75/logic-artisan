@@ -97,7 +97,7 @@ Left, in order:
 - [x] 5a. **Changelog.** (#520) `CHANGELOG.md` `[Unreleased]` covers every merged change since
   `cla--v2.3.0`, and says how an already set-up repo adopts the new seeded rules (re-run
   `/cla:cla-setup` and accept its listed update). Done when merged after one docs review.
-- [ ] 5b. **Trial in mnemo before tagging.** Run this repo's main in mnemo, as `--plugin-dir`, on
+- [x] 5b. **Trial in mnemo before tagging.** (crisradu75/mnemo#12: `/cla:lite-pr` from main ran Plan, Implement, Test and push headless; with no `gh` there, its Ship and Review steps did not run, so the PR was opened and reviewed by hand. The owner counted it done on 2026-11-18.) Run this repo's main in mnemo, as `--plugin-dir`, on
   one small real change. Done when it runs end to end, or its failures are fixed here first.
 - [ ] 5c. **Release.** `/release` from main, only after the owner says yes. The owner confirms the
   version number.
