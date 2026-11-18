@@ -25,9 +25,9 @@ repo: it has no product code.
 
 - Install: `pip install pytest-xdist` (optional browser suite: `pip install playwright && playwright install chromium`).
 - No build or lint step, and no CI.
-- Gate: `pytest plugin-tests -q -n auto --dist loadfile` — always `--dist loadfile`, never plain `-n auto`.
+- Gate: `pytest plugin-tests -q -n 2 --dist loadfile` — always `-n 2` (never `-n auto`) with `--dist loadfile`.
 - Serial fallback: `pytest plugin-tests`; trust a parallel run only when its pass and skip counts match a serial run of the same tree.
-- One area while iterating: `pytest plugin-tests/tests/<area> -n auto --dist loadfile`.
+- One area while iterating: `pytest plugin-tests/tests/<area> -n 2 --dist loadfile`.
 - Live specs: `openspec validate --specs --strict`.
 - Mutation batch (opt-in: only when the owner asks or a guard hook is rewritten; serial only): `python3 plugin-tests/mutate.py <batch.py>`.
 

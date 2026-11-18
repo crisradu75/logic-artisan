@@ -33,19 +33,10 @@ which never ships.
 
 ## Releasing
 
-- Use `/release` (it lives in this repo at `.claude/skills/release/` and does not ship). Cut a
-  release only from `main`, only after the work is reviewed and merged.
-- **A release is a five-file edit in one commit:** `version` in
-  `.claude/plugins/cla/.claude-plugin/plugin.json` and in the Copilot manifest
-  `.claude/plugins/cla/plugin.json`, the `ref` in `.claude-plugin/marketplace.json` and in the
-  Copilot catalog `.github/plugin/marketplace.json`, and the release line below. A test fails when
-  they disagree. `claude plugin tag` checks only the Claude pair, so the Copilot files are held by
-  that test alone. The same commit also moves `CHANGELOG.md`'s `[Unreleased]` entries under the new
-  version heading; no test pins it, so the release skill's Step 3 is what keeps it current.
-- Cut the tag with **`claude plugin tag .claude/plugins/cla`**. The path is required: without it the
-  command looks for `plugin.json` at the repo root, where this repo keeps `marketplace.json`. The
-  tag is `cla--v<version>`, and the command refuses unless `plugin.json` and `marketplace.json`
-  agree.
+- Use `/release` (it lives in this repo at `.claude/skills/release/` and does not ship). It holds the
+  preconditions, the five-file version edit, the changelog move and the tag command; cut a release
+  only from `main`, only after the work is reviewed and merged. The "Current release" line below is
+  one of the five files.
 - **A published tag is never moved.** A fix after a release is a new version.
 - **Never publish from a marketplace added from a local folder.** Other repos add the marketplace
   from the GitHub repo, never from a path.
@@ -57,9 +48,9 @@ which never ships.
 ## Running the tests
 
 ```bash
-pytest plugin-tests -q -n auto --dist loadfile   # the gate
+pytest plugin-tests -q -n 2 --dist loadfile   # the gate
 pytest plugin-tests                              # serial
-pytest plugin-tests/tests/<area> -n auto --dist loadfile    # one area while iterating
+pytest plugin-tests/tests/<area> -n 2 --dist loadfile    # one area while iterating
 openspec validate --specs --strict
 ```
 
@@ -69,10 +60,11 @@ openspec validate --specs --strict
 
 ### The parallel gate
 
-- **Always pass `--dist loadfile`; plain `-n auto` is the trap.** Each annotate browser test file
-  starts its own local server port and Chromium. Plain `-n auto` can split one file across workers,
-  and they fight over the port. That suite skips without Playwright, so a green plain `-n auto` can
-  mean it never ran.
+- **Use `-n 2`, never `-n auto`, and always pass `--dist loadfile`.** Two workers is the cap on
+  this machine; `-n auto` would start one per core. A `-n` without `--dist loadfile` is the trap:
+  each annotate browser test file starts its own local server port and Chromium, and a plain `-n`
+  run can split one file across workers, which then fight over the port. That suite skips without
+  Playwright, so a green plain `-n` run can mean it never ran.
 - **Trust a parallel run only when its pass AND skip counts match a serial run of the same code.**
   Some test folders skip themselves entirely, so the only sign one didn't run is a higher skip
   count. Re-check whenever you change which tests the command runs.
@@ -150,24 +142,23 @@ A prose edit here ships like code, and nothing compiles it. Each check comes fro
 - **When a batch is run, a SURVIVOR is not automatically a finding.** Some planted bugs make no visible difference while
   the files are correct. If no correct file can tell the real check from the broken one, add a bad
   input file instead of breaking the check. Never leave a planted bug no test can catch in a batch.
-- **A green run is not more true for being repeated.** Re-run only to test for a flake, and then fix
-  the flake.
 
 **Match the checking to the change, and run each gate once.** The five checks are sized for a fix
-or a new component. A small addition to something already built and tested does not need them.
+or a new component. A small addition to something already built and tested does not need them. A
+green run is not more true for being repeated: re-run only to test for a flake, and then fix the
+flake.
 
 | | run |
 |---|---|
-| Editing one skill or area | `pytest plugin-tests/tests/<area> -n auto --dist loadfile`, **once** |
+| Editing one skill or area | `pytest plugin-tests/tests/<area> -n 2 --dist loadfile`, **once** |
 | Fixing a defect a review found | that area, and break each blocking-finding fix (and each guard-hook rewrite) by hand once; a mutation batch only when the owner asks or a guard hook is rewritten, run once after the last fix |
 | Adding a new script, skill, or hook | the five checks above, in full |
-| Before opening a PR | `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict`, each once |
+| Before opening a PR | `pytest plugin-tests -q -n 2 --dist loadfile` and `openspec validate --specs --strict`, each once |
 
 ## No CI — verification is local
 
 - **This repo runs no CI, by design. Do not add a workflow;** if a change seems to need one, raise
-  it. The two commands in the last table row are the whole shipping gate.
-- **Merging is unguarded.** Your local run before opening a PR is the only gate.
+  it. Merging is unguarded, so the two commands in the last table row are the whole shipping gate.
 - **A green run is evidence about your machine only.** Several hooks behave differently on Windows
   and on Linux/macOS; do not claim the other platform passed.
 - **After merging a change, run `ls openspec/changes/`.** Archiving is a step of `/cla:spec-to-pr`;

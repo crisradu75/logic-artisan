@@ -13,7 +13,7 @@ they wrote back into the session.
 **The user's attention is the scarce input this skill spends.** Everything below
 exists to spend it on the document rather than on the tool: the page opens
 without browser furniture, the annotations save themselves, and the report is
-four lines.
+short.
 
 **This skill runs its scripts and interprets what comes back. It does not
 reimplement them.** [scripts/render_doc.py](scripts/render_doc.py) builds a
@@ -140,9 +140,9 @@ comment box, no tour of the drawer, no list of the keyboard shortcuts. Explainin
 a page's buttons back to the person about to use it is noise sitting between them
 and the document.
 
-The whole report is four lines: what was built (blocks and words), the URL, where
-annotations land, and how to stop the server. **Then stop talking and let them
-read.**
+The report holds what was built (blocks and words), the URL, where annotations
+land, and how to stop the server, and nothing else. **Then stop talking and let
+them read.**
 
 An affordance that genuinely cannot be discovered belongs on the page, in
 `render_doc.py`, not in the reply.
