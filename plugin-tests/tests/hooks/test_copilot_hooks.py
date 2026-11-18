@@ -944,6 +944,29 @@ def test_copilot_pretooluse_asks_before_a_broad_add_sweeps_an_untracked_file(tmp
     assert "ask-broad-git-add.py" in decision["permissionDecisionReason"]
 
 
+# requirement: guard-hooks / An unresolved plugin root in a command is blocked
+def test_copilot_pretooluse_denies_an_unresolved_plugin_root(tmp_path):
+    _denied(_bash(tmp_path, 'python3 "${CLAUDE_PLUGIN_ROOT}/skills/x/check.py"'), "guard-bash-text.py")
+    _silent(_bash(tmp_path, "grep -rn '${CLAUDE_PLUGIN_ROOT}/' skills"))
+
+
+# requirement: guard-hooks / A write outside the checkout through .. asks first
+def test_copilot_pretooluse_asks_before_a_write_through_dot_dot(tmp_path):
+    # A real ask, so Copilot keeps it an ask (no "did not run" phrase in it).
+    repo = _make_repo(tmp_path / "repo")
+    result = _bash(tmp_path, "cp README.md ../README.md.bak", cwd=repo)
+    assert result.returncode == 0, result.stderr
+    decision = json.loads(result.stdout)
+    assert decision["permissionDecision"] == "ask", decision
+    assert "guard-bash-text.py" in decision["permissionDecisionReason"]
+    _silent(_bash(tmp_path, "cp ../outside.txt README.md", cwd=repo))
+
+
+# requirement: guard-warnings / A multi-line inline commit message or pull request body warns
+def test_copilot_pretooluse_warns_on_a_multi_line_commit_message(tmp_path):
+    _warned(_bash(tmp_path, 'git commit -m "subject\n\nbody"'), "[guard-bash-text]")
+
+
 def test_copilot_pretooluse_warns_when_a_heredoc_would_eat_an_escape(tmp_path):
     command = "python3 - <<'PY'\ns = \"anchor\\nnext\"\nprint(s)\nPY"
     _warned(_bash(tmp_path, command), "warn-heredoc-escape-mangling")

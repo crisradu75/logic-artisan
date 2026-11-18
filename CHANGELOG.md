@@ -20,6 +20,14 @@ the skills fall back to the default list of protected areas.
 
 ### Added
 
+- **A `guard-bash-text` guard hook** reads a Bash or PowerShell command's text. It blocks a
+  `${CLAUDE_PLUGIN_ROOT}/` or `$CLAUDE_PLUGIN_ROOT/` path the shell would expand: Claude Code does
+  not set that variable in the Bash tool's shell, so a placeholder copied from a `references/` file
+  ran the command against `/skills/...`. It asks before a write redirect, `tee`, `mkdir`, or a
+  `cp`/`mv` destination whose path starts with `..` and lands outside the checkout, where a consuming
+  repo keeps the user's other projects. It warns on a `git commit -m` or `gh pr`/`gh issue` `--body`
+  that holds a real newline or a `$(cat <<...)` heredoc, pointing at `-F` and `--body-file`. Single
+  quotes, escapes, quoted heredocs and comments stay silent; it runs no subprocess (#PR).
 - **Two warn hooks check subagent dispatches.** `warn-agent-dispatch` warns before an Agent call
   that passes no `model` (it would run on an unplanned model), whose prompt holds a line starting
   `diff --git ` (pass the diff file's path instead), or whose review brief fills the protected-areas

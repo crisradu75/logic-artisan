@@ -9,11 +9,11 @@ hooks, so a force-push, a push straight to main, or a wrong-identity commit
 issued through it bypassed every git guard in the tree.
 
 Runs block-cd-in-bash, ask-destructive-git, block-unsafe-recursive-delete,
-ask-broad-git-add, warn-stacked-pr-merge, warn-stray-scratch-artifact, and
-warn-heredoc-escape-mangling in ONE Python process instead of seven, reading the
-tool-call JSON from stdin once and handing it to each in turn via
-`_dispatch_lib`. Cuts per-Bash-call hook overhead from 7 interpreter spawns to
-1 — commonly cited as ~100-200ms of process-start cost each on Windows, though
+guard-bash-text, ask-broad-git-add, warn-stacked-pr-merge,
+warn-stray-scratch-artifact, and warn-heredoc-escape-mangling in ONE Python
+process instead of eight, reading the tool-call JSON from stdin once and handing
+it to each in turn via `_dispatch_lib`. Cuts per-Bash-call hook overhead from 8
+interpreter spawns to 1 — commonly cited as ~100-200ms of process-start cost each on Windows, though
 not independently benchmarked for this repo.
 
 Pushes to main/master are NOT guarded here. That check moved to `git/pre-push`,
@@ -100,6 +100,7 @@ _HOOK_FILES = [
     "block-cd-in-bash.py",
     "ask-destructive-git.py",
     "block-unsafe-recursive-delete.py",
+    "guard-bash-text.py",
     "ask-broad-git-add.py",
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",

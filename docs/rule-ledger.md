@@ -63,7 +63,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 
 ## output-styles/COPILOT.md
 - keep | honesty | #500 2026-11-12, Copilot CLI validation | never simulate a required delegation or chain silently.
-- keep | shipped to other repos | #500 2026-11-12, Copilot CLI validation | never run an unresolved placeholder.
+- keep | shipped to other repos | #500 2026-11-12, Copilot CLI validation; guard-bash-text enforces it (blocks) | never run an unresolved placeholder.
 - keep | honesty | #500 2026-11-12, Copilot CLI validation | Never omit a verification step or its result.
 
 ## agents/doc-sweeper.md
@@ -144,7 +144,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 
 ## skills/report-upstream/SKILL.md
 - keep | shipped to other repos | b48283b3 2026-08-10, report-upstream added; project-token checker | Never hardcode one in this file: portable core must not name
-- keep | shipped to other repos | b48283b3 2026-08-10, report-upstream added | Open it with a body file, never an inline multi-line string:
+- keep | shipped to other repos | b48283b3 2026-08-10, report-upstream added; guard-bash-text enforces it (warns) | Open it with a body file, never an inline multi-line string:
 
 ## skills/right-model/SKILL.md
 - not-a-rule | - | - | # always-loaded skill listing. Nothing invokes it programmatically.
@@ -184,10 +184,10 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | shipped to other repos | d452a82d 2026-07-28 (#11) hardcoded-master break; reworded b14be358 (#513) | Never hardcode `master`
 
 ## skills/_shared/references/bash-discipline.md
-- keep | user's files | carried in at repo extract ee4034ad 2026-07-23; covers the write-outside-checkout and staging shapes below | The skill MUST NOT emit them.
+- keep | user's files | carried in at repo extract ee4034ad 2026-07-23; covers the write-outside-checkout and staging shapes below; guard-bash-text enforces it for the `..` write and multi-line `--body`/heredoc-commit shapes | The skill MUST NOT emit them.
 - not-a-rule | - | - | or write where the skill must not
 - guidance | none | ee4034ad 2026-07-23 extract; design-tradeoffs.md "No Skill() hops": cost turns for no capability | which costs turns for no capability
-- keep | user's files | 934fb853 2026-09-23 review of PR 274; `..` holds the user's other projects | Never write to `..`, which in a consuming repo holds the user's other projects
+- keep | user's files | 934fb853 2026-09-23 review of PR 274; `..` holds the user's other projects; guard-bash-text enforces it (asks) | Never write to `..`, which in a consuming repo holds the user's other projects
 - keep | user's files | 934fb853 2026-09-23, docs: address review of PR 274 — portable junction removal, teardown... | Never write them anywhere else outside the checkout.
 - keep | user's files | ee4034ad 2026-07-23 extract; incident in the line: an Archive `git add -A` swept a parallel session's cherry-pick files | Always path-scope every staging call
 - keep | user's files | 274cc19d 2026-10-13 (#353) worktree route for git_state and cwd-bound commands | `path` must be under `.claude/worktrees/` of the same repo
@@ -270,7 +270,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | contract a caller must honor, a two-sided scope assertion
 
 ## skills/_shared/references/plugin-root.md
-- keep | shipped to other repos | b8bf1795 2026-08-11 four review agents' findings; an unset variable runs the command against `/skills/...` | never pass it through to a shell
+- keep | shipped to other repos | b8bf1795 2026-08-11 four review agents' findings; an unset variable runs the command against `/skills/...`; guard-bash-text enforces it (blocks) | never pass it through to a shell
 
 ## skills/_shared/references/precheck.md
 - keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved from SKILL.md); sweeping another scope's uncommitted work | never sweeps another scope's uncommitted work

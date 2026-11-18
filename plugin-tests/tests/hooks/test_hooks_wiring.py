@@ -614,6 +614,18 @@ def test_the_bash_dispatcher_declares_the_broad_add_hook_best_effort():
     assert _best_effort(_HOOKS_DIR / "dispatch-bash-pretooluse.py") == {"ask-broad-git-add.py"}
 
 
+def test_the_bash_dispatcher_runs_the_text_guard_as_enforcing():
+    # Enforcing, not best-effort or advisory: it reads only the command text, so
+    # it costs nothing against the budget, and it can block, which a skippable
+    # hook must never do.
+    dispatcher_path = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
+    assert "guard-bash-text.py" in _hook_files_list(dispatcher_path)
+    assert "guard-bash-text.py" not in _named_collection(dispatcher_path, "_ADVISORY_HOOKS")
+    assert "guard-bash-text.py" not in _best_effort(dispatcher_path)
+    assert _changes_the_outcome((_HOOKS_DIR / "guard-bash-text.py").read_text(encoding="utf-8"))
+    assert _load_dispatch_lib().HOOK_WORST_CASE_SECONDS["guard-bash-text.py"] == 0.0
+
+
 def test_the_edit_write_dispatcher_runs_the_plugin_cache_hook_as_enforcing():
     # Enforcing, not best-effort: it costs nothing against the budget (no
     # subprocess), and a missed install-copy edit leaves no trace to recover.
