@@ -81,12 +81,12 @@ Left, in order:
 
   Done when each item is applied, or skipped with a reason in the PR body, and merged after one
   review.
-- [ ] 4h. **Text read too literally, and duplicated release docs:**
+- [x] 4h. **Text read too literally, and duplicated release docs:**
   - audit A20-A23 (output style ceilings and narration ban, new-worktree tool calls, annotate)
   - D F4, F5, F7-F13 (project `CLAUDE.md` release section, release skill archaeology)
   - the 4e answers that change files
 
-  The owner sees the output style before and after. Done when merged after one review.
+  The owner sees the output style before and after. Done when merged after one review. (#517)
 - [ ] 4i. **Tag each kept rule (principle 6).** Every absolute rule in the shipped skills (never,
   always, must) gets one line: the incident it came from and the protected area it covers. A rule
   with no protected area becomes guidance or goes on a removal list, and the owner approves each
