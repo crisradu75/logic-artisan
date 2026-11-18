@@ -4,7 +4,7 @@ The Phase 1 step-by-step procedure. `SKILL.md`'s Phase 1 stub carries the load-b
 
 ## 1a. Extract the lite-pr candidates
 
-Read the doc and pull out every discrete, **lite-pr-sized** change it describes. Each candidate is:
+Read the doc and pull out every discrete, **lite** change it describes (not protected, not shipped behaviour). Each candidate is:
 
 - a short kebab-case `id`,
 - a **one-line description** concrete enough to pass straight to `/cla:lite-pr` (the actual change to make — not a paraphrase of the whole decision; name the files/behavior where the doc names them),

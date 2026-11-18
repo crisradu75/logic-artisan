@@ -1,6 +1,6 @@
 # multi-spec — change-plan file schema
 
-Phase 1 derives the grouping this file records; **Phase 2 writes and commits it once, on the batch branch, before any change is authored** — its own small commit ahead of any proposal work, so the grouping/sequencing judgment itself is protected by the same durability discipline as everything downstream. (It's written in Phase 2 rather than Phase 1 because two of its required fields — `batch_slug` and `branch` — are only derived once the branch is set up in Phase 2, and because a Phase-1 commit would land on `<base-branch>`, which this skill may never push, so a "durability" commit there couldn't actually be pushed to survive a dead disk. See SKILL.md Phase 2's "Persist the plan now, on the branch.")
+Phase 1 derives the grouping this file records; **Phase 2 writes and commits it once (unless there are no proposals), on the batch branch, before any change is authored** — its own small commit ahead of any proposal work, so the grouping/sequencing judgment itself is protected by the same durability discipline as everything downstream. (It's written in Phase 2 rather than Phase 1 because two of its required fields — `batch_slug` and `branch` — are only derived once the branch is set up in Phase 2, and because a Phase-1 commit would land on `<base-branch>`, which this skill may never push, so a "durability" commit there couldn't actually be pushed to survive a dead disk. See SKILL.md Phase 2's "Persist the plan now, on the branch.")
 
 ## Location
 
@@ -27,7 +27,7 @@ Colocated with the source decisions file (`cla.io/decisions/<stem>.md`) — same
     }
   ],
   "lite_items": [
-    {"name": "<kebab-case>", "decisions_covered": [3], "one_line_scope": "<one line>", "reason": "<one-line Stakes reason>"}
+    {"name": "<kebab-case>", "decisions_covered": [3], "one_line_scope": "<one line>", "reason": "<one-line Stakes reason>", "depends_on": ["<change-or-lite-item-name>"]}
   ]
 }
 ```
@@ -38,7 +38,7 @@ Colocated with the source decisions file (`cla.io/decisions/<stem>.md`) — same
 - `batch_slug` / `branch` — echoed here rather than re-derived on resume, so a resumed run doesn't have to re-run the filename-stripping logic and risk a different slug than the one already used for the branch and commit messages.
 - `sequence_source` — `file-sequencing-section` when Phase 1 found and trusted the decisions file's own "Sequencing" section; `derived-judgment` when no such section existed and the grouping came from the skill's own reasoning (or an escalated `opus` `Agent` call on a sub-Opus session). This is a transparency field, not a behavior switch — it tells a human (or a future resumed run) how much to trust the grouping versus re-checking it.
 - `changes[].decisions_covered` — the numbered decisions (from the source file's "Decisions" section) this change implements. Lets a human trace a change back to its shaping rationale without re-reading the whole decisions file.
-- `changes` — only the changes that get a proposal (a protected area or behaviour shipped to other repos). `lite_items` — every other change: no proposal, listed in the report as `lite-pr` items. Kept here so a resume that skips Phase 1 still reports them. If `changes` would be empty, no plan file is written at all.
+- `changes` — only the changes that get a proposal (a protected area or behaviour shipped to other repos). `lite_items` — every other change: no proposal, listed in the report as `lite-pr` items. Kept here so a resume that skips Phase 1 still reports them. A `lite_items[].depends_on` may name a proposal or another lite item, and a proposal's `depends_on` may name a lite item, so the report keeps the dependency order. If `changes` would be empty, no plan file is written at all.
 - `changes[].depends_on` — other change names **in this same batch** that must be authored (not necessarily merged — this batch lands in one PR, so "authored before" is the only ordering that matters here) before this one, so cross-references are accurate. This drives Phase 3's authoring order; it is not a build/merge dependency in the `multi-pr` sense.
 
 ## What this file is NOT

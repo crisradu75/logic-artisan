@@ -10,7 +10,7 @@ run. Each section builds on the one before it.
 | You want to… | Read |
 |---|---|
 | Get going | §1 to §3: how CLA is built, a first session, a first PR |
-| Take on bigger work | §4 to §7: shaping, spec-scale changes, batches, worktrees |
+| Take on bigger work | §4 to §7: shaping, spec changes, batches, worktrees |
 | Know why a command was blocked | §8, the guardrails |
 | Improve the next run | §9, the learning loops |
 | Install CLA in your repo | §10 |
@@ -137,13 +137,13 @@ under `cla.io/decisions/`. `multi-spec`, `multi-lite` and `multi-pr` all take th
 A typical change: `shape-decision` → `lite-pr`, or straight to `lite-pr` when the shape is
 already clear.
 
-## 5. Spec-scale changes: `multi-spec` → `review-change` → `spec-to-pr`
+## 5. Spec changes (protected or shipped behaviour): `multi-spec` → `review-change` → `spec-to-pr`
 
 When a change touches a protected area (what the repo's Stakes section lists) or behaviour shipped to other repos, CLA runs it through OpenSpec (the vendored `opsx:*`
 skills) rather than skip the thinking. `multi-spec` writes a proposal only for such a change and lists the rest as `lite-pr` items. CLA orchestrates around OpenSpec; it does not replace it.
 For open exploration first, use `opsx:explore`.
 
-1. **`multi-spec`** turns a decisions doc into a batch of OpenSpec proposals (`proposal.md`,
+1. **`multi-spec`** turns a decisions doc into a batch of OpenSpec proposals for the protected or shipped changes (`proposal.md`,
    `tasks.md` and spec deltas; `design.md` only on a stock trigger), written and committed one
    change at a time. It stops at proposals: nothing is built yet. With no argument it takes the
    newest doc under `cla.io/decisions/`.

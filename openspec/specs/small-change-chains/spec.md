@@ -2,15 +2,15 @@
 
 ## Purpose
 
-**Serves:** maintainers who run a batch of small changes from one doc.
+**Serves:** maintainers who run a batch of lite changes from one doc.
 
-What the plugin promises when `/cla:multi-lite` runs and merges a batch of small changes from one doc without a person in the loop.
+What the plugin promises when `/cla:multi-lite` runs and merges a batch of lite changes from one doc without a person in the loop.
 
 ## Requirements
 
 ### Requirement: Running a batch of small changes
 
-`/cla:multi-lite [doc]` SHALL take every small change a decisions or feedback doc describes, by default the newest under `cla.io/decisions/`, confirm the order and the merge policy once at the start, and run `/cla:lite-pr` on each in dependency order.
+`/cla:multi-lite [doc]` SHALL take every lite change (one touching no protected area or behaviour shipped to other repos) a decisions or feedback doc describes, by default the newest under `cla.io/decisions/`, confirm the order and the merge policy once at the start, and run `/cla:lite-pr` on each in dependency order.
 
 #### Scenario: A feedback doc with several small fixes
 

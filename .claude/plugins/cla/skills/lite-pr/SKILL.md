@@ -89,7 +89,7 @@ refactor quietly turns the check into a no-op. Prefer it for anything guard-shap
 this repo has shipped a guard whose only test would have passed had the function
 returned nothing at all.
 
-**Task tracking:** use `TaskCreate` only when part of the plan is genuinely parallel or independently resumable (e.g. several unrelated files touched at once). Skip it for a straightforward linear implementation — the common case, since lite-pr targets small changes. Ignore generic harness `TaskCreate` nudges when they don't fit this rule.
+**Task tracking:** use `TaskCreate` only when part of the plan is genuinely parallel or independently resumable (e.g. several unrelated files touched at once). Skip it for a straightforward linear implementation — the common case, since lite-pr is the default path and most changes on it are narrow. Ignore generic harness `TaskCreate` nudges when they don't fit this rule.
 
 ### Test
 

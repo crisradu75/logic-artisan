@@ -15,7 +15,7 @@ disable-model-invocation: true
 > **Copilot CLI support: unsupported.** This workflow requires nested skill invocation and
 > unattended orchestration.
 
-Orchestrates `/cla:lite-pr` across a **sequence** of small candidates extracted from a single decision-shaped markdown doc. Where `/cla:lite-pr` drives one small change from description to an opened PR and then stops, `multi-lite` adds the layer on top: extract every lite-pr-sized candidate the doc describes, figure out what order they must run in, confirm that plan once, run the full `/cla:lite-pr` workflow on each, and keep going through the whole set unattended — serializing only the genuine dependencies and quarantining a failure without abandoning the independents.
+Orchestrates `/cla:lite-pr` across a **sequence** of lite candidates (changes that touch no protected area or behaviour shipped to other repos) extracted from a single decision-shaped markdown doc. Where `/cla:lite-pr` drives one change from description to an opened PR and then stops, `multi-lite` adds the layer on top: extract every lite candidate (no protected area, no shipped behaviour) the doc describes, figure out what order they must run in, confirm that plan once, run the full `/cla:lite-pr` workflow on each, and keep going through the whole set unattended — serializing only the genuine dependencies and quarantining a failure without abandoning the independents.
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
@@ -64,7 +64,7 @@ Parse `$ARGUMENTS`:
 
 ## Phase 1 — Extract candidates, sequence, and confirm (the one gate)
 
-**Read `references/candidate-extraction.md` first** for the extraction filter, the sequencing rule, and the exact confirmation-gate question shape. Mechanically: (1a) pull every lite-pr-sized candidate out of the doc as `{id, one-line description, depends_on}`, routing non-lite items to an explicit out-of-scope list; (1b) order by `depends_on` first, document order as tiebreak — never group candidates into one PR; (1c) confirm the derived plan and the merge policy (`merge-each-clean` recommended, or `merge-dependencies-only`) once via `AskUserQuestion` before any `/cla:lite-pr` runs. This is the run's only stop (see hoisted rules), pre-confirmed only under an explicit-autonomy override.
+**Read `references/candidate-extraction.md` first** for the extraction filter, the sequencing rule, and the exact confirmation-gate question shape. Mechanically: (1a) pull every lite candidate (no protected area, no shipped behaviour) out of the doc as `{id, one-line description, depends_on}`, routing non-lite items to an explicit out-of-scope list; (1b) order by `depends_on` first, document order as tiebreak — never group candidates into one PR; (1c) confirm the derived plan and the merge policy (`merge-each-clean` recommended, or `merge-dependencies-only`) once via `AskUserQuestion` before any `/cla:lite-pr` runs. This is the run's only stop (see hoisted rules), pre-confirmed only under an explicit-autonomy override.
 
 ## Phase 2 — Task tracking + the run-notes ledger
 

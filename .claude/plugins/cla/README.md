@@ -18,9 +18,9 @@ reads as CLA being broken.
 
 | Dependency | Reached by | How hard |
 |---|---|---|
-| **OpenSpec** — the `opsx:*` / `openspec-*` skills **and** the `openspec` CLI | `spec-to-pr`, `multi-spec`, `multi-pr`, `review-change` | **Required** for the spec-scale path. The CLI is called directly — `validate`, `archive`, `status`. (`lite-pr` calls `openspec validate` once and documents skipping it in a repo not using OpenSpec, so it degrades rather than failing.) |
+| **OpenSpec** — the `opsx:*` / `openspec-*` skills **and** the `openspec` CLI | `spec-to-pr`, `multi-spec`, `multi-pr`, `review-change` | **Required** for the spec path (protected or shipped-behaviour changes). The CLI is called directly — `validate`, `archive`, `status`. (`lite-pr` calls `openspec validate` once and documents skipping it in a repo not using OpenSpec, so it degrades rather than failing.) |
 | **`pr-review-toolkit`** — `code-reviewer`, `silent-failure-hunter`, `comment-analyzer`, `pr-test-analyzer`, `type-design-analyzer` | every PR-review pass: `spec-to-pr`, `lite-pr` (and `multi-pr`/`multi-lite`, which chain them) | **Required.** The Revise phase names these agents directly and defines no fallback for their absence. CLA ships no reviewer of its own. The toolkit reviewers hold Bash and Edit, so each dispatch passes `model:` and a prompt that forbids git commands and file edits; that prompt is the only safeguard. |
-| **`commit-commands`** | `lite-pr`'s commit/push/PR step, and `multi-lite`, which chains it | **Required for the lightweight path.** The spec-scale path commits directly and does not need it. |
+| **`commit-commands`** | `lite-pr`'s commit/push/PR step, and `multi-lite`, which chains it | **Required for the lightweight path.** The spec path commits directly and does not need it. |
 | **`plugin-dev`** — `skill-reviewer` | two rows of the Revise agent-selection table, plus `lite-pr`'s own agent picking | **Conditional.** Fires on a changed `SKILL.md` **frontmatter**, a new skill, a new command under `.claude/commands/`, or a prose-dominant diff — not on a body-only prose edit that is not prose-dominant. On a prose-dominant diff its model follows "Review sizing by risk" in `model-routing.md`; the frontmatter and new-skill cases are not in that table, so they run on Sonnet as `lite-pr`'s Review and `spec-to-pr/references/revise.md` say. |
 
 There is no `openspec apply` CLI subcommand — apply is a skill. See `spec-to-pr/SKILL.md` for the
@@ -54,10 +54,10 @@ and invoked bare as `/release`.
 | **1. Discover & shape** | `feedback` | you or Claude | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | you or Claude | Walk a decision option-by-option with pros/cons + a recommended pick |
 | | (`opsx:explore`) | n/a — vendored | OpenSpec's thinking-partner mode for investigating a problem before committing to a change |
-| **2. Specify & plan** | `multi-spec` | you or Claude | Turn a shaped decisions doc into a batch of full OpenSpec proposals (stops at proposals) |
+| **2. Specify & plan** | `multi-spec` | you or Claude | Turn a shaped decisions doc into a batch of full OpenSpec proposals for the protected or shipped changes (stops at proposals) |
 | | `review-change` | you or Claude | Pre-implementation review of an OpenSpec change: verify claims, symbols, file/reference reality, size it |
 | **3. Build & ship** | `new-worktree` | you or Claude | Start an isolated git worktree (deps installed, env carried over) for parallel/safe work |
-| | `lite-pr` | you or Claude | Lightweight end-to-end path for a small change: implement + docs + tests + PR + one review round |
+| | `lite-pr` | you or Claude | The default path, lightweight and end to end: implement + docs + tests + PR + one review round |
 | | `spec-to-pr` | you or Claude | Drive one OpenSpec change end-to-end to an opened, archived PR with review fixes applied |
 | | `multi-lite` | **you only** | Chain several `lite-pr` runs extracted from one decisions doc, dependency-first |
 | | `multi-pr` | **you only** | Chain several OpenSpec changes → PRs, merging each before its dependents |
