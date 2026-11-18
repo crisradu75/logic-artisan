@@ -14,7 +14,9 @@ that matches a git command line imports — `ask-destructive-git.py` and
 from its source is what went stale here before, and a date-stamp turns a wrong
 number into a wrong number that reads as verified. `hooks/tests/`'s
 `_GIT_HOOK_FILES` is where the list is maintained. `ask-broad-git-add.py`
-imports `strip_quoted_spans` and `GIT_CMD` and walks tokens itself. Both
+imports `strip_quoted_spans` and `GIT_CMD` and walks tokens itself; the two
+commit-honesty guards hand each `GitInvocation` match to `_git_commit_args.py`,
+which reads the arguments. Both
 ways are linear on hostile input; composing `GIT_GLOBAL_OPTS` into a regex is
 not, see `GitInvocation`.)
 So the relationship with those hooks is bidirectional: this module loads them,
@@ -168,6 +170,9 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # Resolves the write target and the plugins roots with `realpath`; no
     # subprocess, so it is enforcing in the Edit/Write dispatcher at no cost.
     "ask-plugin-cache-edit.py": 0.0,
+    # Reads the command text and, at most, a `-F` message file; no subprocess,
+    # so it is enforcing in the Bash dispatcher at no cost.
+    "block-dishonest-commit.py": 0.0,
     # Reads the command text in one linear pass; its only I/O is looking for a
     # `.git` entry above the cwd once a `..` write target is found. No
     # subprocess, so it blocks and asks as an enforcing hook at no budget cost.
@@ -200,6 +205,11 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # invocations the command chains. Best-effort, so skippable under budget
     # pressure (`_BEST_EFFORT_HOOKS` in the Bash dispatcher).
     "ask-broad-git-add.py": 4.0,
+    # `git diff --cached`, plus a `git diff` and a `git ls-files --others` when
+    # the commit takes files from the working tree, ALL sharing one 3s deadline
+    # (`GIT_BUDGET_SECONDS` in that hook), however many commits the command
+    # chains. Best-effort, so skippable under budget pressure.
+    "ask-staged-debug-tag.py": 3.0,
     # 2 x _gh(4s): `pr view` then `pr list` on the explicit-PR-number path. The
     # only hook that leaves the machine, and the reason it stays advisory. Its
     # own docstring is the authority on the call count; the previous entry

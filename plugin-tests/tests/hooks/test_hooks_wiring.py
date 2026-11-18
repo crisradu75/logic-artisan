@@ -608,10 +608,23 @@ def test_skippable_hooks_run_after_every_enforcing_hook_in_the_bash_dispatcher()
     )
 
 
-def test_the_bash_dispatcher_declares_the_broad_add_hook_best_effort():
+def test_the_bash_dispatcher_declares_the_git_probing_ask_hooks_best_effort():
     # Non-vacuity for the test above, and the budget arithmetic: the enforcing
-    # hooks already spend the whole budget, so this hook fits only as skippable.
-    assert _best_effort(_HOOKS_DIR / "dispatch-bash-pretooluse.py") == {"ask-broad-git-add.py"}
+    # hooks already spend the whole budget, so these hooks fit only as skippable.
+    assert _best_effort(_HOOKS_DIR / "dispatch-bash-pretooluse.py") == {
+        "ask-broad-git-add.py", "ask-staged-debug-tag.py",
+    }
+
+
+def test_the_bash_dispatcher_runs_the_commit_message_hook_as_enforcing():
+    # Enforcing, not best-effort: it costs nothing against the budget (no
+    # subprocess), and it can block, which a best-effort hook never may.
+    dispatcher_path = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
+    name = "block-dishonest-commit.py"
+    assert name in _hook_files_list(dispatcher_path)
+    assert name not in _named_collection(dispatcher_path, "_ADVISORY_HOOKS") | _best_effort(dispatcher_path)
+    assert _can_block((_HOOKS_DIR / name).read_text(encoding="utf-8"))
+    assert _load_dispatch_lib().HOOK_WORST_CASE_SECONDS[name] == 0.0
 
 
 def test_the_bash_dispatcher_runs_the_text_guard_as_enforcing():

@@ -947,6 +947,25 @@ def test_copilot_pretooluse_asks_before_a_broad_add_sweeps_an_untracked_file(tmp
     assert "ask-broad-git-add.py" in decision["permissionDecisionReason"]
 
 
+def test_copilot_pretooluse_denies_a_measured_by_none_commit(tmp_path):
+    # The Bash dispatcher's block reaches Copilot as a deny with its reason.
+    repo = _make_repo(tmp_path / "repo")
+    _denied(_bash(tmp_path, 'git commit -m "fix: x" -m "Measured-by: none"', cwd=repo),
+            "block-dishonest-commit.py")
+
+
+def test_copilot_pretooluse_asks_before_a_commit_adds_a_debug_tag(tmp_path):
+    # The best-effort ask reaches Copilot as an ask, not a deny.
+    repo = _make_repo(tmp_path / "repo")
+    (repo / "README.md").write_text("hello\nprint('[" + "DEBUG-a3f1] x')\n", encoding="utf-8")
+    result = _bash(tmp_path, "git commit -am x", cwd=repo)
+    assert result.returncode == 0, result.stderr
+    decision = json.loads(result.stdout)
+    assert decision["permissionDecision"] == "ask", decision
+    assert "`README.md:2`" in decision["permissionDecisionReason"]
+    assert "ask-staged-debug-tag.py" in decision["permissionDecisionReason"]
+
+
 # requirement: guard-hooks / An unresolved plugin root in a command is blocked
 def test_copilot_pretooluse_denies_an_unresolved_plugin_root(tmp_path):
     _denied(_bash(tmp_path, 'python3 "${CLAUDE_PLUGIN_ROOT}/skills/x/check.py"'), "guard-bash-text.py")

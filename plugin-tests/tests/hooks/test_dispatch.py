@@ -556,16 +556,71 @@ def test_bash_dispatch_stays_silent_on_a_named_git_add(tmp_path):
     assert "permissionDecision" not in r.stdout
 
 
+# requirement: git-guards / A commit message carrying Measured-by none is refused
+def test_bash_dispatch_blocks_a_measured_by_none_commit(tmp_path):
+    r = _run(_BASH_DISPATCH, {
+        "tool_input": {"command": 'git commit -m "fix: x" -m "Measured-by: none"'}, "cwd": str(tmp_path),
+    })
+    assert r.returncode == 2
+    assert "block-dishonest-commit.py" in r.stderr
+
+
+# requirement: git-guards / An empty review-round commit is refused
+def test_bash_dispatch_blocks_an_empty_round_commit_and_forwards_the_empty_commit_warning(tmp_path):
+    r = _run(_BASH_DISPATCH, {
+        "tool_input": {"command": 'git commit --allow-empty -m "fix: review round 1"'}, "cwd": str(tmp_path),
+    })
+    assert r.returncode == 2
+    assert "review-round subject" in r.stderr
+    r = _run(_BASH_DISPATCH, {
+        "tool_input": {"command": 'git commit --allow-empty -m "init"'}, "cwd": str(tmp_path),
+    })
+    assert r.returncode == 0
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    assert "permissionDecision" not in nested
+    assert "[block-dishonest-commit] `git commit --allow-empty`" in nested["additionalContext"]
+
+
+# requirement: git-guards / A commit that would add a debug tag asks first
+def test_bash_dispatch_reemits_the_staged_debug_tag_ask(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "probe.py").write_text("print('[" + "DEBUG-a3f1] x')\n", encoding="utf-8")
+    _git(repo, "add", "probe.py")
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": "git commit -m x"}, "cwd": str(repo)}, cwd=repo)
+    assert r.returncode == 0, "an ask must not block the call"
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert "`probe.py:1`" in nested["permissionDecisionReason"]
+    assert "ask-staged-debug-tag.py" in nested["permissionDecisionReason"]
+
+
+def test_an_errored_commit_message_hook_escalates_as_enforcing(monkeypatch):
+    """`block-dishonest-commit.py` is enforcing: if it cannot load, its check did
+    not run, and the dispatcher asks rather than allowing silently."""
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "block-dishonest-commit.py",
+        {"tool_name": "Bash", "tool_input": {"command": "echo hi"}},
+    )
+    assert rc == 0
+    assert nested["permissionDecision"] == "ask"
+    assert "block-dishonest-commit.py" in nested["permissionDecisionReason"]
+
+
 def test_a_spent_budget_skips_the_best_effort_hook_and_says_so(monkeypatch, capsys, tmp_path):
     """The trade `_BEST_EFFORT_HOOKS` makes, pinned: under a spent budget the
-    broad-add check is skipped (as its own git timeout would), named in the
-    debug log, and no context is injected into the call."""
+    broad-add and staged-debug-tag checks are skipped (as their own git
+    timeouts would), named in the debug log, and no context is injected into
+    the call."""
     mod = _load_dispatcher("dispatch-bash-pretooluse.py")
-    assert mod._BEST_EFFORT_HOOKS == {"ask-broad-git-add.py"}
+    assert mod._BEST_EFFORT_HOOKS == {"ask-broad-git-add.py", "ask-staged-debug-tag.py"}
     rc = _run_in_process(mod, {"tool_input": {"command": "ls"}, "cwd": str(tmp_path)}, monkeypatch)
     captured = capsys.readouterr()
     assert rc == 0
     assert "ask-broad-git-add.py" in captured.err
+    assert "ask-staged-debug-tag.py" in captured.err
     assert captured.out.strip() == ""
 
 

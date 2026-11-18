@@ -309,11 +309,11 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | 4eb407fe 2026-08-10 delete the seven wrapper scripts; moved by 9cd5f32f | never create the branch on an unanswered question
 - keep | user's files | d452a82d 2026-07-28 (#11) branch collision preflight and rename-in-place guard; `ship_check.py preflight` holds the checks since add-ship-check-script 2026-11-18 | `origin/<base-branch>..HEAD` must hold 0 commits — no commits to lose
 - keep | user's files | add-ship-check-script review 2026-11-18: a stacked run on the default branch was approved for `git branch -m`; `ship_check.py preflight` refuses it | the default branch or the parent, which is never renamed.
-- keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved); diagnose's debug tag leaking into a commit | must return nothing; remove any tagged line before staging
+- keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved); diagnose's debug tag leaking into a commit; ask-staged-debug-tag enforces it | must return nothing; remove any tagged line before staging
 - keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | a rename must touch both, or this grep searches for a string nothing writes
 - keep | user's files | ee4034ad 2026-07-23 extract; tool-redirect bug wrote a scratch file into the repo root | Never fold it into the commit
 - keep | user's files | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | never skip this because Implement's delegate reported success
-- keep | honesty | eaa579b0 2026-08-24 (#145) a measurement names its command | never `Measured-by: none`
+- keep | honesty | eaa579b0 2026-08-24 (#145) a measurement names its command; block-dishonest-commit enforces it | never `Measured-by: none`
 - keep | honesty | 74cb2be9 2026-09-12 (#238) a pair asserting sameness must come from one tree | must come from one tree
 - keep | honesty | 74cb2be9 2026-09-12, feat: a pair of numbers asserting sameness must come from one tree... | and the trailer must name it
 - keep | user's files | ee4034ad 2026-07-23 extract; bash-discipline.md staging incident | Path-scoped staging — NEVER `git add -A`
@@ -500,7 +500,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); same rule as SKILL.md's staging rule | stage the explicit changed paths (never `-A`)
 - keep | honesty | 68c56330 2026-08-11; design-tradeoffs "The empty-staging guard": a no-op push reported a clean Revise | **`git diff --cached --name-only` must list at least one path.
 - keep | honesty | design-tradeoffs "The empty-staging guard": keying on zero Applied hides a `done` with no edit | never by "zero findings triaged Applied"
-- keep | honesty | #155 (a55f4d98 2026-08-25) review round 1: a fix-round commit that fixed nothing is a worse lie than a missing one | Never manufacture an empty commit for the counter.
+- keep | honesty | #155 (a55f4d98 2026-08-25) review round 1: a fix-round commit that fixed nothing is a worse lie than a missing one; block-dishonest-commit enforces it | Never manufacture an empty commit for the counter.
 - keep | honesty | #357 via #362 (51df1d46, 2026-10-13): the retro splits round-2 yield by the trigger | never drop the field to clear a refusal
 - keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | it is never reconstructed there
 - keep | honesty | #155 (a55f4d98, 2026-08-25); design-tradeoffs "Two exit counts": an open Critical exited `ok` | both must be zero to exit clean
@@ -524,7 +524,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | shipped to other repos | a227647a 2026-09-12, feat: add the /cla:diagnose skill and its two Test-phase escalations... | never put a question mid-chain to a user who is not there
 
 ## skills/lite-pr/references/measured-by.md
-- keep | honesty | #145 (eaa579b0, 2026-08-24): a trailer that certifies a check nobody ran | never `Measured-by: none`
+- keep | honesty | #145 (eaa579b0, 2026-08-24): a trailer that certifies a check nobody ran; block-dishonest-commit enforces it | never `Measured-by: none`
 - keep | honesty | 74cb2be9 2026-09-12, feat: a pair of numbers asserting sameness must come from one tree... | "no regression" — must come from one tree
 - keep | honesty | 74cb2be9 2026-09-12, feat: a pair of numbers asserting sameness must come from one tree... | and the trailer must name it
 - not-a-rule | - | - | that paragraph must be `key: value` lines throughout
