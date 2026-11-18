@@ -50,6 +50,23 @@ ROOT="$(git rev-parse --show-toplevel)"
 
 If this errors (not inside a git working tree), stop and tell the user to run from within a git repo.
 
+## Snapshot the protected files, before any write
+
+The first step of every run, before item 1. `setup_guard.py` records the files this skill promises to
+leave alone: the instruction files (`CLAUDE.md`, `AGENTS.md`), an existing `notes.md`, the machine-read
+`*.local.md` files, the terminology file and the overlays. Write the snapshot to a file in the
+session scratchpad; with none, in a folder the repo gitignores (run `git check-ignore -q` on it
+first), never elsewhere in the repo. The script refuses a path in the repo that git does not ignore.
+
+```bash
+: "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/setup_guard.py" snapshot --root "$ROOT" --out "<snapshot file>"
+```
+
+Keep the `<snapshot file>` path for the post-run check. Exit 0: go on to item 1. Any other exit:
+report its first line and stop, since nothing is written yet and the run's promises could not be
+checked afterwards.
+
 ## Never-clobber contract
 
 - **Skip anything that exists — via a guarded idiom, never a bare redirect.** For every directory and
@@ -231,7 +248,9 @@ Ask for a yes (`AskUserQuestion` or a plain yes/no) before writing anything; on 
 changes, revise and ask again rather than applying part of it. On yes, write each confirmed file
 with `Write`/`Edit` and delete each confirmed overlay with `rm --`. **Every target must be repo
 content** — `cla.io/**`, or the spec map path the user chose in "The spec map scaffold". A target that resolves inside the plugin tree is reported as a migration
-recommendation, never written. A declined proposal leaves its file untouched.
+recommendation, never written. A declined proposal leaves its file untouched. Note each protected
+file a yes covers (a `*.local.md` file, the terminology file, an overlay): the post-run check takes
+it as `--approved`.
 
 **Then run the staleness checker against what was just written:**
 
@@ -245,12 +264,34 @@ says `found at <path>` means the path exists only deeper in the tree: it is like
 look (stderr says why): fix that, and never read a 2 as a pass. Nothing in the plugin runs it
 again; a repo that wants it standing wires it into its own gate.
 
+## Post-run check — the protected files
+
+The last step of every run that took the snapshot, after item 13 or after the step where the run
+stopped:
+
+```bash
+: "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/setup_guard.py" verify --root "$ROOT" --snapshot "<snapshot file>" [--approved <path> ...]
+```
+
+Pass one `--approved <path>` for each protected file the user said yes to changing in this run, and
+for no other: a `*.local.md` file an accepted item 12 addition wrote, `cla.io/terminology.md` after
+an accepted item 11 reconcile, and each overlay edited or deleted at item 13. A yes never covers an
+instruction file, an existing `notes.md`, a new overlay or a new terminology file: the script
+reports those whatever `--approved` says.
+
+- Exit 0: report its first line, which names each approved change.
+- Exit 1: the run is not clean. Report the first line and every `PROBLEM` line (each names the file
+  and whether it was changed, created or deleted), never call the run clean, and stop there: leave
+  the files as they are for the user to judge.
+- Exit 2: say the check could not run, with its first line, and never treat that exit as a pass.
+
 ## Report
 
 One summary at the end, item by item: each target's outcome in the words its item uses, each
 overlay's lines and where they went (kept, facts file, lessons log, dropped), every declined
-proposal, the checker's exit code with every stale path it named, and every legacy-location
-recommendation.
+proposal, the checker's exit code with every stale path it named, every legacy-location
+recommendation, and the post-run check's first line with every `PROBLEM` line it printed.
 
 ## Non-goals
 

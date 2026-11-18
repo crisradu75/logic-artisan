@@ -732,6 +732,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | out of the always-loaded skill listing
 - keep | shipped to other repos | 2.0.0 (016203d7), cla-setup replaces cla-init; plugin is a read-only cache | arrives with the install and is never touched
 - keep | user's files | never-clobber from cla-init (pre-extract); restated in #498 | The never-clobber contract below applies to every step
+- keep | user's files | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; the snapshot is scratch, never repo content | first), never elsewhere in the repo. The script refuses
 - not-a-rule | - | - | ## Never-clobber contract
 - keep | user's files | 2.0.0 (016203d7), cla-setup never-clobber contract | via a guarded idiom, never a bare redirect
 - keep | user's files | 2.0.0 (016203d7), a bare redirect truncates an existing file | ALWAYS guard with `if [ -e "$f" ]`
@@ -749,6 +750,9 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | 2.0.0 (016203d7), staleness checker after writing facts | It MUST exit 0. Exit 1 names each stale path
 - not-a-rule | - | - | placeholder (`{...}` or `<...>`) is never checked, so write an example path with one
 - keep | honesty | 2.0.0 review fix (25d0fab2); exit 2 means the checker could not look | never read a 2 as a pass
+- keep | user's files | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; the skill never asks to touch these, so a yes cannot cover them | A yes never covers an
+- keep | honesty | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; a protected file changed without a yes is not a clean run | never call the run clean, and stop there
+- keep | honesty | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; exit 2 means the guard could not look | and never treat that exit as a pass
 - keep | shipped to other repos | 2.0.0 (016203d7), overlays become optional | Does **NOT** create overlays, and never writes a fact into one.
 
 ## skills/cla-setup/references/economy-rules-block.md

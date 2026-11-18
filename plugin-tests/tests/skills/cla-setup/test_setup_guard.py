@@ -1,0 +1,366 @@
+"""setup_guard.py tests: real git repos, a snapshot at the start, a change, then verify.
+
+Every repo here is a copy of one template: `CLAUDE.md`, `AGENTS.md`, the feedback notes, the
+terminology file and one overlay committed, and a gitignored `cla.io/project-tokens.local.md`.
+Snapshots go to `tmp_path / "snap.json"`, outside the repo, as the skill tells the agent to.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+_REPO = Path(__file__).resolve().parents[4]
+_SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
+_SCRIPT = _SKILL.parent / "scripts" / "setup_guard.py"
+
+TOKENS = "cla.io/project-tokens.local.md"
+OVERLAY = "cla.io/overlays/review-change.md"
+TERMS = "cla.io/terminology.md"
+NOTES = "cla.io/feedback/notes.md"
+
+# Every protected path the template holds, with whether a yes may cover a change to it.
+PRESENT = {
+    "CLAUDE.md": False,
+    "AGENTS.md": False,
+    NOTES: False,
+    TERMS: True,
+    OVERLAY: True,
+    TOKENS: True,
+}
+
+
+def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", check=True,
+    )
+
+
+def _build(root: Path) -> None:
+    work = root / "work"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    _git(work, "config", "user.email", "test@example.com")
+    _git(work, "config", "user.name", "Test")
+    files = {
+        ".gitignore": "*.local.md\ntemp/\n",
+        "CLAUDE.md": "# Rules\n",
+        "AGENTS.md": "# Agents\n",
+        NOTES: "# App experience notes\n- a note\n",
+        TERMS: "# Terminology\n",
+        OVERLAY: "# review-change overlay\n- a rule\n",
+        TOKENS: "widgetco\n",
+        "cla.io/project-facts.md": "# Facts\n",
+    }
+    for rel, text in files.items():
+        p = work / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    _git(work, "add", ".")
+    _git(work, "commit", "-q", "-m", "initial")
+
+
+@pytest.fixture
+def work(tmp_path: Path, cached_git_repo) -> Path:
+    cached_git_repo("cla-setup/setup_guard", _build, tmp_path)
+    return tmp_path / "work"
+
+
+def _run(*args: str) -> subprocess.CompletedProcess[str]:
+    # A neutral cwd: the script must act on --root, not wherever it was started.
+    return subprocess.run(
+        [sys.executable, str(_SCRIPT), *args], cwd=Path(__file__).parent,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+
+
+def _snap(work: Path) -> Path:
+    out = work.parent / "snap.json"
+    r = _run("snapshot", "--root", str(work), "--out", str(out))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.startswith("OK snapshot:")
+    return out
+
+
+def _verify(work: Path, snap: Path, *approved: str) -> subprocess.CompletedProcess[str]:
+    extra = [a for rel in approved for a in ("--approved", rel)]
+    return _run("verify", "--root", str(work), "--snapshot", str(snap), *extra)
+
+
+def _problems(r: subprocess.CompletedProcess[str]) -> list[str]:
+    return [line for line in r.stdout.splitlines() if line.startswith("PROBLEM ")]
+
+
+def _write(work: Path, rel: str, text: str) -> None:
+    p = work / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+
+
+# ---------------------------------------------------------------- passes
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_run_that_touches_nothing_protected_passes(work: Path) -> None:
+    snap = _snap(work)
+    # The writes cla-setup makes unasked, or on a yes to an unprotected file.
+    _write(work, ".claude/rules/cla-economy.md", "# Economy rules\n")
+    (work / ".gitignore").write_text("*.local.md\ntemp/\ncla.io/retro/*-run-notes-*.md\n", encoding="utf-8")
+    _write(work, "cla.io/project-facts.md", "# Facts\n## Ports\n- 3000\n")
+    _write(work, "cla.io/retro/spec-to-pr-runs.jsonl", "")
+    r = _verify(work, snap)
+    assert r.returncode == 0, r.stdout
+    assert r.stdout.startswith("OK verify:")
+    assert not _problems(r)
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_file_already_dirty_before_the_run_and_left_alone_passes(work: Path) -> None:
+    # The owner edited CLAUDE.md and an overlay before the run. Git shows both as modified
+    # whatever the run does, which is why the guard compares with a snapshot, not with HEAD.
+    _write(work, "CLAUDE.md", "# Rules\n- the owner's uncommitted line\n")
+    _write(work, OVERLAY, "# review-change overlay\n- an uncommitted rule\n")
+    _write(work, "cla.io/overlays/untracked.md", "# an untracked overlay from before\n")
+    status = _git(work, "status", "--porcelain").stdout
+    assert " M CLAUDE.md" in status and "?? cla.io/overlays/untracked.md" in status
+    snap = _snap(work)
+    r = _verify(work, snap)
+    assert r.returncode == 0, r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_notes_created_where_there_were_none_passes(work: Path) -> None:
+    (work / NOTES).unlink()
+    snap = _snap(work)
+    _write(work, NOTES, "# App experience notes\n")  # item 3's seed
+    r = _verify(work, snap)
+    assert r.returncode == 0, r.stdout
+
+
+# ---------------------------------------------------------------- changed, created, deleted
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize("rel", sorted(PRESENT))
+def test_every_protected_file_changed_without_a_yes_fails(work: Path, rel: str) -> None:
+    snap = _snap(work)
+    (work / rel).write_text((work / rel).read_text(encoding="utf-8") + "- added by the run\n", encoding="utf-8")
+    r = _verify(work, snap)
+    assert r.returncode == 1, r.stdout
+    assert r.stdout.startswith("FAIL verify: 1 protected file problem(s)")
+    assert len(_problems(r)) == 1 and _problems(r)[0].startswith(f"PROBLEM changed: {rel} (")
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize("rel", sorted(PRESENT))
+def test_every_protected_file_deleted_without_a_yes_fails(work: Path, rel: str) -> None:
+    snap = _snap(work)
+    (work / rel).unlink()
+    r = _verify(work, snap)
+    assert r.returncode == 1, r.stdout
+    assert len(_problems(r)) == 1 and _problems(r)[0].startswith(f"PROBLEM deleted: {rel} (")
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize(
+    "rel",
+    ["CLAUDE.md", "AGENTS.md", "CLAUDE.local.md", ".claude/CLAUDE.md", TERMS, OVERLAY, TOKENS,
+     "cla.io/fleet.local.md"],
+)
+def test_every_protected_file_created_without_a_yes_fails(work: Path, rel: str) -> None:
+    if (work / rel).exists():
+        (work / rel).unlink()
+    snap = _snap(work)
+    _write(work, rel, "# made by the run\n")
+    r = _verify(work, snap)
+    assert r.returncode == 1, r.stdout
+    assert len(_problems(r)) == 1 and _problems(r)[0].startswith(f"PROBLEM created: {rel} (")
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_nested_instruction_file_is_protected(work: Path) -> None:
+    _write(work, "app/CLAUDE.md", "# app rules\n")
+    _git(work, "add", "app/CLAUDE.md")
+    snap = _snap(work)
+    _write(work, "app/CLAUDE.md", "# app rules\n- added by the run\n")
+    _write(work, "lib/AGENTS.md", "# made by the run\n")
+    r = _verify(work, snap)
+    assert r.returncode == 1, r.stdout
+    assert _problems(r) == [
+        "PROBLEM changed: app/CLAUDE.md (an instruction file; cla-setup never touches it, so a yes does not cover it)",
+        "PROBLEM created: lib/AGENTS.md (an instruction file; cla-setup never touches it, so a yes does not cover it)",
+    ]
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_gitignored_local_file_reshaped_fails_though_git_sees_nothing(work: Path) -> None:
+    snap = _snap(work)
+    _write(work, TOKENS, "- widgetco\n")
+    assert _git(work, "status", "--porcelain").stdout == ""
+    r = _verify(work, snap)
+    assert r.returncode == 1, r.stdout
+    assert _problems(r) == [
+        f"PROBLEM changed: {TOKENS} (a machine-read local file; changed without the owner's yes)"
+    ]
+
+
+# ---------------------------------------------------------------- overlays
+
+
+# requirement: cla-setup / Setup creates no overlay and no terminology file
+def test_an_overlay_created_fails_even_when_approved(work: Path) -> None:
+    snap = _snap(work)
+    _write(work, "cla.io/overlays/spec-to-pr.md", "# made by the run\n")
+    r = _verify(work, snap, "cla.io/overlays/spec-to-pr.md")
+    assert r.returncode == 1, r.stdout
+    assert _problems(r) == [
+        "PROBLEM created: cla.io/overlays/spec-to-pr.md (an overlay; cla-setup never creates one, "
+        "so a yes does not cover it)"
+    ]
+    snap_data = json.loads(snap.read_text(encoding="utf-8"))
+    assert snap_data["overlays"] == [OVERLAY]
+
+
+# requirement: cla-setup / Setup creates no overlay and no terminology file
+def test_the_terminology_file_created_fails_even_when_approved(work: Path) -> None:
+    (work / TERMS).unlink()
+    snap = _snap(work)
+    _write(work, TERMS, "# Terminology\n")
+    r = _verify(work, snap, TERMS)
+    assert r.returncode == 1, r.stdout
+    assert _problems(r)[0].startswith(f"PROBLEM created: {TERMS} (the terminology file; cla-setup never creates it")
+
+
+# ---------------------------------------------------------------- approval
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize("rel", sorted(r for r, ok in PRESENT.items() if ok))
+@pytest.mark.parametrize("action", ["changed", "deleted"])
+def test_an_approved_change_passes(work: Path, rel: str, action: str) -> None:
+    snap = _snap(work)
+    if action == "changed":
+        _write(work, rel, "# reconciled on a yes\n")
+    else:
+        (work / rel).unlink()
+    r = _verify(work, snap, str(work / rel))  # an absolute path works as well as a relative one
+    assert r.returncode == 0, r.stdout
+    assert r.stdout.startswith("OK verify:") and f"approved: {rel} {action}" in r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_token_list_created_on_a_yes_passes(work: Path) -> None:
+    (work / TOKENS).unlink()
+    snap = _snap(work)
+    _write(work, TOKENS, "widgetco\n")
+    assert _verify(work, snap, TOKENS).returncode == 0
+    assert _verify(work, snap).returncode == 1
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize("rel", sorted(r for r, ok in PRESENT.items() if not ok))
+def test_a_yes_does_not_cover_a_file_the_skill_never_changes(work: Path, rel: str) -> None:
+    snap = _snap(work)
+    _write(work, rel, "# rewritten\n")
+    r = _verify(work, snap, rel)
+    assert r.returncode == 1, r.stdout
+    assert "so a yes does not cover it" in _problems(r)[0]
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_an_approval_covers_only_the_path_it_names(work: Path) -> None:
+    snap = _snap(work)
+    _write(work, TERMS, "# reconciled\n")
+    _write(work, OVERLAY, "# edited without a yes\n")
+    r = _verify(work, snap, TERMS)
+    assert r.returncode == 1, r.stdout
+    assert _problems(r) == [f"PROBLEM changed: {OVERLAY} (an overlay; changed without the owner's yes)"]
+
+
+# ---------------------------------------------------------------- could not check
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_missing_snapshot_is_unchecked(work: Path) -> None:
+    r = _verify(work, work.parent / "never-written.json")
+    assert r.returncode == 2
+    assert r.stdout.startswith("UNCHECKED snapshot:")
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize(
+    "mangle",
+    [
+        lambda d: "{not json",
+        lambda d: json.dumps([]),
+        lambda d: json.dumps({**d, "version": 2}),
+        lambda d: json.dumps({**d, "files": {}}),
+        lambda d: json.dumps({**d, "files": {**d["files"], "CLAUDE.md": "abc"}}),
+        lambda d: json.dumps({**d, "files": {k: v for k, v in d["files"].items() if k != "CLAUDE.md"}}),
+        lambda d: json.dumps({**d, "files": {**d["files"], "src/app.py": None}}),
+        lambda d: json.dumps({**d, "overlays": "x"}),
+        lambda d: json.dumps({**d, "root": "/somewhere/else"}),
+    ],
+    ids=["not-json", "not-an-object", "version", "no-files", "bad-digest", "fixed-path-missing",
+         "unprotected-path", "bad-overlays", "other-root"],
+)
+def test_a_corrupt_snapshot_is_unchecked(work: Path, mangle) -> None:
+    snap = _snap(work)
+    snap.write_text(mangle(json.loads(snap.read_text(encoding="utf-8"))), encoding="utf-8")
+    r = _verify(work, snap)
+    assert r.returncode == 2, r.stdout
+    assert r.stdout.startswith("UNCHECKED snapshot:")
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_an_approval_outside_the_repo_is_unchecked(work: Path, tmp_path: Path) -> None:
+    snap = _snap(work)
+    r = _verify(work, snap, str(tmp_path / "outside.md"))
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED approved:")
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_outside_a_git_repo_is_unchecked(tmp_path: Path) -> None:
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    r = _run("snapshot", "--root", str(plain), "--out", str(tmp_path / "s.json"))
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED repo:")
+    assert not (tmp_path / "s.json").exists()
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_the_snapshot_is_never_written_into_the_repo(work: Path) -> None:
+    for rel in ("snap.json", TOKENS, "cla.io/overlays/snap.md"):
+        before = (work / rel).read_bytes() if (work / rel).exists() else None
+        r = _run("snapshot", "--root", str(work), "--out", str(work / rel))
+        assert r.returncode == 2 and r.stdout.startswith("UNCHECKED out:"), (rel, r.stdout)
+        after = (work / rel).read_bytes() if (work / rel).exists() else None
+        assert before == after, rel
+        why = "git does not ignore it" if rel == "snap.json" else "is a protected path"
+        assert why in r.stdout, (rel, r.stdout)
+    # A gitignored folder is allowed, and the file it writes there is not seen as a change.
+    r = _run("snapshot", "--root", str(work), "--out", str(work / "temp" / "snap.json"))
+    assert r.returncode == 0, r.stdout
+    assert _verify(work, work / "temp" / "snap.json").returncode == 0
+
+
+# ---------------------------------------------------------------- the skill calls it
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_the_skill_snapshots_first_and_verifies_last() -> None:
+    text = _SKILL.read_text(encoding="utf-8").replace("\r\n", "\n")
+    snap = text.index('python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/setup_guard.py" snapshot')
+    verify = text.index('python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/setup_guard.py" verify')
+    assert snap < text.index("### 1. `cla.io/` directories")
+    assert text.index("### 13. Confirm, write, check") < verify < text.index("## Report")
+    tail = text[verify:text.index("## Report")]
+    assert re.search(r"Exit 1.*not clean", tail, re.S), "the exit-1 branch must refuse to call the run clean"
+    assert re.search(r"Exit 2.*could not run", tail, re.S), "the exit-2 branch must say the check could not run"
+    assert "--approved" in tail
