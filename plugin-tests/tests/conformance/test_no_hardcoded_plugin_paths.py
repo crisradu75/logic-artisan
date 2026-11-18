@@ -208,8 +208,9 @@ def test_the_scan_is_not_vacuous():
     # when use-toolkit-reviewers deleted three `agents/` files (real count 112, margin one), and
     # from 111 to 113 when the Copilot CLI guard hooks added `hooks/copilot-pretooluse.py` and
     # `hooks/copilot-posttooluse.py` (real count 114, measured with this file's `__main__`, margin
-    # one).
-    assert len(files) >= 113, f"scan set collapsed to {len(files)} files"
+    # one), and from 113 to 133 after the principle-3 guard hooks and scripts (#527 to #542) took
+    # the real count to 134.
+    assert len(files) >= 133, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
