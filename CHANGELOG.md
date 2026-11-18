@@ -165,7 +165,7 @@ the skills fall back to the default list of protected areas.
   now asks, a `GIT_DIR=` in another command no longer silences an add, a worktree-side rename no
   longer hides a stray file, a parser failure prints one line on stderr, and file names in the ask
   are escaped so a name cannot trip the Copilot adapter's deny. The cache guard also covers
-  `synced/` copies and matches case-insensitively on macOS and Windows (#PR).
+  `synced/` copies and matches case-insensitively on macOS and Windows (#541).
 - **Guards see executed command substitutions in quoted spans.** `echo "$(git reset --hard)"` and a
   backtick form now reach `ask-destructive-git` and `block-worktree-path-escape`, and the dispatch
   library scans the inside of `$(...)` and backticks (#495).
