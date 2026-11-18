@@ -16,8 +16,8 @@ reads `<repo-root>/cla.io/project-facts.md` for its `Test proof granularity:` an
 
 `RULES` holds the `protected` change budget. When the facts file holds `- Change budget: lean`,
 `LEAN_BUDGET` takes its place. A config that carries any budget sentence ("at most N requirements
-across all its specs", in any letter case and not commented out), whatever its numbers, is not
-listed as missing it, so numbers an owner edited stay.
+across all its specs", in any letter case, under `rules:` and not commented out), whatever its
+numbers, is not listed as missing it, so numbers an owner edited stay.
 
 `RULES` holds the requirement-level `tasks` rule. When `cla.io/project-facts.md` holds
 `- Test proof granularity: scenario`, `SCENARIO_TASK` takes its place and the requirement
@@ -164,13 +164,29 @@ def _unquote(rule: str) -> str:
     return rule
 
 
-def _rule_lines(block: str, mark: str, want: bool, have: set[str], quoted: set[str]) -> list[str]:
-    """`mark artifact: - rule` for each rule of `block` the file carries (want) or lacks (not want)."""
+def _rules_lines(text: str) -> list[str]:
+    """The lines under the top-level `rules:` key, trimmed, comments dropped: the only place a budget
+    sentence counts, read as `check_spec_proof.py`'s `_rules_text` reads it (a `context:` block, say,
+    can mention a budget without stating the repo's)."""
+    out, in_rules = [], False
+    for line in text.split("\n"):
+        if not in_rules:
+            in_rules = bool(re.match(r"^rules:\s*(?:#.*)?$", line))
+            continue
+        if line.strip() and not line[0].isspace() and not line.startswith("- "):
+            break  # the next top-level key
+        if not line.lstrip().startswith("#"):
+            out.append(line.strip(" \t\v\f"))
+    return out
+
+
+def _rule_lines(block: str, mark: str, want: bool, have: set[str], quoted: set[str], under_rules: list[str]) -> list[str]:
+    """`mark artifact: - rule` for each rule of `block` the file carries (want) or lacks (not want).
+
+    `under_rules` is the file's `rules:` block (`_rules_lines`): a budget sentence counts only there."""
     found, key = [], ""
-    # A commented-out line carries no rule: OpenSpec never reads it.
-    live = [line for line in have if not line.startswith("#")]
-    budget_held = any(_is_repo_budget(line) for line in live)
-    override_held = any(_is_override_budget(line) for line in live)
+    budget_held = any(_is_repo_budget(line) for line in under_rules)
+    override_held = any(_is_override_budget(line) for line in under_rules)
     for line in block.split("\n"):
         if re.fullmatch(r"  [a-z].*:", line):
             key = line[2:]
@@ -198,7 +214,8 @@ def _compare(old: Path, rules: str, retired: str) -> int:
     text = raw.replace(b"\r", b"").decode("utf-8-sig", errors="surrogateescape")
     have = {line.strip(" \t\v\f") for line in text.split("\n")}
     quoted = {_unquote(line) for line in have}
-    diff = _rule_lines(rules, "+", False, have, quoted) + _rule_lines(retired, "-", True, have, quoted)
+    under_rules = _rules_lines(text)
+    diff = _rule_lines(rules, "+", False, have, quoted, under_rules) + _rule_lines(retired, "-", True, have, quoted, under_rules)
     if not diff:
         _out(f"{name}: exists (skipped), rules current\n")
     else:

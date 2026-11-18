@@ -436,7 +436,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/spec-to-pr/references/concurrent-runs.md
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: edits in one clone cannot be committed from another | so the session itself must live in the worktree
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: a stale local base gives an unmergeable PR | never bare `git worktree add ... -b <branch>`
-- keep | user's files | predates extraction (ee4034ad, 2026-07-23); the worktree would lack the change dir | the change dir must already be committed
+- keep | honesty | predates extraction (ee4034ad, 2026-07-23); the worktree would lack the change dir | the change dir must already be committed
 
 ## skills/spec-to-pr/references/design-tradeoffs.md
 - not-a-rule | - | - | **`<base-branch>` is resolved, never assumed.**
@@ -642,7 +642,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 
 ## skills/multi-lite/references/candidate-extraction.md
 - not-a-rule | - | - | other candidate ids in this batch it must run after
-- keep | user's files | #515 (94280abd 2026-11-17), principle 8: the owner can override the path | a path the doc or the user states always wins.
+- keep | honesty | #515 (94280abd 2026-11-17), principle 8: the owner can override the path | a path the doc or the user states always wins.
 - keep | honesty | 751bed9e 2026-09-16, review findings (a bare negative is an exemption) | the doc section read and what it describes — never a bare "no".
 - not-a-rule | - | - | only a candidate that must merge before a later one does
 - keep | user's files | 1325ac6a 2026-09-16, merge-each-clean policy | never merge a candidate with an unresolved blocking finding
@@ -696,7 +696,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | ee4034ad 2026-07-23 (extraction); durability needs a committed decisions file | Never proceed to Phase 1 from transient conversation state
 - guidance | none | ee4034ad 2026-07-23 (extraction); none found earlier | Its first push sets the upstream (`-u`), as the branch is new; later pushes are bare.
 - not-a-rule | - | - | a crash mid-batch loses at most the change in flight, never the whole batch
-- keep | user's files | #515 (94280abd 2026-11-17), principle 8: the owner can override the path | A path the owner states always wins.
+- keep | honesty | #515 (94280abd 2026-11-17), principle 8: the owner can override the path | A path the owner states always wins.
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier; reworded 2026-11-18 (owner approved): the old wording barred the plan file, which the next line loads on resume | Every phase resumes from committed repo state, never from conversation memory or a log
 
 ## skills/multi-spec/references/authoring-brief.md

@@ -86,3 +86,19 @@ def test_a_commented_out_budget_sentence_does_not_count_as_the_budget(tmp_path: 
     cfg.write_text(text.replace(repo_line, edited), encoding="utf-8", newline="\n")
     out = _seed(tmp_path).splitlines()
     assert len(out) == 2 and out[1] == "+ proposal: " + repo_line.strip()
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_a_budget_sentence_outside_rules_does_not_count_as_the_budget(tmp_path: Path):
+    # The checker reads a budget only under `rules:`; a `context:` block naming one sets none.
+    text = _CONFIG.read_text(encoding="utf-8")
+    repo_line = _repo_budget_line(text)
+    edited = text.replace(repo_line + "\n", "").replace(
+        "rules:\n", "context: |\n  " + repo_line.strip().lstrip("- ").strip('"') + "\n\nrules:\n", 1,
+    )
+    assert "context: |" in edited
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_text(edited, encoding="utf-8", newline="\n")
+    out = _seed(tmp_path).splitlines()
+    assert len(out) == 2 and out[1] == "+ proposal: " + repo_line.strip()
