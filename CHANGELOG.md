@@ -109,6 +109,11 @@ the skills fall back to the default list of protected areas.
   `block-unsafe-recursive-delete` (#503), and `warn-comment-dates` (#505) no longer grow
   quadratically with input length. `block-unsafe-recursive-delete` no longer tokenizes a very large
   segment: one that may be a recursive delete is blocked rather than allowed (#503).
+- **The git guards read global options in linear time.** `ask-destructive-git` and
+  `warn-stray-scratch-artifact` matched `git <global options> <subcommand>` with one regex, which
+  grew quadratically on a 28 KB `git -c git -c git ... status` (25 s) and exponentially on
+  `git -c -c -c ... x` or a run of `--git-dir=x`, past the hook timeout, which lets the command
+  through. The shared `GitInvocation` matcher finds the same matches in linear time (#528).
 - **The Bash dispatcher asks, unscanned, for a command over 500,000 characters.** A hook killed at
   the timeout lets the command through, so past the cap the dispatcher answers with one `ask`
   naming the size and the cap, before the first guard runs. The Copilot adapter keeps that as an

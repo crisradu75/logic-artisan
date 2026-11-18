@@ -8,14 +8,15 @@ importing each as a standalone module — the same technique this package's own
 `hooks/tests/` already uses — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
 modified by this module; it only orchestrates them. (2) It also HOSTS
-`strip_quoted_spans` / `GIT_GLOBAL_OPTS` / `GIT_CMD`, which every leaf hook
+`strip_quoted_spans` / `GitInvocation` / `GIT_CMD`, which every leaf hook
 that matches a git command line imports — `ask-destructive-git.py` and
 `warn-stray-scratch-artifact.py`. (Named, not counted: a count restated away
 from its source is what went stale here before, and a date-stamp turns a wrong
 number into a wrong number that reads as verified. `hooks/tests/`'s
 `_GIT_HOOK_FILES` is where the list is maintained. `ask-broad-git-add.py`
-imports `strip_quoted_spans` and `GIT_CMD` but walks tokens instead of
-composing `GIT_GLOBAL_OPTS`, which keeps it linear on hostile input.)
+imports `strip_quoted_spans` and `GIT_CMD` and walks tokens itself. Both
+ways are linear on hostile input; composing `GIT_GLOBAL_OPTS` into a regex is
+not, see `GitInvocation`.)
 So the relationship with those hooks is bidirectional: this module loads them,
 and they import from it. Consequence worth holding onto: keep this module
 import-cheap and side-effect-free, because a failure here takes out both roles
@@ -765,17 +766,152 @@ def strip_quoted_spans(cmd: str) -> str:
 GIT_SEP = r"(?:[ \t]|\\\r?\n)+"
 
 _GIT_GLOBAL_VALUE_OPTS = r"(?:git-dir|work-tree|namespace|super-prefix)"
+# The four option shapes, shared by `GIT_GLOBAL_OPTS` and `_GIT_OPT_STEPS` below
+# so the two cannot drift.
+_GIT_OPT_VALUED = r"-[cC]" + GIT_SEP + r"\S+"
+_GIT_OPT_NAMED = r"--" + _GIT_GLOBAL_VALUE_OPTS + r"\b"
+_GIT_OPT_SHORT = r"-[A-Za-z]"
+_GIT_OPT_LONG = r"--[A-Za-z][\w-]*(?:=\S+)?"
+# The grammar as one regex. Kept as the reference definition and for repos
+# whose own hooks import it, but no guard here composes it into a search
+# any more: see `GitInvocation` for why (#526).
 GIT_GLOBAL_OPTS = (
     r"(?:"  # outer repetition group — zero or more options, each followed by whitespace
     r"(?:"  # inner alternation — exactly one option-shape per repetition
-    r"(?:-[cC]" + GIT_SEP + r"\S+)"
-    r"|(?:--" + _GIT_GLOBAL_VALUE_OPTS + r"\b(?:=\S+|" + GIT_SEP + r"\S+)?)"
-    r"|(?:-[A-Za-z])"
-    r"|(?:--[A-Za-z][\w-]*(?:=\S+)?)"
+    r"(?:" + _GIT_OPT_VALUED + r")"
+    r"|(?:" + _GIT_OPT_NAMED + r"(?:=\S+|" + GIT_SEP + r"\S+)?)"
+    r"|(?:" + _GIT_OPT_SHORT + r")"
+    r"|(?:" + _GIT_OPT_LONG + r")"
     r")"
     + GIT_SEP +
     r")*"
 )
+
+# One step of `GIT_GLOBAL_OPTS`: one option and its trailing separator, in the
+# order the regex engine tries them. Each step has one useful end: a shorter
+# `\S+` or separator leaves the next item starting on a character no option and
+# no subcommand can start with. The named option's `=value` and value-less
+# forms are left to the long-option step, which reads them to the same end with
+# only failing steps tried in between; the regex reading `--git-dir=x` both
+# ways is what made a run of them exponential.
+_GIT_OPT_STEPS = tuple(
+    re.compile(shape + GIT_SEP)
+    for shape in (
+        _GIT_OPT_VALUED,
+        _GIT_OPT_NAMED + GIT_SEP + r"\S+",
+        _GIT_OPT_SHORT,
+        _GIT_OPT_LONG,
+    )
+)
+_GIT_HEAD = re.compile(GIT_CMD + GIT_SEP)
+
+
+class GitMatch:
+    """The parts of `re.Match` the git guards read: `group`, `start`, `end`,
+    `span`. Group 0 runs from `git` to the end of the match."""
+
+    __slots__ = ("string", "_spans")
+
+    def __init__(self, string: str, spans: list[tuple[int, int]]) -> None:
+        self.string = string
+        self._spans = spans
+
+    def span(self, group: int = 0) -> tuple[int, int]:
+        return self._spans[group]
+
+    def start(self, group: int = 0) -> int:
+        return self._spans[group][0]
+
+    def end(self, group: int = 0) -> int:
+        return self._spans[group][1]
+
+    def group(self, group: int = 0) -> str | None:
+        start, end = self._spans[group]
+        return None if start < 0 else self.string[start:end]
+
+
+class GitInvocation:
+    """Finds `GIT_CMD + GIT_SEP + GIT_GLOBAL_OPTS + after` in linear time.
+
+    Same matches, groups and spans as `re.compile(<that>).finditer` and
+    `.search`, but without the regex's re-walks (#526). The regex walks the
+    option run again from every `git` inside it, quadratic on `git -c git
+    -c git ... status`; and `-c`/`-C` and the named long options each parse
+    two ways (with a value, or as a bare flag), so on `git -c -c -c ... x` it
+    tries every split, exponential (a 95-byte command took 6 s).
+
+    Here the options are walked as steps, in the regex's own order: from a
+    position, each step that matches is followed to its end first, and only
+    when every step fails is `after` tried there. The answer from a position
+    depends on nothing before it, so each position is worked out once per
+    text and shared by every `git` that reaches it.
+
+    `capture_opts=True` adds the options run as group 1, ahead of `after`'s
+    groups, the way `"(" + GIT_GLOBAL_OPTS + ")"` numbered it. Pass text
+    that has been through `strip_quoted_spans`, as with the regex, and
+    `after` starts at the subcommand word, not at whitespace or a backslash
+    (see `_GIT_OPT_STEPS` for why that keeps one end per step).
+    """
+
+    def __init__(self, after: str, capture_opts: bool = False) -> None:
+        self.after = re.compile(after)
+        self.capture_opts = capture_opts
+        # Each step's one-end reading holds only while `after` cannot match at
+        # whitespace or a backslash, so such a pattern is refused here rather
+        # than matched wrongly later. Three probes catch a pattern that matches
+        # empty or a separator before a word; they are a check, not a proof.
+        if any(self.after.match(probe) for probe in (" x", "\tx", "\\x")):
+            raise ValueError(
+                f"GitInvocation: {after!r} can match at whitespace or a backslash; "
+                "start it at the subcommand word"
+            )
+
+    def _resolve(self, text: str, start: int, failed: set) -> tuple | None:
+        """`(position, after_match)` for the first place, in the regex's
+        backtracking order, that options from `start` reach and `after`
+        matches; None when there is none. `failed` holds the positions already
+        known to lead nowhere, and gains the ones this call rules out.
+
+        Only failures are kept: a success ends the match, and the next `git`
+        searched for starts after it, beyond every position this call saw."""
+        stack = [[start, 0]]  # each: a position, and the next step to try there
+        while stack:
+            frame = stack[-1]
+            pos, step = frame
+            if step < len(_GIT_OPT_STEPS):
+                frame[1] = step + 1
+                m = _GIT_OPT_STEPS[step].match(text, pos)
+                if m is not None and m.end() not in failed:
+                    stack.append([m.end(), 0])
+                continue
+            stack.pop()
+            m = self.after.match(text, pos)
+            if m is not None:
+                return pos, m
+            failed.add(pos)
+        return None
+
+    def finditer(self, text: str):
+        failed: set = set()
+        pos = 0
+        while True:
+            head = _GIT_HEAD.search(text, pos)
+            if head is None:
+                return
+            found = self._resolve(text, head.end(), failed)
+            if found is None:
+                pos = head.start() + 1
+                continue
+            opts_end, m = found
+            spans = [(head.start(), m.end())]
+            if self.capture_opts:
+                spans.append((head.end(), opts_end))
+            spans += [m.span(g) for g in range(1, self.after.groups + 1)]
+            yield GitMatch(text, spans)
+            pos = m.end()
+
+    def search(self, text: str) -> GitMatch | None:
+        return next(self.finditer(text), None)
 
 
 def ensure_hooks_dir_importable() -> None:

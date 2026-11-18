@@ -121,7 +121,7 @@ MUTANTS.append((
 # match real `git checkout` text again. This is the rule issue #184 added --
 # a plain `git checkout <file>` mid-implementation restoring from the index
 # and erasing uncommitted work with no reflog entry.
-_l4 = _line('_CHECKOUT = re.compile(')
+_l4 = _line('_CHECKOUT = GitInvocation(')
 _i4 = _cut(_l4, 'checkout')
 MUTANTS.append((
     "git checkout stops being recognised, so a discard of uncommitted work "
@@ -141,18 +141,16 @@ MUTANTS.append((
     HOOK, _l5, _l5[:_i5] + ')*?prx"' + _l5[_i5 + len(')*?pr"'):], TARGETS,
 ))
 
-# --- 6. Case-folding / executable-suffix handling ---------------------------
-# `_BRANCH`'s command match is pinned to the shared `_GIT_CMD` pattern, which
-# is what lets `git.exe`, `GIT`, and `Git.Exe` all resolve to the same command.
-# Swapping it for a bare case-sensitive, no-suffix literal is the exact defect
-# `test_branch_delete_fires_on_every_executable_spelling`'s docstring says
-# shipped once: the constant was pinned as a regex, nothing pinned the
-# COMPOSITION in this guard's own file.
-_l6 = _line('_BRANCH = re.compile(_GIT_CMD + _SEP + _G + r"branch\\b" + _TAIL)')
+# --- 6. `git branch` ---------------------------------------------------------
+# Was: `_BRANCH` composed with `_GIT_CMD` swapped for a bare `git`. Since #526
+# `GIT_CMD` is composed once, inside `_dispatch_lib.GitInvocation`, so that
+# mutant lives in `test_dispatch_lib.py`'s batch. Here the subcommand word is
+# corrupted, so no force-delete spelling matches.
+_l6 = _line('_BRANCH = GitInvocation(')
+_i6 = _cut(_l6, 'branch')
 MUTANTS.append((
-    "branch-delete stops recognising git.exe / GIT / Git.Exe -- only a bare "
-    "lowercase 'git' still matches",
-    HOOK, _l6, _l6.replace('_GIT_CMD', 'r"git"', 1), TARGETS,
+    "git branch stops being recognised, so a force-delete goes silent",
+    HOOK, _l6, _l6[:_i6] + 'branchX' + _l6[_i6 + len('branch'):], TARGETS,
 ))
 
 # --- 7. Escape hatch: ALLOW_DESTRUCTIVE_GIT ---------------------------------
@@ -240,4 +238,31 @@ _l13 = _line("found.append(STASH_MULTI_DIR_REASON)")
 MUTANTS.append((
     "the deliberate multi-directory skip reports 'COULD NOT BE RUN' again",
     HOOK, _l13, _l13.replace("STASH_MULTI_DIR_REASON", "STASH_UNCHECKED_REASON"), TARGETS,
+))
+
+# --- 14-20. The other `GitInvocation` matchers (#526) --------------------------
+# Each of these lines changed from a composed regex to `GitInvocation`, so each
+# gets its subcommand word corrupted. `_STASH` also loses the options group,
+# which shifts the tail to group 1 and leaves `_stash_dirs` reading the wrong
+# text.
+for _name, _word, _what in (
+    ("_PUSH", "push", "a force-push and a push that skips the pre-push guard go silent"),
+    ("_RESET", "reset", "git reset --hard goes silent"),
+    ("_SWITCH", "switch", "a forced git switch goes silent"),
+    ("_RESTORE", "restore", "git restore of a dirty path goes silent"),
+    ("_CLEAN", "clean", "git clean -f over untracked work goes silent"),
+    ("_STASH", "stash", "a saving git stash during a merge goes silent"),
+):
+    _l = _line(_name + " = GitInvocation(")
+    _i = _cut(_l, _word + "\\b")
+    MUTANTS.append((
+        f"{_name}'s subcommand word is corrupted: {_what}",
+        HOOK, _l, _l[:_i] + _word + "X" + _l[_i + len(_word):], TARGETS,
+    ))
+
+_l20 = _line("_STASH = GitInvocation(")
+MUTANTS.append((
+    "_STASH stops capturing the global options, so the tail is read as the "
+    "options and the stash check reads the wrong group",
+    HOOK, _l20, _l20.replace("capture_opts=True", "capture_opts=False"), TARGETS,
 ))

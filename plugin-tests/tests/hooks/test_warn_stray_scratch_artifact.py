@@ -122,6 +122,23 @@ def test_main_warns_on_commit_behind_a_space_separated_long_global_option(monkey
     assert "scratchpad_dump.txt" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(("subcommand", "warns"), [("status", False), ("add x", True)])
+def test_a_long_global_option_run_is_fast_and_keeps_its_verdict(subcommand, warns, monkeypatch, capsys):
+    import time
+
+    # #526: the regex this hook used walked the option run again from every
+    # `git` inside it whenever the run did not end in `add` or `commit`.
+    # Measured on main 660b001d (Linux): 0.7 s at 14 KB, four times that for
+    # each doubling. This command is 56 KB.
+    command = "git " + "-c git " * 8000 + subcommand
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"tool_input": {"command": command}})))
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
+    started = time.perf_counter()
+    assert hook.main() == 0
+    assert time.perf_counter() - started < 2.0
+    assert ("scratchpad_dump.txt" in capsys.readouterr().err) is warns
+
+
 def test_main_warns_on_commit_behind_a_quoted_c_value_with_a_space(monkeypatch, capsys):
     # Regression: a quoted `-c`/`-C` value containing a space (a real,
     # not-exotic shape — e.g. a checkout path with a space in it) used to

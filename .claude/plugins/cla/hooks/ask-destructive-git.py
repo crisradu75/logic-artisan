@@ -31,7 +31,7 @@ Why not a `deny` rule in settings.json instead
 ----------------------------------------------
 Argument-shaped deny rules are fragile: `Bash(git push --force *)` matches
 neither `git push -f` nor `git push origin main --force`. Matching the command
-SHAPE (via the shared `GIT_GLOBAL_OPTS` blob, after quote-stripping) closes
+SHAPE (via the shared `GitInvocation` matcher, after quote-stripping) closes
 both, and puts the rule in the same place as every other git guard here.
 
 Detection scope
@@ -185,8 +185,7 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GIT_CMD as _GIT_CMD  # noqa: E402
-from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
+from _dispatch_lib import GitInvocation  # noqa: E402
 from _dispatch_lib import GIT_SEP as _GIT_SEP  # noqa: E402
 from _dispatch_lib import run_git as _run_git  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
@@ -212,11 +211,14 @@ _SEP = _GIT_SEP
 # admits a continuation while still stopping at a bare newline, and the
 # `git`→subcommand gap uses `_SEP` for the same reason.
 _TAIL = r"((?:\\\r?\n|[^&|;\n])*)"
-_PUSH = re.compile(_GIT_CMD + _SEP + _G + r"push\b" + _TAIL)
-_RESET = re.compile(_GIT_CMD + _SEP + _G + r"reset\b" + _TAIL)
-_BRANCH = re.compile(_GIT_CMD + _SEP + _G + r"branch\b" + _TAIL)
+# Each is `GIT_CMD`, `_SEP`, the global options, then the subcommand and tail,
+# matched by `GitInvocation` in linear time: the regex it replaced took 25 s on
+# a 28 KB `git -c git -c git ... status`, past the hook timeout (#526).
+_PUSH = GitInvocation(r"push\b" + _TAIL)
+_RESET = GitInvocation(r"reset\b" + _TAIL)
+_BRANCH = GitInvocation(r"branch\b" + _TAIL)
 # Group 1 is the global options (for `-C`), group 2 the tail.
-_STASH = re.compile(_GIT_CMD + _SEP + "(" + _G + r")stash\b" + _TAIL)
+_STASH = GitInvocation(r"stash\b" + _TAIL, capture_opts=True)
 _DASH_C = re.compile(r"(?<![\w-])-C" + _SEP + r"""("[^"]*"|'[^']*'|\S+)""")
 # These stash subcommands do not save-and-reset the tree. Anything else does,
 # including operand-less `git stash`, `push`, `save`, option-only forms, and a
@@ -379,10 +381,10 @@ def _force_deletes_a_branch(tail: str) -> bool:
 # ordinary and frequent on a clean path, where they destroy nothing. See the
 # module docstring's detection-scope bullet for the incident and for why the
 # condition is what makes the rule affordable.
-_CHECKOUT = re.compile(_GIT_CMD + _SEP + _G + r"checkout\b" + _TAIL)
-_SWITCH = re.compile(_GIT_CMD + _SEP + _G + r"switch\b" + _TAIL)
-_RESTORE = re.compile(_GIT_CMD + _SEP + _G + r"restore\b" + _TAIL)
-_CLEAN = re.compile(_GIT_CMD + _SEP + _G + r"clean\b" + _TAIL)
+_CHECKOUT = GitInvocation(r"checkout\b" + _TAIL)
+_SWITCH = GitInvocation(r"switch\b" + _TAIL)
+_RESTORE = GitInvocation(r"restore\b" + _TAIL)
+_CLEAN = GitInvocation(r"clean\b" + _TAIL)
 
 # A FORCED checkout or switch needs no path operand to destroy the tree, and
 # this is where the first cut of this rule was wrong. `git checkout -f`
