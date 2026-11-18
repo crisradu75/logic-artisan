@@ -21,18 +21,18 @@ Detection
 ---------
 The target `file_path` (relative paths against the payload's `cwd`, `~`
 expanded) is resolved through symlinks and `..`, then asked about when it lies
-inside either of:
+inside
 
-- the `cache/` or `marketplaces/` subtree of a plugins root. The roots are
+the `cache/`, `marketplaces/` or `synced/` subtree of a plugins root (`synced/` holds
+  other plugins' copies synced from claude.ai). The roots are
   `$CLAUDE_CODE_PLUGIN_CACHE_DIR` (despite its name, the whole plugins root),
   `$CLAUDE_CONFIG_DIR/plugins` and `~/.claude/plugins`, each one checked when
-  it applies. Only those two subtrees: `data/<id>/` is `${CLAUDE_PLUGIN_DATA}`,
+  it applies. Only those subtrees: `data/<id>/` is `${CLAUDE_PLUGIN_DATA}`,
   which a plugin is meant to write.
-- `$CLAUDE_PLUGIN_ROOT`, but only when that root itself lies below a plugins
-  root (a copy synced from claude.ai sits in `synced/`, for instance).
 
-A plugin loaded with `--plugin-dir` runs from a working tree outside every
-plugins root, so its `$CLAUDE_PLUGIN_ROOT` matches neither rule, and the repo
+Path components compare case-insensitively on macOS and Windows, whose file systems
+fold case. A plugin loaded with `--plugin-dir` runs from a working tree outside every
+plugins root, so it matches none of these subtrees, and the repo
 that develops it can edit it freely.
 
 Decision: `ask`, never a block, so a person who means it can say yes.
@@ -51,7 +51,7 @@ import os
 import sys
 
 # The parts of a plugins root that hold copies Claude Code replaces.
-_INSTALLED_SUBTREES = ("cache", "marketplaces")
+_INSTALLED_SUBTREES = ("cache", "marketplaces", "synced")
 
 
 def _plugins_roots() -> list[str]:
@@ -67,32 +67,26 @@ def _plugins_roots() -> list[str]:
     return [os.path.realpath(os.path.expanduser(c)) for c in candidates]
 
 
+def _fold(path: str) -> list[str]:
+    """Path components, lowercased where the file system ignores case."""
+    if sys.platform == "darwin" or sys.platform.startswith("win"):
+        path = path.lower()
+    return os.path.normcase(path).replace("\\", "/").split("/")
+
+
 def _is_inside(path: str, root: str) -> bool:
     """True when `path` is `root` or below it. Both are already resolved."""
-    try:
-        common = os.path.commonpath([os.path.normcase(path), os.path.normcase(root)])
-    except ValueError:  # different drives on Windows
-        return False
-    return common == os.path.normcase(root)
+    p, r = _fold(path), _fold(root)
+    return p[: len(r)] == r
 
 
 def _installed_copy(target: str) -> str | None:
     """The installed-copy directory `target` lies in, or None."""
-    roots = _plugins_roots()
-    for root in roots:
+    for root in _plugins_roots():
         for sub in _INSTALLED_SUBTREES:
             subtree = os.path.join(root, sub)
             if _is_inside(target, subtree):
                 return subtree
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if plugin_root:
-        plugin_root = os.path.realpath(plugin_root)
-        under_a_root = any(
-            _is_inside(plugin_root, r) and os.path.normcase(plugin_root) != os.path.normcase(r)
-            for r in roots
-        )
-        if under_a_root and _is_inside(target, plugin_root):
-            return plugin_root
     return None
 
 

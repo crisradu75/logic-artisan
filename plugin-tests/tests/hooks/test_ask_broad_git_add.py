@@ -442,3 +442,55 @@ def test_a_long_hostile_command_stays_fast(unit, monkeypatch, capsys, tmp_path):
         started = time.perf_counter()
         _run(command, monkeypatch, capsys, tmp_path)
         assert time.perf_counter() - started < 3.0, (unit, size)
+
+
+# --------------------------------------------------------------------------- #
+# Review-suggestion fixes
+# --------------------------------------------------------------------------- #
+
+
+def test_a_glob_directory_pathspec_asks(repo, monkeypatch, capsys):
+    (repo / "sub" / "new.txt").write_text("x\n", encoding="utf-8")
+    assert "`sub/new.txt`" in _reason(_run("git add */", monkeypatch, capsys, repo))
+
+
+def test_a_git_dir_in_another_segment_does_not_silence_the_add(repo, monkeypatch, capsys):
+    (repo / "stray.txt").write_text("x\n", encoding="utf-8")
+    assert "`stray.txt`" in _reason(_run("GIT_DIR=x git status; git add -A", monkeypatch, capsys, repo))
+    assert _run("GIT_DIR=x git add -A", monkeypatch, capsys, repo) is None
+
+
+def test_a_worktree_side_rename_is_skipped_with_its_source(monkeypatch, tmp_path):
+    fake = " R new.txt\0?? looks-untracked.txt\0?? stray.txt\0"
+    monkeypatch.setattr(
+        hook.subprocess, "run", lambda args, *_a, **_k: subprocess.CompletedProcess(args, 0, fake, "")
+    )
+    assert hook._status_entries(str(tmp_path), [], False, 1.0) == ["stray.txt"]
+
+
+def test_a_parser_failure_fails_open_with_one_stderr_line(monkeypatch, capsys):
+    def boom(*_a, **_k):
+        raise KeyError("x")
+
+    monkeypatch.setattr(hook, "_broad_invocations", boom)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"tool_input": {"command": "git add -A"}})))
+    assert hook.main() == 0
+    out = capsys.readouterr()
+    assert out.out == "" and out.err.strip().count("\n") == 0 and "KeyError" in out.err
+
+
+def test_a_file_name_cannot_spell_a_failure_marker_in_the_reason(repo, monkeypatch, capsys):
+    (repo / "the guard did not run.txt").write_text("x\n", encoding="utf-8")
+    reason = _reason(_run("git add -A", monkeypatch, capsys, repo)).lower()
+    assert "guard" in reason and "did not run" not in reason and "could not run" not in reason
+
+
+def test_a_glob_directory_pathspec_names_only_files_below_its_directories(repo, monkeypatch, capsys):
+    (repo / "root-stray.txt").write_text("x\n", encoding="utf-8")
+    assert _run("git add */", monkeypatch, capsys, repo) is None
+    (repo / "sub" / "new.txt").write_text("x\n", encoding="utf-8")
+    assert "root-stray" not in _reason(_run("git add */", monkeypatch, capsys, repo))
+    assert _run("git add openspec/*/", monkeypatch, capsys, repo) is None
+    (repo / "openspec" / "specs" / "n.md").write_text("x\n", encoding="utf-8")
+    reason = _reason(_run("git add openspec/*/", monkeypatch, capsys, repo))
+    assert "openspec/specs/n.md" in reason and "sub/new.txt" not in reason
