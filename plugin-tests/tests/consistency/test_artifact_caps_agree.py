@@ -72,3 +72,20 @@ def test_the_checklist_flags_each_over_cap_artifact():
     assert "design.md over about 800" in size
     assert "task over about 40 words" in size
     assert "one page" not in size
+
+
+_BRIEF = _REPO / ".claude/plugins/cla/skills/multi-spec/references/authoring-brief.md"
+
+
+def test_the_proposal_cap_leaves_out_the_sections_the_authoring_brief_asks_for():
+    # The authoring brief asks for `## Open questions` and `## Risks noted` in proposal.md; the seeded
+    # ~400-word rule stays as it is (a change to it must hold the spec-writing benchmark), so the
+    # reviewer counts the proposal without those two sections.
+    size = _line(_checklist(), "- **Size.**", "review-change checklist")
+    assert "not counting its `## Open questions` and `## Risks noted` sections" in size
+
+
+def test_the_authoring_brief_caps_risks_noted():
+    brief = _BRIEF.read_text(encoding="utf-8").replace("\r\n", "\n")
+    line = _line(brief, "   - **Otherwise:** one line under `## Risks noted`", "multi-spec authoring brief")
+    assert "Keep that section to about 5 lines" in line

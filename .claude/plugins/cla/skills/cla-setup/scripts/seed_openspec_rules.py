@@ -16,8 +16,8 @@ reads `<repo-root>/cla.io/project-facts.md` for its `Test proof granularity:` an
 
 `RULES` holds the `protected` change budget. When the facts file holds `- Change budget: lean`,
 `LEAN_BUDGET` takes its place. A config that carries any budget sentence ("at most N requirements
-across all its specs"), whatever its numbers, is not listed as missing it, so numbers an owner
-edited stay.
+across all its specs", in any letter case and not commented out), whatever its numbers, is not
+listed as missing it, so numbers an owner edited stay.
 
 `RULES` holds the requirement-level `tasks` rule. When `cla.io/project-facts.md` holds
 `- Test proof granularity: scenario`, `SCENARIO_TASK` takes its place and the requirement
@@ -100,7 +100,8 @@ LEAN_BUDGET = (
     'Over budget, cut; never split into more capabilities to get under it."'
 )
 # What `check_spec_proof.py` reads as the budget; a config line holding this counts as the rule.
-_BUDGET_LINE = re.compile(r"at most [\d,]+ requirements across all its specs")
+# Case-insensitive, as the checker reads it: "At most 25 requirements ..." is the same budget.
+_BUDGET_LINE = re.compile(r"at most [\d,]+ requirements across all its specs", re.I)
 # The sentence for a change that opts in to the protected budget names this; the repo's own does not.
 _OVERRIDE_MARK = "Budget: protected"
 
@@ -166,8 +167,10 @@ def _unquote(rule: str) -> str:
 def _rule_lines(block: str, mark: str, want: bool, have: set[str], quoted: set[str]) -> list[str]:
     """`mark artifact: - rule` for each rule of `block` the file carries (want) or lacks (not want)."""
     found, key = [], ""
-    budget_held = any(_is_repo_budget(line) for line in have)
-    override_held = any(_is_override_budget(line) for line in have)
+    # A commented-out line carries no rule: OpenSpec never reads it.
+    live = [line for line in have if not line.startswith("#")]
+    budget_held = any(_is_repo_budget(line) for line in live)
+    override_held = any(_is_override_budget(line) for line in live)
     for line in block.split("\n"):
         if re.fullmatch(r"  [a-z].*:", line):
             key = line[2:]

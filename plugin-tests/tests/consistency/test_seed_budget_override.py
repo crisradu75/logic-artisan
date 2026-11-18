@@ -58,3 +58,31 @@ def test_a_config_with_only_the_override_is_still_listed_as_missing_the_repo_bud
     cfg.write_text(text.replace(repo_line + "\n", ""), encoding="utf-8", newline="\n")
     out = _seed(tmp_path).splitlines()
     assert len(out) == 2 and out[1] == "+ proposal: " + repo_line.strip()
+
+
+def _repo_budget_line(text: str) -> str:
+    return next(line for line in text.splitlines() if "within its budget" in line and "`Budget: protected`" not in line)
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_a_capitalised_budget_sentence_still_counts_as_the_budget(tmp_path: Path):
+    text = _CONFIG.read_text(encoding="utf-8")
+    repo_line = _repo_budget_line(text)
+    edited = repo_line.replace("at most 25 requirements", "At most 30 requirements")
+    assert edited != repo_line
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_text(text.replace(repo_line, edited), encoding="utf-8", newline="\n")
+    assert _seed(tmp_path).splitlines() == ["openspec/config.yaml: exists (skipped), rules current"]
+
+
+# requirement: cla-setup / Stakes and change budget on setup
+def test_a_commented_out_budget_sentence_does_not_count_as_the_budget(tmp_path: Path):
+    text = _CONFIG.read_text(encoding="utf-8")
+    repo_line = _repo_budget_line(text)
+    edited = repo_line.replace("- ", "# - ", 1).replace("at most 25 requirements", "at most 30 requirements")
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_text(text.replace(repo_line, edited), encoding="utf-8", newline="\n")
+    out = _seed(tmp_path).splitlines()
+    assert len(out) == 2 and out[1] == "+ proposal: " + repo_line.strip()
