@@ -378,6 +378,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | It never proves the assertion was worth
 
 ## skills/spec-to-pr/SKILL.md
+- keep | user's files | add-ship-check-script review round 2, 2026-11-18: the parent passed as `--base` approved renaming the default branch; `ship_check.py preflight` refuses equal values | call is always the literal default branch, and the parent goes in its `--pr-base`.
 - guidance | none | 9cd5f32f 2026-10-08 slim (design-tradeoffs "Shape of the skill"): rationale moved out of the run's reading | Read those only when revising the skill; a run does not need them.
 - guidance | none | #75 (f28b123b, 2026-08-14): a long invocation was interpolated once per mention; now also held by test_skill_lint | not the raw token, which would be pasted in at each mention
 - keep | shipped to other repos | design-tradeoffs "`<base-branch>` is resolved, never assumed": a hardcoded `master` broke every `main` repo (#11, d452a82d 2026-07-28) | resolved once at the start of the run, never assumed
@@ -419,6 +420,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); a ✓ on an archive that never reached the PR | Never mark Archive `✓` on the local file moves or a 0-exit push alone.
 
 ## skills/spec-to-pr/references/branch-and-pr-base.md
+- keep | user's files | add-ship-check-script review round 2, 2026-11-18: the parent passed as `--base` approved renaming the default branch; `ship_check.py preflight` refuses equal values | That `--base` is always the default branch and the parent goes in `--pr-base`
 - keep | user's files | e4ad3989 2026-08-14 stacked chain mode: a default base silently puts the whole parent chain in the PR diff | `gh pr create` MUST pass `--base <pr-base>` explicitly
 - not-a-rule | - | - | would skip phases that never ran
 - keep | user's files | 00fec679 2026-08-14, fix: make the stacked chain executable end-to-end | next-steps must NOT print the bare `gh pr merge` line for a stacked child

@@ -247,8 +247,9 @@ def test_preflight_stacked_run_on_the_default_branch_never_approves_renaming_it(
     _stacked_parent(work)
     r = _run(work, "preflight", "--branch", "child", "--base", "main", "--pr-base", "feature/parent")
     assert r.returncode == 1, r.stdout
-    assert _first(r) == "FAIL preflight rename: 1 problem(s)"
+    assert _first(r) == "FAIL preflight rename: 2 problem(s)"
     assert r.stdout.splitlines()[1].startswith("PROBLEM on-base: on main, which must not be renamed")
+    assert r.stdout.splitlines()[2].startswith("PROBLEM not-cut-from:")
 
 
 # requirement: change-workflow / A new branch is checked for collisions before it is made
@@ -279,6 +280,28 @@ def test_preflight_unstacked_on_another_pushed_branch_is_a_plain_rename(work: Pa
     assert r.returncode == 1
     assert "PROBLEM commits-to-lose: HEAD has 1 commit(s) not on origin/main" in r.stdout
     assert "PROBLEM on-base" not in r.stdout
+
+
+# requirement: change-workflow / A new branch is checked for collisions before it is made
+def test_preflight_pr_base_equal_to_base_is_unchecked(work: Path):
+    # The parent passed as --base too: the reproduced route to renaming the default branch.
+    _stacked_parent(work)
+    r = _run(work, "preflight", "--branch", "child", "--base", "feature/parent", "--pr-base", "feature/parent")
+    assert r.returncode == 2, r.stdout
+    assert _first(r).startswith("UNCHECKED preflight: --pr-base and --base are both 'feature/parent'")
+    assert "--base must be the repo's default branch" in _first(r)
+
+
+def test_preflight_stacked_rename_of_a_branch_cut_from_the_default_fails(work: Path):
+    # Cut from origin/main in a stacked run: main is an ancestor of the parent, so the count is 0,
+    # but the branch does not hold the parent.
+    _stacked_parent(work)
+    _git(work, "checkout", "-q", "-b", "worktree-abc", "origin/main")
+    r = _run(work, "preflight", "--branch", "child", "--base", "main", "--pr-base", "feature/parent")
+    assert r.returncode == 1, r.stdout
+    assert r.stdout.splitlines()[1:] == [
+        "PROBLEM not-cut-from: HEAD does not contain origin/feature/parent, so it was not cut from feature/parent",
+    ]
 
 
 def test_preflight_pr_base_on_an_unknown_remote_is_unchecked(work: Path):
@@ -398,6 +421,35 @@ def test_pushed_fails_when_the_upstream_is_another_branch(work: Path):
     assert r.returncode == 1
     assert r.stdout.splitlines()[1:] == [
         "PROBLEM upstream-elsewhere: feature/x tracks refs/heads/main on origin, expected refs/heads/feature/x on origin",
+    ]
+
+
+# requirement: change-workflow / A push is verified against the remote
+def test_pushed_fails_when_the_upstream_is_the_branch_on_another_remote(work: Path, tmp_path: Path):
+    # Pushed to origin, but `push -u up feat` points the upstream at another remote: a bare
+    # `git push` would go there, not to origin.
+    _git(tmp_path, "init", "-q", "--bare", "-b", "main", "up.git")
+    _git(work, "remote", "add", "up", "../up.git")
+    _git(work, "checkout", "-q", "-b", "feat")
+    _commit(work)
+    _git(work, "push", "-q", "origin", "feat")
+    _git(work, "push", "-q", "-u", "up", "feat")
+    r = _run(work, "pushed", "--branch", "feat")
+    assert r.returncode == 1, r.stdout
+    assert r.stdout.splitlines()[1:] == [
+        "PROBLEM upstream-elsewhere: feat tracks refs/heads/feat on up, expected refs/heads/feat on origin",
+    ]
+
+
+def test_pushed_a_problem_wins_over_a_check_that_stops_the_run(work: Path):
+    # wrong-branch is found, then `HEAD names no commit` stops the run outside any retry: exit 1.
+    _git(work, "checkout", "-q", "--orphan", "fresh")
+    r = _run(work, "pushed", "--branch", "feature/x")
+    assert r.returncode == 1, r.stdout
+    assert _first(r) == "FAIL push not verified: 1 problem(s)"
+    assert r.stdout.splitlines()[1:] == [
+        "PROBLEM wrong-branch: on fresh, expected feature/x",
+        "UNCHECKED head: HEAD names no commit",
     ]
 
 

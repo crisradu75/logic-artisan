@@ -39,7 +39,9 @@ preflight
     rename     on any other branch: the same three, plus ``git rev-list --count
                origin/<cut-from>..HEAD`` must be 0 (no commits to lose) after fetching it. A
                detached HEAD is a problem (no branch to rename), and so is being on ``--base`` or
-               ``--pr-base`` (renaming either would rename the default branch or the parent).
+               ``--pr-base`` (renaming either would rename the default branch or the parent), and
+               so is a HEAD that does not contain ``origin/<cut-from>`` (cut from an older base).
+  ``--pr-base`` equal to ``--base`` exits 2: ``--base`` must be the default branch.
   With ``--pr-base``, in every mode: ``branch.<pr-base>.remote`` and ``.merge`` must be set, the
   remote must be a real remote (not ``.``), and that branch must exist on it.
 
@@ -232,6 +234,13 @@ def _commits_to_lose(root: Path, base: str, out: Findings) -> None:
     n = int(count.stdout.strip())
     if n != 0:
         out.problem("commits-to-lose", f"HEAD has {n} commit(s) not on {REMOTE}/{base}")
+    # A count of 0 also holds for a branch cut from an OLDER base, such as the default branch in a
+    # stacked run (it is an ancestor of the parent). The branch must hold the base it is cut from.
+    held = _git(root, "merge-base", "--is-ancestor", f"refs/remotes/{REMOTE}/{base}", "HEAD")
+    if held.returncode == 1:
+        out.problem("not-cut-from", f"HEAD does not contain {REMOTE}/{base}, so it was not cut from {base}")
+    elif held.returncode != 0:
+        raise Unchecked("commits", f"'git merge-base --is-ancestor {REMOTE}/{base} HEAD' failed: {_first_err(held)}")
 
 
 def preflight(root: Path, branch: str, base: str, pr_base: str | None, out: Findings) -> str:
@@ -340,6 +349,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "preflight" and not args.base:
         print("UNCHECKED preflight: pass --base <base-branch>, the repo's default branch")
+        return 2
+    if args.cmd == "preflight" and args.pr_base and args.pr_base == args.base:
+        # Passing the parent as --base too erases the default branch from the check, and a run
+        # sitting on the default branch would then be approved for `git branch -m`.
+        print(f"UNCHECKED preflight: --pr-base and --base are both {args.base!r}; --base must be the "
+              "repo's default branch, and the stacked parent goes in --pr-base only")
         return 2
 
     root = Path(args.root).resolve()
