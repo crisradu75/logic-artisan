@@ -108,7 +108,7 @@ the skills fall back to the default list of protected areas.
   "always" and "must" in the shipped skills, references, agents and output styles has a line in the
   repo's rule ledger (it does not ship); rules that guard no protected area now say why and allow a
   judgment call, and those that guard one stay absolute. Five rules that only repeated another were
-  removed (#519, #522).
+  removed (#519, #522). A first review of the rules with no known origin removed 7 more and softened 8 (#533).
 - **Shipped prose is corrected and reworded to read literally.** Wrong and stale statements are
   fixed across `_shared`, `annotate`, `feedback`, `new-worktree`, `project-review`,
   `report-upstream`, `right-model` and others, and the rest of the prompt audit reworded the
