@@ -299,11 +299,8 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 
 ## skills/_shared/references/ship.md
 - keep | user's files | 00fec679 2026-08-14 make the stacked chain executable end-to-end | The parent must exist on the remote
-- keep | user's files | d452a82d 2026-07-28 (#11) branch collision preflight | refs/heads/<branch>          # must be EMPTY
 - keep | user's files | 4eb407fe 2026-08-10 delete the seven wrapper scripts; moved by 9cd5f32f | never create the branch on an unanswered question
-- keep | user's files | d452a82d 2026-07-28 (#11) rename-in-place guard | must be 0 — no commits to lose
-- keep | user's files | d452a82d 2026-07-28 (#11) | must be EMPTY — no remote branch to collide with
-- keep | user's files | d452a82d 2026-07-28 (#11) | must be EMPTY — no local branch either
+- keep | user's files | d452a82d 2026-07-28 (#11) branch collision preflight and rename-in-place guard; `ship_check.py preflight` holds the checks since add-ship-check-script 2026-11-18 | `origin/<base-branch>..HEAD` must hold 0 commits — no commits to lose
 - keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved); diagnose's debug tag leaking into a commit | must return nothing; remove any tagged line before staging
 - keep | shipped to other repos | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | a rename must touch both, or this grep searches for a string nothing writes
 - keep | user's files | ee4034ad 2026-07-23 extract; tool-redirect bug wrote a scratch file into the repo root | Never fold it into the commit
@@ -315,8 +312,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | b8bf1795 2026-08-11 four review agents' findings | never a path in the installed plugin tree
 - keep | user's files | text since 016203d7 2026-10-08 (cla-setup replaces cla-init) | plugin tree). Never expand to `-A`.
 - not-a-rule | - | - | every line in it must be `key: value`
-- keep | honesty | f42baae9 2026-09-12 (#247) check the trailer block parsed | **Check that it parsed, before you push.** These must agree:
-- keep | honesty | 0c18f62b 2026-11-05 (#479) push in background and verify remote head | They must be equal. Different, non-zero
+- keep | honesty | f42baae9 2026-09-12 (#247) check the trailer block parsed; `ship_check.py trailers` holds the comparison since add-ship-check-script 2026-11-18 | and the trailers git's parser sees must agree:
 
 ## skills/_shared/references/skill-authoring.md
 - keep | shipped to other repos | ee4034ad 2026-07-23 extract; check_no_project_tokens.py | Never let a repo token land
@@ -417,9 +413,8 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: silent drift of the live spec | every capability under the change's `specs/` must have its `openspec/specs/<cap>/spec.md` staged
 - not-a-rule | - | - | its live spec is never materialized
 - keep | user's files | 4eb407fe 2026-08-10; reason in line: a bare `openspec/` re-sweeps the siblings | A path you missed is added alone (never `openspec/`, never `-A`)
-- keep | honesty | predates extraction (ee4034ad, 2026-07-23); reason in file: a 0-exit push can skip the commit | # must equal <branch>
-- keep | honesty | predates extraction (ee4034ad, 2026-07-23); reason in file: a 0-exit push can skip the commit | # must equal the captured HEAD sha
-- keep | honesty | predates extraction (ee4034ad, 2026-07-23); reason in file: the archive must reach the PR | # the captured HEAD sha must appear in the returned commits[]
+- keep | honesty | predates extraction (ee4034ad, 2026-07-23); reason in file: a 0-exit push can skip the commit; `ship_check.py pushed` holds the branch, remote and `@{u}` checks since add-ship-check-script 2026-11-18 | The script must exit 0: it checks that the current branch
+- keep | honesty | predates extraction (ee4034ad, 2026-07-23); reason in file: the archive must reach the PR | The sha must appear in the returned `commits[]`
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); a ✓ on an archive that never reached the PR | Never mark Archive `✓` on the local file moves or a 0-exit push alone.
 
 ## skills/spec-to-pr/references/branch-and-pr-base.md
@@ -523,7 +518,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | 74cb2be9 2026-09-12, feat: a pair of numbers asserting sameness must come from one tree... | "no regression" — must come from one tree
 - keep | honesty | 74cb2be9 2026-09-12, feat: a pair of numbers asserting sameness must come from one tree... | and the trailer must name it
 - not-a-rule | - | - | that paragraph must be `key: value` lines throughout
-- keep | honesty | #247 (f42baae9, 2026-09-12): a blank line took three written trailers to 0 parsed | must agree — what you wrote against what git's parser sees
+- keep | honesty | #247 (f42baae9, 2026-09-12): a blank line took three written trailers to 0 parsed; `ship_check.py trailers` holds the comparison since add-ship-check-script 2026-11-18 | must exit 0 — what you wrote against what git's parser sees
 
 ## skills/lite-pr/references/mutation-gate.md
 - keep | safe writes | 7ded852d 2026-09-23, mutation-gate backup wording | Never put a backup anywhere else outside the checkout.
@@ -686,7 +681,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | shipped to other repos | #134; issue #130, a chain lost ~4.5 hours | **Never end a turn with nothing in flight.**
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | **Never run `git add -A`.** Path-scope every stage
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | never a special-cased "probably fine."
-- keep | user's files | ee4034ad 2026-07-23 (extraction); an unverified push reproduces the dead-disk loss (line text) | Mismatch → halt via `AskUserQuestion`, never silently retry.
+- keep | user's files | ee4034ad 2026-07-23 (extraction); an unverified push reproduces the dead-disk loss (line text); `ship_check.py pushed` holds the comparison since add-ship-check-script 2026-11-18 | Any exit but 0 → halt via `AskUserQuestion`, never silently retry.
 - keep | user's files | ee4034ad 2026-07-23 (extraction); sequential is what makes commit-before-next possible | awaited sequentially — never parallel.**
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | **This is a proposals-only skill.** Never invoke `Skill(cla:spec-to-pr)`
 - keep | user's files | text since ee4034ad 2026-07-23 (extraction) | (Phase 4) always runs BEFORE the PR opens (Phase 5) — never the reverse

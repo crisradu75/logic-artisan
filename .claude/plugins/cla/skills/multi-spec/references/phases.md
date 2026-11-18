@@ -38,10 +38,9 @@ A push's own 0 exit code is not sufficient evidence a commit reached the remote 
 
 After every push named anywhere in this skill:
 ```
-git rev-parse HEAD
-git ls-remote origin docs/propose-<batch-slug>
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" pushed --branch docs/propose-<batch-slug>
 ```
-Compare the two shas in Claude's own context (do not pipe through `grep`/`awk`). Match → the push genuinely landed, proceed. Mismatch → halt and surface to the user via `AskUserQuestion` — do not silently retry and do not mark the phase done.
+It checks that the current branch is `docs/propose-<batch-slug>`, that `HEAD` equals the remote's branch, and that `@{u}` is set and equals `HEAD`. Exit 0 → the push genuinely landed, proceed. Exit 1 (`push not verified`) or 2 (the remote did not answer) → halt and surface to the user via `AskUserQuestion` — do not silently retry and do not mark the phase done.
 
 ## Phase 5 — open the PR
 
