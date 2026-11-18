@@ -368,6 +368,17 @@ def _named_collection(dispatcher_path: Path, name: str) -> set[str]:
     raise AssertionError(f"{name} not found in {dispatcher_path.name}")
 
 
+def _best_effort(dispatcher_path: Path) -> set[str]:
+    """`_BEST_EFFORT_HOOKS`, or the empty set for a dispatcher that declares none."""
+    tree = ast.parse(dispatcher_path.read_text(encoding="utf-8"))
+    declared = any(
+        isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "_BEST_EFFORT_HOOKS" for t in node.targets)
+        for node in tree.body
+    )
+    return _named_collection(dispatcher_path, "_BEST_EFFORT_HOOKS") if declared else set()
+
+
 def test_hooks_json_timeouts_match_the_dispatcher_budget_constant():
     # `_dispatch_lib.Deadline` sizes itself from HANDLER_TIMEOUT_SECONDS, and
     # every hook's own subprocess timeouts were chosen to fit under it. Raising
@@ -412,7 +423,11 @@ def test_enforcing_hooks_fit_inside_the_handler_budget(dispatcher):
         "be checked."
     )
 
-    enforcing = [n for n in hook_files if n not in advisory]
+    # Best-effort hooks are skipped under budget pressure like advisory ones
+    # (see `_BEST_EFFORT_HOOKS` in the Bash dispatcher), so they are not part of
+    # the never-skipped sum.
+    skippable = advisory | _best_effort(dispatcher_path)
+    enforcing = [n for n in hook_files if n not in skippable]
     total = sum(lib.HOOK_WORST_CASE_SECONDS[n] for n in enforcing)
     budget = lib.HANDLER_TIMEOUT_SECONDS - lib._BUDGET_RESERVE_SECONDS
     assert total <= budget, (
@@ -445,7 +460,7 @@ def test_every_advisory_hook_is_admissible_on_an_idle_budget(dispatcher):
 
     unrunnable = {
         name: lib.HOOK_WORST_CASE_SECONDS[name]
-        for name in advisory
+        for name in advisory | _best_effort(dispatcher_path)
         if lib.HOOK_WORST_CASE_SECONDS[name] > budget
     }
     assert not unrunnable, (
@@ -533,6 +548,70 @@ def test_no_outcome_changing_hook_is_marked_advisory(dispatcher):
         f"{dispatcher} marks outcome-changing hook(s) as advisory, so budget "
         f"pressure could silently drop enforcement: {sorted(enforcing)}"
     )
+
+
+@pytest.mark.parametrize("dispatcher", _DISPATCHERS)
+def test_best_effort_hooks_are_named_ask_hooks_the_dispatcher_runs(dispatcher):
+    """`_BEST_EFFORT_HOOKS` is the one way an outcome-changing hook becomes
+    skippable, so it stays narrow: each member is run by the dispatcher, is not
+    also advisory, really can escalate (or it belongs in `_ADVISORY_HOOKS`), and
+    can never block, since a dropped block is the silent failure the budget
+    logic exists to prevent."""
+    dispatcher_path = _HOOKS_DIR / dispatcher
+    best_effort = _best_effort(dispatcher_path)
+    advisory = _named_collection(dispatcher_path, "_ADVISORY_HOOKS")
+    hook_files = set(_hook_files_list(dispatcher_path))
+    assert best_effort <= hook_files
+    assert not best_effort & advisory
+    for name in best_effort:
+        source = (_HOOKS_DIR / name).read_text(encoding="utf-8")
+        assert "permissionDecision" in source, f"{name} cannot ask; mark it advisory"
+        assert not _can_block(source), (
+            f"{name} can block, so it must be enforcing, never best-effort"
+        )
+
+
+def _can_block(source: str) -> bool:
+    """A `return 2` from `main()`, or an exit with status 2 anywhere."""
+    return bool(
+        re.search(r"^\s*return 2\b", source, re.M)
+        or re.search(r"\b(?:sys\.)?exit\(\s*2\s*\)", source)
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["def main():\n    return 2\n", "sys.exit(2)\n", "    exit( 2 )\n", "raise SystemExit(sys.exit(2))\n"],
+)
+def test_the_block_detector_sees_every_way_to_exit_2(source):
+    assert _can_block(source)
+
+
+def test_the_block_detector_is_silent_on_an_ask_hook():
+    assert not _can_block((_HOOKS_DIR / "ask-broad-git-add.py").read_text(encoding="utf-8"))
+    assert not _can_block("sys.exit(main())\nreturn 20\nsys.exit(21)\n")
+
+
+def test_skippable_hooks_run_after_every_enforcing_hook_in_the_bash_dispatcher():
+    """Order is the Bash dispatcher's backstop: a skippable hook that runs before
+    an enforcing one spends budget the enforcing one may need. Moving the 4 s
+    broad-add probe ahead of the 12 s destructive-git hook adds up to more than
+    the handler timeout, and a killed handler lets the call through."""
+    dispatcher_path = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
+    order = _hook_files_list(dispatcher_path)
+    skippable = _named_collection(dispatcher_path, "_ADVISORY_HOOKS") | _best_effort(dispatcher_path)
+    enforcing = [i for i, name in enumerate(order) if name not in skippable]
+    skipped = [i for i, name in enumerate(order) if name in skippable]
+    assert enforcing and skipped
+    assert max(enforcing) < min(skipped), (
+        f"a skippable hook runs before an enforcing one in {order}"
+    )
+
+
+def test_the_bash_dispatcher_declares_the_broad_add_hook_best_effort():
+    # Non-vacuity for the test above, and the budget arithmetic: the enforcing
+    # hooks already spend the whole budget, so this hook fits only as skippable.
+    assert _best_effort(_HOOKS_DIR / "dispatch-bash-pretooluse.py") == {"ask-broad-git-add.py"}
 
 
 def test_the_outcome_detector_is_not_vacuous():

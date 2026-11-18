@@ -13,7 +13,9 @@ that matches a git command line imports — `ask-destructive-git.py` and
 `warn-stray-scratch-artifact.py`. (Named, not counted: a count restated away
 from its source is what went stale here before, and a date-stamp turns a wrong
 number into a wrong number that reads as verified. `hooks/tests/`'s
-`_GIT_HOOK_FILES` is where the list is maintained.)
+`_GIT_HOOK_FILES` is where the list is maintained. `ask-broad-git-add.py`
+imports `strip_quoted_spans` and `GIT_CMD` but walks tokens instead of
+composing `GIT_GLOBAL_OPTS`, which keeps it linear on hostile input.)
 So the relationship with those hooks is bidirectional: this module loads them,
 and they import from it. Consequence worth holding onto: keep this module
 import-cheap and side-effect-free, because a failure here takes out both roles
@@ -176,6 +178,12 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # 1 x `git status --porcelain`(4s) — walks the working tree, so it gets more
     # than the `rev-parse` hooks.
     "warn-stray-scratch-artifact.py": 4.0,
+    # `git status --porcelain --untracked-files=all` once per distinct broad
+    # `git add` invocation, ALL of them sharing one 4s deadline
+    # (`STATUS_BUDGET_SECONDS` in that hook), so the total is 4s however many
+    # invocations the command chains. Best-effort, so skippable under budget
+    # pressure (`_BEST_EFFORT_HOOKS` in the Bash dispatcher).
+    "ask-broad-git-add.py": 4.0,
     # 2 x _gh(4s): `pr view` then `pr list` on the explicit-PR-number path. The
     # only hook that leaves the machine, and the reason it stays advisory. Its
     # own docstring is the authority on the call count; the previous entry
