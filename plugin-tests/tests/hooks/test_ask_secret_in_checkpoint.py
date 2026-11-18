@@ -58,6 +58,8 @@ def _rand(n: int) -> str:
 SAMPLES = {
     "AWS access key ID": _join("AK", "IA", "QWERTYUIOP234567"),
     "AWS access key ID (session)": _join("AS", "IA", "QWERTYUIOP234567"),
+    "GitHub token (no digit)": _join("gh", "p_", "aBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeFgHiJ"),
+    "Google API key (no digit)": _join("AI", "za", "SyAbCdEfGhIjKlMnOpQrStUvWxYz_AbCdEf"),
     "GitHub token": _join("gh", "p_", _rand(36)),
     "GitHub token (OAuth)": _join("gh", "o_", _rand(36)),
     "GitHub token (server)": _join("gh", "s_", _rand(36)),
@@ -67,6 +69,7 @@ SAMPLES = {
     "OpenAI API key (legacy)": _join("sk", "-", _rand(48)),
     "Slack token": _join("xo", "xb-", "123456789012-1234567890123-", _rand(24)),
     "Slack token (user)": _join("xo", "xp-", "123456789012-1234567890123-", _rand(24)),
+    "Slack token (refresh)": _join("xo", "xe-", "1-", _rand(30), "7"),
     "Google API key": _join("AI", "za", _rand(35)),
     "Stripe live key": _join("sk", "_live_", _rand(24)),
     "Stripe live key (restricted)": _join("rk", "_live_", _rand(24)),
@@ -75,12 +78,25 @@ SAMPLES = {
     "private key (OpenSSH)": _join("-----BEGIN ", "OPENSSH ", "PRIV", "ATE KEY-----"),
     "password in a connection URL": _join("postgres://app:", "s3cr3t", "Passw0rd", "@db.internal:5432/app"),
     "password in a connection URL (empty user)": _join("redis://:", "hunter2", "Zq", "@cache:6379"),
+    "password in a connection URL (an @ in it)": _join("postgres://app:", "P", "@ssw0rd", "Kq9", "@db:5432/app"),
+    "password in a connection URL (a stand-in word, then @)": _join("mysql://root:", "Pass", "@123", "zQ", "@db/app"),
+    "password in a connection URL (a colon in it)": _join("postgres://app:", "Pa:ss", "W0rd9", "@db/app"),
+    "password in a connection URL (a slash in it)": _join("postgres://app:", "pa/ss", "W0rdQ", "@db:5432/app"),
+    "password in a connection URL (dollar, lower case)": _join("postgres://app:", "$ecret", "Pw9", "@db/app"),
+    "password in a connection URL (a real token as the password)": _join(
+        "https://x-access-token:", "gh", "s_", _rand(36), "@github.com/o/r.git"),
     "JWT": _join("ey", "J", _rand(20), ".", "ey", "J", _rand(40), ".", _rand(43)),
 }
 
 
 def _kind(label: str) -> str:
     return label.split(" (")[0]
+
+
+def test_the_samples_have_the_lengths_the_formats_have():
+    # Fixed-length formats: a sample of the wrong length would test nothing.
+    assert len(SAMPLES["GitHub token (no digit)"]) == 4 + 36
+    assert len(SAMPLES["Google API key (no digit)"]) == 4 + 35
 
 
 def _payload(target, text: str, tool: str = "Write", cwd=None) -> dict:
@@ -201,6 +217,27 @@ def test_findings_past_the_cap_are_counted_not_named(repo, monkeypatch):
     assert "and 3 more" in reason
 
 
+def test_each_new_string_of_a_multi_edit_is_read(repo, monkeypatch):
+    payload = {"tool_name": "MultiEdit", "tool_input": {
+        "file_path": str(_checkpoint(repo)),
+        "edits": [
+            {"old_string": "a", "new_string": "clean\n"},
+            "not an edit",
+            {"old_string": "b", "new_string": None},
+            {"old_string": "c", "new_string": "intro\n" + SAMPLES["Stripe live key"]},
+        ],
+    }}
+    reason = _asks(monkeypatch, payload)
+    assert "a Stripe live key on line 2 of edit 4" in reason
+    assert SAMPLES["Stripe live key"] not in reason
+
+
+def test_a_multi_edit_with_only_clean_text_stays_silent(repo, monkeypatch):
+    payload = {"tool_input": {"file_path": str(_checkpoint(repo)), "edits": [
+        {"old_string": SAMPLES["Stripe live key"], "new_string": "moved to `.env`"}]}}
+    _silent(monkeypatch, payload)
+
+
 def test_an_edit_that_removes_a_secret_stays_silent(repo, monkeypatch):
     # Only the new text is checked: taking a key out is the fix, not the leak.
     payload = {"tool_name": "Edit", "tool_input": {
@@ -234,12 +271,28 @@ SILENT_TEXT = [
     _join("postgres://user:", "***", "@localhost/db"),
     _join("postgres://user:", "password", "@localhost/db"),
     _join("postgres://user:", "PASS", "@localhost/db"),
+    _join("postgres://user:", "ChangeMe", "@localhost/db"),
     _join("postgres://user:", "xxx", "@localhost/db"),
     _join("postgres://user:", "${DB_PASSWORD}", "@localhost/db"),
     _join("postgres://user:", "$DB_PASSWORD", "@localhost/db"),
     _join("postgres://user:", "{password}", "@localhost/db"),
     _join("postgres://", "postgres:postgres", "@localhost:5432/test"),
     _join("postgres://user:", "<your password>", "@localhost/db"),
+    _join("postgres://postgres:", "mysecretpassword", "@localhost:5432/postgres"),
+    _join("postgres://user:", "%3Cpassword%3E", "@localhost/db"),
+    _join("postgresql://user:", "pw", "@/db?host=/cloudsql/p:r:i"),
+    _join("https://x-access-token:", "TOKEN", "@github.com/owner/repo.git"),
+    _join("https://oauth2:", "token", "@gitlab.example/owner/repo.git"),
+    _join("postgres://user:", "", "@localhost/db"),
+    "redis://localhost:6379/0",
+    _join("sk", "-proj-", "x" * 48),
+    _join("https://x-access-token:", "GITHUB_TOKEN", "@github.com/owner/repo.git"),
+    _join("postgres://user:pass", "@host:5432/db?replica=a@b"),
+    "https://medium.com:443/@someone/a-post",
+    "http://[::1]:8080/path@anchor",
+    _join("sk", "-Learn2Rank-Model-For-Search-Results-2026-Edition"),
+    _join("sk", "-Abcdefghij1234567890ABCDEFGHIJ1234-and-a-suffix"),
+    _join("gh", "p_", "aB3", "c" * 34),
     # key prefixes with placeholder bodies, or bodies missing one of the three
     # character classes a random key has
     _join("sk", "-fix-issue-1234-in-the-parser-now"),
@@ -253,6 +306,7 @@ SILENT_TEXT = [
     _join("AK", "IA", "X" * 16),
     _join("xo", "xb-", "your-token-goes-here"),
     _join("sk", "_live_", "x" * 24),
+    _join("sk", "_live_", "ABCD1234" * 3),
     _join("AI", "za", "-" * 35),
     # a key prefix glued to a longer word on either side
     _join("XAK", "IA", "QWERTYUIOP234567"),
@@ -287,6 +341,23 @@ def test_a_key_shape_inside_a_longer_run_stays_silent(repo, monkeypatch, label):
     _silent(monkeypatch, _payload(_checkpoint(repo), "Q" + SAMPLES[label] + "\n"))
 
 
+# A backslash and a letter, as text: what a JSON string or a shell `printf`
+# shows for a newline, a carriage return or a tab. And a percent-escape.
+_ESCAPES = ["\\n", "\\r", "\\t", "%3D", "%20"]
+
+
+@pytest.mark.parametrize("escape", _ESCAPES)
+@pytest.mark.parametrize("label", ["GitHub token", "OpenAI API key (legacy)", "AWS access key ID"])
+def test_a_key_right_after_a_written_escape_asks(repo, monkeypatch, escape, label):
+    text = _join("export TOKEN=", escape, SAMPLES[label], "\n")
+    reason = _asks(monkeypatch, _payload(_checkpoint(repo), text))
+    assert _kind(label) in reason
+
+
+def test_the_escapes_are_written_text_not_control_characters():
+    assert [len(e) for e in _ESCAPES] == [2, 2, 2, 3, 3]
+
+
 def test_a_google_shaped_run_one_character_too_long_stays_silent(repo, monkeypatch):
     _silent(monkeypatch, _payload(_checkpoint(repo), SAMPLES["Google API key"] + "Q\n"))
 
@@ -306,6 +377,8 @@ def test_a_google_shaped_run_one_character_too_long_stays_silent(repo, monkeypat
         "cla.io/lessons-learned/lessons-learned.md",
         "cla.io/checkpoints/nested/deeper/x.md",
         "CLA.IO/Checkpoints/x.md",
+        "cla.io/checkpoints./x.md",
+        "cla.io /decisions /x.md",
         ".claude/worktrees/abc/cla.io/feedback/notes.md",
     ],
 )
@@ -425,12 +498,53 @@ def test_an_empty_file_path_is_not_read_as_the_cwd(repo, monkeypatch):
     _silent(monkeypatch, payload)
 
 
-def test_a_crash_inside_the_scan_fails_open(repo, monkeypatch):
-    def broken(text):
-        raise RuntimeError("planted")
+def _broken(text):
+    raise RuntimeError("planted")
 
-    monkeypatch.setattr(hook, "_findings", broken)
-    _silent(monkeypatch, _payload(_checkpoint(repo), SAMPLES["GitHub token"]))
+
+def test_a_crash_inside_the_scan_is_not_swallowed(repo, monkeypatch):
+    # A scanner defect must not pass as "no secret here".
+    monkeypatch.setattr(hook, "_findings", _broken)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+        _payload(_checkpoint(repo), SAMPLES["GitHub token"]))))
+    with pytest.raises(RuntimeError, match="planted"):
+        hook.main()
+
+
+# requirement: guard-hooks / A secret written into a committed briefing asks first
+def test_a_crash_inside_the_scan_makes_the_dispatcher_ask(repo, monkeypatch, capsys):
+    # The hook is enforcing, so the dispatcher turns its crash into an ask.
+    if str(_HOOKS_DIR) not in sys.path:
+        sys.path.insert(0, str(_HOOKS_DIR))
+    spec = importlib.util.spec_from_file_location("dispatch_edit_write_for_crash", _DISPATCH)
+    dispatcher = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(dispatcher)
+    import _dispatch_lib as lib
+
+    monkeypatch.setattr(hook, "_findings", _broken)
+
+    def run(filename, stdin_text, argv=None):
+        if filename == "ask-secret-in-checkpoint.py":
+            return lib.run_hook(hook, stdin_text)
+        return lib.HookResult(0, "", "")
+
+    monkeypatch.setattr(dispatcher, "run_hook_file", run)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+        _payload(_checkpoint(repo), "clean text\n"))))
+    assert dispatcher.main() == 0
+    nested = json.loads(capsys.readouterr().out)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert "ask-secret-in-checkpoint.py" in nested["permissionDecisionReason"]
+    assert "ENFORCING" in nested["permissionDecisionReason"]
+
+
+def test_a_path_that_cannot_be_resolved_fails_open(tmp_path, monkeypatch):
+    # Path resolution is input handling: it stays inside the fail-open `try`.
+    def broken(path, *a, **k):
+        raise OSError("planted")
+
+    monkeypatch.setattr(hook.os.path, "realpath", broken)
+    _silent(monkeypatch, _payload(tmp_path / "notes" / "x.md", SAMPLES["GitHub token"]))
 
 
 # --------------------------------------------------------------------------- #
@@ -449,6 +563,12 @@ LARGE = {
     "private key prefixes": "-----BEGIN " * (_MB // 11),
     "github prefixes": _join("gh", "p_") * (_MB // 4),
     "newlines": "\n" * _MB,
+    "urls with no whitespace": "a://u:" * (_MB // 6),
+    "slashes after user:": "a://u:" + "x/" * (_MB // 2),
+    "at signs after user:": "a://u:" + "@" * _MB,
+    "written escapes": "\\n" * (_MB // 2),
+    "percent-escapes": "%3D" * (_MB // 3),
+    "github prefixes after escapes": _join("\\n", "gh", "p_") * (_MB // 6),
 }
 
 
@@ -458,8 +578,9 @@ def test_a_megabyte_payload_is_scanned_in_linear_time(repo, monkeypatch, name):
     assert len(text) >= _MB - 16
     started = time.perf_counter()
     _run(monkeypatch, _payload(_checkpoint(repo), text))
-    # Measured at about 0.1-0.3 s per payload on a 4-core Linux box; a regex
-    # that backtracks quadratically takes minutes on any of these.
+    # Measured at about 0.5-0.7 s per payload (Python 3.13, Linux, timing
+    # `_findings` on each of these); a scan that backtracks quadratically, or
+    # rescans a run from every start, takes minutes on any of them.
     assert time.perf_counter() - started < 5.0
 
 

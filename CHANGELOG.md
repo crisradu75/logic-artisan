@@ -25,8 +25,9 @@ the skills fall back to the default list of protected areas.
   holds a secret-shaped string: an AWS, GitHub, Anthropic, OpenAI, Slack, Google or Stripe live key,
   a `PRIVATE KEY` header, a JWT, or a `scheme://user:password@host` URL whose password is not a
   placeholder. The ask names the kind and the line, never the value, and points at the checkpoint
-  rule: name the file, not its value. Bad input fails open; if the hook itself fails to load, every
-  Edit and Write asks (#PR).
+  rule: name the file, not its value. Bad input fails open; if the hook itself fails to load or its
+  scan crashes, the call asks. Under Copilot CLI, an Edit or Write whose payload carries no
+  `new_string` or `content` is now denied, as one with no `file_path` already was (#PR).
 - **A `setup_guard.py` script** checks that `/cla:cla-setup` left alone the files it promises to:
   `snapshot` records them before the run writes anything, and `verify` at the end reports each
   instruction file, settings file, rules file of the repo's own, existing `notes.md`, `*.local.md`

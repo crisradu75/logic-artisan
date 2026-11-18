@@ -11,6 +11,8 @@ import shutil
 import subprocess
 import sys
 
+import pytest
+
 _PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 _COPILOT_HOOKS = _PLUGIN / "com.github.copilot" / "hooks" / "hooks.json"
 _CLAUDE_HOOKS = _PLUGIN / "hooks" / "hooks.json"
@@ -1009,6 +1011,28 @@ def test_copilot_pretooluse_asks_before_a_secret_lands_in_a_checkpoint(tmp_path)
     assert secret not in result.stdout
     _silent(_run_hook(_ADAPTER, _pre_event("Write", {"file_path": str(target), "content": "clean"}, tmp_path),
                       tmp_path))
+
+
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
+@pytest.mark.parametrize(
+    "tool, tool_input, key",
+    [
+        ("Write", {"text": "x"}, "content"),
+        ("Write", {"content": None}, "content"),
+        ("Edit", {"old_string": "a", "replacement": "b"}, "new_string"),
+        ("Edit", {"old_string": "a", "new_string": 7}, "new_string"),
+    ],
+)
+def test_copilot_pretooluse_denies_a_write_whose_new_text_is_missing(tmp_path, tool, tool_input, key):
+    # A payload that names the new text under another key would be scanned as
+    # empty by the Edit/Write guards, so it is denied like a missing file_path.
+    event = _pre_event(tool, {"file_path": str(tmp_path / "x.md"), **tool_input}, tmp_path)
+    _denied(_run_hook(_ADAPTER, event, tmp_path), f"no `{key}` to check")
+
+
+def test_copilot_pretooluse_allows_an_empty_write(tmp_path):
+    event = _pre_event("Write", {"file_path": str(tmp_path / "empty.md"), "content": ""}, tmp_path)
+    _silent(_run_hook(_ADAPTER, event, tmp_path))
 
 
 def test_copilot_pretooluse_allows_a_clean_edit_with_no_dates(tmp_path):
