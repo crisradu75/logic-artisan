@@ -22,8 +22,10 @@ cover the whole working tree of that checkout, whatever subdirectory ``--root`` 
 resumes on a later date keeps writing to the file it started, so this run's rows are all in it; an
 older chain's file can hold a row for the same id (a change name returns in a later chain) and is
 never read. A glob is not expanded. A relative path is read from the PRIMARY checkout of
-``--root`` (the folder that holds the shared ``.git``), because the run notes live there and are
-never written inside a linked worktree: from a worktree, the same relative path still finds them.
+``--root`` (the folder that holds the shared ``.git``, or the one a submodule's git directory names
+in ``core.worktree``), because the run notes live there and are never written inside a linked
+worktree: from a worktree, the same relative path still finds them. A bare repository has no
+primary checkout, so there a relative path exits 2 and an absolute one is needed.
 
 THE RUN NOTES. The chain's own file, ``cla.io/retro/<skill>-run-notes-<date>.md``, read as it is.
 The script reads the markdown table whose header names ``branch``, ``pr_number`` and ``head_sha``
@@ -251,14 +253,24 @@ def _ledger(notes: Path) -> list[tuple[list[str], list[tuple[int, list[str]]]]]:
 
 
 def _primary(root: Path) -> Path:
-    """The primary checkout of ``root``: the folder holding the shared ``.git`` directory."""
+    """The primary checkout of ``root``: the folder holding the shared ``.git`` directory.
+
+    A submodule's git directory (``.git/modules/<name>``) names its checkout in ``core.worktree``.
+    A bare repository with linked worktrees has no primary checkout at all, and a
+    ``--separate-git-dir`` one records none, so there a relative ``--notes`` cannot be placed."""
     r = _git(root, "rev-parse", "--git-common-dir")
     if r.returncode != 0 or not r.stdout.strip():
         raise Unchecked("repo", f"git rev-parse --git-common-dir failed: {_first_err(r)}")
     common = (root / r.stdout.strip()).resolve()
-    if common.name != ".git":
-        raise Unchecked("repo", f"cannot tell the primary checkout from the git directory {common}")
-    return common.parent
+    if common.name == ".git":
+        return common.parent
+    r = _git(root, "--git-dir", str(common), "config", "--get", "core.worktree")
+    if r.returncode == 0 and r.stdout.strip():
+        return (common / r.stdout.strip()).resolve()
+    raise Unchecked(
+        "repo", f"cannot tell the primary checkout from the git directory {common} (a bare repository?); "
+        "pass --notes as an absolute path",
+    )
 
 
 def notes_file(root: Path, spec: str) -> Path:

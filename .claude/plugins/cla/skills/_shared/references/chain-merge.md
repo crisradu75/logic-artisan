@@ -133,6 +133,10 @@ of its own before these.
    - The PR's head branch is `<branch>` on this repository, not a fork, since the chain only
      merges a PR it opened and recorded: otherwise `not opened by this chain`. Its base is
      `<base-branch>`: otherwise `wrong base (<base>)`.
+     Known limitation: in a fork workflow (`gh` resolves PRs on an `upstream` remote while the
+     branch is pushed to a fork), every PR reads as from a fork, so every merge stops as `not
+     opened by this chain`. The chain does not support that layout; its PRs are left open for the
+     user to merge by hand.
    - `state` must be `OPEN`, or the reason is `not open (state <state>)`. `headRefOid` must equal `head_sha`; a different head means commits nobody tested
      or reviewed here, so do not merge, and the reason is `head moved`. The remote's
      `refs/heads/<branch>` (`git ls-remote`) must equal `head_sha` too, for the same reason.
