@@ -8,6 +8,8 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-11-18
+
 **Upgrading.** After you update the plugin, re-run `/cla:cla-setup` in each repo that uses it and
 accept the update it lists. For a repo with `openspec/`, the run asks you for the new `## Stakes`
 section of `cla.io/project-facts.md` (three short questions: who uses the repo, what a bug costs,
