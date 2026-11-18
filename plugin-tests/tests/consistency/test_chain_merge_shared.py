@@ -317,3 +317,11 @@ def test_multi_pr_runs_the_script_at_resume_and_its_fix() -> None:
     assert "The file holding that line is this run's notes file from then on" in gate
     step_4 = _between(loop, "4. **No-unresolved-issues enforcement", "4a. **Record the obligations")
     assert _CALL + f"fix-pushed {notes} --id <name>" in step_4
+
+
+def test_the_fork_workflow_is_named_as_a_known_limitation():
+    # chain_check.py refuses a cross-repository PR, so a fork workflow stops every merge; the shared
+    # merge file says so rather than leaving the user to read `not opened by this chain` as a bug.
+    text = " ".join(_read(_SHARED).split())
+    assert "Known limitation: in a fork workflow" in text
+    assert "every merge stops as `not opened by this chain`" in text

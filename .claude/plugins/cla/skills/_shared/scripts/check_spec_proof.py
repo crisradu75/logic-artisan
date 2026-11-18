@@ -62,8 +62,10 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
     in its folder (what ``wc -w`` counts) and the total ``### Requirement:`` headings. A budget the
     config does not state is not enforced, and the ``change budget`` output line says so. A
     ``Budget: protected`` line in the change's ``proposal.md`` holds that change to the protected
-    override sentence (the one naming `Budget: protected`) instead; any other ``Budget:`` value, or that
-    line with no override sentence in the config, is a ``budget`` problem. A budget number in wording the
+    override sentence (the one naming `Budget: protected`) instead (a ``Budget:`` line inside a code
+    fence is an example and is not read); any other ``Budget:`` value, or that line with no override
+    sentence in the config, is a ``budget`` problem. Every active change is checked, whatever ``--base``
+    or ``--tests`` says (see ``check_change_budget``). A budget number in wording the
     reader does not know ("twenty-five", "6 000") exits 2.
   - ``empty``: a live spec with no unit, or an active delta whose requirements sit
     under no ADDED, MODIFIED, REMOVED or RENAMED heading; in scenario mode, also a
@@ -567,7 +569,14 @@ def change_budget_for(proposal: Path, budget: dict[str, int], override: dict[str
         text = proposal.read_text(encoding="utf-8-sig", errors="replace") if proposal.is_file() else ""
     except OSError as exc:
         raise CheckerError(f"cannot read {proposal}: {exc}") from exc
-    values = _BUDGET_LINE.findall(text)
+    # A `Budget:` line inside a code fence is an example, not this change's choice.
+    outside, fence = [], None
+    for line in text.splitlines():
+        was_fenced = fence is not None
+        fence = _fence_after(line, fence)
+        if not was_fenced and fence is None:
+            outside.append(line)
+    values = _BUDGET_LINE.findall("\n".join(outside))
     problems, chosen = [], budget
     for value in values:
         if value != "protected":
@@ -585,7 +594,8 @@ def change_totals(change_dir: Path) -> tuple[int, int]:
     requirements = words = 0
     for md in sorted(change_dir.rglob("*.md")):
         try:
-            text = md.read_bytes().decode("utf-8", errors="replace")
+            # -sig: a byte-order mark would count as a word of its own or hide a heading on line 1.
+            text = md.read_bytes().decode("utf-8-sig", errors="replace")
         except OSError as exc:
             raise CheckerError(f"cannot read {md}: {exc}") from exc
         words += len(text.split())
@@ -596,7 +606,10 @@ def change_totals(change_dir: Path) -> tuple[int, int]:
 def check_change_budget(root: Path, budget: dict[str, int], override: dict[str, int] | None = None) -> tuple[list[str], list[str]]:
     """(PROBLEM lines, one info line per active change) for the changes over the whole-change budget.
 
-    Active changes only: `openspec/changes/<name>/`, never `archive/`, which is not edited."""
+    Active changes only: `openspec/changes/<name>/`, never `archive/`, which is not edited. Every active
+    change, whatever `--base` or `--tests` says: like `format`, the budget is a property of the change as
+    it stands in the tree, not of what this branch edited, and `--tests` narrows only the marker scan. An
+    over-budget change on the default branch would otherwise pass every branch that does not touch it."""
     changes = root / "openspec" / "changes"
     problems, info = [], []
     if not changes.is_dir():

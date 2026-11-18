@@ -29,7 +29,9 @@ def test_the_pausing_flags_are_listed_as_exceptions():
 
 def test_the_no_pause_default_defers_to_the_exceptions():
     default = _gate_section().strip().split("\n\n")[0]
-    assert "exceptions" in default, "the no-pause default does not point at its exceptions"
+    # Pinned word for word: "no exceptions authorize a pause" also holds the word "exceptions".
+    assert "only the exceptions below authorize a pause" in default, (
+        "the no-pause default no longer says the exceptions below are what authorize a pause")
     assert not re.search(r"\bno flag\b", default, re.I), (
         "the no-pause default denies that any flag pauses the run, but "
         "--gate-on-push and --interactive do")
