@@ -8,14 +8,15 @@ importing each as a standalone module — the same technique this package's own
 `hooks/tests/` already uses — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
 modified by this module; it only orchestrates them. (2) It also HOSTS
-`strip_quoted_spans` / `GIT_GLOBAL_OPTS` / `GIT_CMD`, which every leaf hook
+`strip_quoted_spans` / `GitInvocation` / `GIT_CMD`, which every leaf hook
 that matches a git command line imports — `ask-destructive-git.py` and
 `warn-stray-scratch-artifact.py`. (Named, not counted: a count restated away
 from its source is what went stale here before, and a date-stamp turns a wrong
 number into a wrong number that reads as verified. `hooks/tests/`'s
 `_GIT_HOOK_FILES` is where the list is maintained. `ask-broad-git-add.py`
-imports `strip_quoted_spans` and `GIT_CMD` but walks tokens instead of
-composing `GIT_GLOBAL_OPTS`, which keeps it linear on hostile input.)
+imports `strip_quoted_spans` and `GIT_CMD` and walks tokens itself. Both
+ways are linear on hostile input; composing `GIT_GLOBAL_OPTS` into a regex is
+not, see `GitInvocation`.)
 So the relationship with those hooks is bidirectional: this module loads them,
 and they import from it. Consequence worth holding onto: keep this module
 import-cheap and side-effect-free, because a failure here takes out both roles
@@ -846,20 +847,24 @@ class GitInvocation:
     text and shared by every `git` that reaches it.
 
     `capture_opts=True` adds the options run as group 1, ahead of `after`'s
-    groups, the way `"(" + GIT_GLOBAL_OPTS + ")"` numbered it. The text must
-    have been through `strip_quoted_spans` first, as with the regex.
+    groups, the way `"(" + GIT_GLOBAL_OPTS + ")"` numbered it. Pass text
+    that has been through `strip_quoted_spans`, as with the regex, and
+    `after` starts at the subcommand word, not at whitespace or a backslash
+    (see `_GIT_OPT_STEPS` for why that keeps one end per step).
     """
 
     def __init__(self, after: str, capture_opts: bool = False) -> None:
         self.after = re.compile(after)
         self.capture_opts = capture_opts
 
-    def _resolve(self, text: str, start: int, memo: dict) -> tuple | None:
+    def _resolve(self, text: str, start: int, failed: set) -> tuple | None:
         """`(position, after_match)` for the first place, in the regex's
         backtracking order, that options from `start` reach and `after`
-        matches; None when there is none."""
-        if start in memo:
-            return memo[start]
+        matches; None when there is none. `failed` holds the positions already
+        known to lead nowhere, and gains the ones this call rules out.
+
+        Only failures are kept: a success ends the match, and the next `git`
+        searched for starts after it, beyond every position this call saw."""
         stack = [[start, 0]]  # each: a position, and the next step to try there
         while stack:
             frame = stack[-1]
@@ -867,37 +872,24 @@ class GitInvocation:
             if step < len(_GIT_OPT_STEPS):
                 frame[1] = step + 1
                 m = _GIT_OPT_STEPS[step].match(text, pos)
-                if m is None:
-                    continue
-                nxt = m.end()
-                if nxt not in memo:
-                    stack.append([nxt, 0])
-                    continue
-                found = memo[nxt]
-                if found is None:
-                    continue
-            else:
-                stack.pop()
-                m = self.after.match(text, pos)
-                if m is None:
-                    memo[pos] = None
-                    continue
-                found = (pos, m)
-            # The first success on the current path is every frame's answer.
-            for p, _ in stack:
-                memo[p] = found
-            memo[pos] = found
-            return found
+                if m is not None and m.end() not in failed:
+                    stack.append([m.end(), 0])
+                continue
+            stack.pop()
+            m = self.after.match(text, pos)
+            if m is not None:
+                return pos, m
+            failed.add(pos)
         return None
 
     def finditer(self, text: str):
-        memo: dict = {}
+        failed: set = set()
         pos = 0
         while True:
             head = _GIT_HEAD.search(text, pos)
             if head is None:
                 return
-            found = self._resolve(text, head.end(), memo)
+            found = self._resolve(text, head.end(), failed)
             if found is None:
                 pos = head.start() + 1
                 continue
