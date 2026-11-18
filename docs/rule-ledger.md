@@ -64,6 +64,7 @@ benchmark run.
 - guidance | none | none found (predates extraction ee4034ad) | Grep only; read no more of a file than the matched line and enough surroundings to quote it.
 - keep | honesty | #73 2026-08-14, a sweep reported zero hits over a surface it never searched | A supplied path or glob that resolves to ZERO files is never
 - keep | honesty | none found (predates extraction ee4034ad) | Never fall back to a different path shape (e.g. a repo-wide glob) if the caller
+- not-a-rule | - | - | never searched. Never fall back
 - keep | honesty | none found (predates extraction ee4034ad) | every hit you report MUST carry the *actual matched line*
 - keep | honesty | none found (predates extraction ee4034ad) | Never report a hit you did not literally match, and never
 - keep | honesty | #73 2026-08-14, sweep accounting | **Then, ALWAYS, one accounting footer line
@@ -78,6 +79,7 @@ benchmark run.
 - guidance | none | none found (predates extraction ee4034ad) | Grep only; read no more of a file than the matched line and enough surroundings to quote it.
 - keep | honesty | #73 2026-08-14, a sweep reported zero hits over a surface it never searched | A supplied path or glob that resolves to ZERO files is never
 - keep | honesty | none found (predates extraction ee4034ad) | Never fall back to a different path shape (e.g. a repo-wide glob) if the caller
+- not-a-rule | - | - | never searched. Never fall back
 - keep | honesty | none found (predates extraction ee4034ad) | every hit you report MUST carry the *actual matched line*
 - keep | honesty | none found (predates extraction ee4034ad) | Never report a hit you did not literally match, and never
 - keep | honesty | #73 2026-08-14, sweep accounting | **Then, ALWAYS, one accounting footer line
@@ -130,6 +132,7 @@ benchmark run.
 - not-a-rule | - | - | which is a real (if modest) saving and never a regression.
 - keep | user's files | #19 2026-08-06, EnterWorktree path-casing refusal; a rename breaks sessions pinned to the path | Never "fix" it by renaming
 - keep | user's files | 4c88d123 2026-10-07, review findings on #307 | the final report must say this mode was used.
+- keep | user's files | e9c0e46a 2026-08-06, Plain-git fallback for the EnterWorktree path-casing refusal (#19) | path must target the worktree explicitly
 
 ## skills/new-worktree/references/path-casing.md
 - not-a-rule | - | - | The comparison never asks git,
@@ -157,6 +160,7 @@ benchmark run.
 - keep | shipped to other repos | #417 2026-10-25, the old skill missed reversibility and release consequences | The first three are always listed
 - not-a-rule | - | - | the decision must survive.
 - not-a-rule | - | - | the written repo rules the decision must keep
+- not-a-rule | - | - | ("an unknown is null, never a confident zero")
 - keep | honesty | #417 2026-10-25, facts already surfaced were dropped (issue #273) | A fact already in hand must never silently drop out.
 - keep | user's files | #417 2026-10-25 | append `-2`, `-3`, and so on; never overwrite.
 - guidance | none | #515 2026-11-17, principle 8 | A path the user states replaces this default.
@@ -180,14 +184,19 @@ benchmark run.
 
 ## skills/_shared/references/bash-discipline.md
 - keep | user's files | carried in at repo extract ee4034ad 2026-07-23; covers the write-outside-checkout and staging shapes below | The skill MUST NOT emit them.
+- not-a-rule | - | - | or write where the skill must not
 - guidance | none | ee4034ad 2026-07-23 extract; design-tradeoffs.md "No Skill() hops": cost turns for no capability | which costs turns for no capability
 - keep | user's files | 934fb853 2026-09-23 review of PR 274; `..` holds the user's other projects | Never write to `..`, which in a consuming repo holds the user's other projects
+- keep | user's files | 934fb853 2026-09-23, docs: address review of PR 274 — portable junction removal, teardown... | Never write them anywhere else outside the checkout.
 - keep | user's files | ee4034ad 2026-07-23 extract; incident in the line: an Archive `git add -A` swept a parallel session's cherry-pick files | Always path-scope every staging call
 - keep | user's files | 274cc19d 2026-10-13 (#353) worktree route for git_state and cwd-bound commands | `path` must be under `.claude/worktrees/` of the same repo
 - keep | user's files | 274cc19d 2026-10-13 (#353); a commit without `git -C` lands on the session's checkout | Every staging and commit call it guards must then use `git -C`
 - keep | user's files | 274cc19d 2026-10-13 (#353); exit 3 means the commit would land on the wrong branch | Never add `--repo-root` to silence an exit 3
 - keep | user's files | ee4034ad 2026-07-23 extract; cwd does not persist, a command runs in the wrong checkout | Absolute paths everywhere — never rely on a prior `cd`
 - keep | user's files | ee4034ad 2026-07-23 extract; incident in the line: a broad `git add openspec/` swept multi-pr sibling changes into an archive commit | **NEVER a broad `git add openspec/` for Archive**
+- keep | user's files | text since 1d40b717 2026-11-02 (neutral-terms rewording (#460)) | name the specific source paths the change touched, never a broader parent
+- keep | user's files | 49247b6e 2026-08-04, fix: documentation accuracy + guard determinism (4 items) (#15) | archive commit. Never `git add -A`.
+- keep | user's files | 49247b6e 2026-08-04, fix: documentation accuracy + guard determinism (4 items) (#15) | never expand to `-A` or a bare `openspec/`
 - keep | user's files | ee4034ad 2026-07-23 extract; failure mode in file: `--theirs` during a rebase committed the wrong content | never trust positional intuition about which side is "ours"
 - keep | user's files | ee4034ad 2026-07-23 extract; same `--ours`/`--theirs` inversion incident | Refer to the git man page when uncertain. Never assume.
 - not-a-rule | - | - | the root cause is almost always a shape that breaks matching
@@ -196,6 +205,7 @@ benchmark run.
 - keep | shipped to other repos | dec3edcb 2026-11-17 (#511) principle 5, cla-foundation-2026-11-17.md | is an input to this filter, never the answer
 - keep | shipped to other repos | dec3edcb 2026-11-17 (#511) principle 5 | A finding that names a protected area is never non-blocking.
 - keep | shipped to other repos | bebb4a7e 2026-11-17 (#512) protected areas from each repo's Stakes | It never says "nothing is protected".
+- keep | shipped to other repos | bebb4a7e 2026-11-17, refactor: protected areas come from each repo's Stakes, with one... | pasted at dispatch time and never copied by hand into the brief
 - keep | security | dec3edcb 2026-11-17 (#511); the floor a test holds the copies to | The floor, always protected whatever the Stakes list says
 
 ## skills/_shared/references/chain-merge.md
@@ -210,6 +220,7 @@ benchmark run.
 - keep | honesty | 6df50092 2026-10-08 head-commit guards; reason `push not verified` | `git rev-parse HEAD` must equal `git ls-remote origin <branch>`.
 - keep | user's files | 751bed9e 2026-09-16 review findings; a moved head holds commits nobody reviewed | **A resume never merges a moved head:**
 - keep | user's files | 1325ac6a 2026-09-16 multi-lite merge-each-clean policy | `headRefOid` must equal `head_sha`; a different head means commits nobody tested
+- keep | user's files | ba21ee82 2026-09-16, fix: address second-round review findings | must be `OPEN`. `headRefOid`
 - keep | honesty | ba21ee82 2026-09-16 second-round review findings | `git rev-parse HEAD` must equal `head_sha`. If it
 - keep | honesty | 87aeac6a 2026-09-16 third-round review findings | must be empty; anything listed would be tested by the gate below
 - not-a-rule | - | - | "Never end a turn with nothing in flight" says why `python3`
@@ -229,6 +240,7 @@ benchmark run.
 ## skills/_shared/references/economy-rules-file.md
 - keep | shipped to other repos | 0cb84550 2026-10-11 (#326) cla-economy-rules-file; quality floor copied into other repos | Never cut these to save tokens.
 - keep | shipped to other repos | 0cb84550 2026-10-11 (#326); protected list reworded by bebb4a7e (#512), test-pinned | are never dropped in a rewrite
+- keep | security | bebb4a7e 2026-11-17, refactor: protected areas come from each repo's Stakes, with one... | always security, safe writes to a user's files and honesty claims
 - keep | user's files | 0cb84550 2026-10-11 (#326) real-file check | never writing to a user's folders
 - keep | honesty | 5902621f 2026-10-15 (#371) engineering lessons: one-way contract tests | a field that is optional upstream must be optional in
 - keep | honesty | 5902621f 2026-10-15 (#371) one-way contract tests | Never strip optionality from both sides
@@ -295,11 +307,15 @@ benchmark run.
 - keep | user's files | d452a82d 2026-07-28 (#11) | must be EMPTY — no remote branch to collide with
 - keep | user's files | d452a82d 2026-07-28 (#11) | must be EMPTY — no local branch either
 - keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved); diagnose's debug tag leaking into a commit | must return nothing; remove any tagged line before staging
+- keep | shipped to other repos | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | a rename must touch both, or this grep searches for a string nothing writes
 - keep | user's files | ee4034ad 2026-07-23 extract; tool-redirect bug wrote a scratch file into the repo root | Never fold it into the commit
+- keep | user's files | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | never skip this because Implement's delegate reported success
 - keep | honesty | eaa579b0 2026-08-24 (#145) a measurement names its command | never `Measured-by: none`
 - keep | honesty | 74cb2be9 2026-09-12 (#238) a pair asserting sameness must come from one tree | must come from one tree
+- keep | honesty | 74cb2be9 2026-09-12, feat: a pair of numbers asserting sameness must come from one tree... | and the trailer must name it
 - keep | user's files | ee4034ad 2026-07-23 extract; bash-discipline.md staging incident | Path-scoped staging — NEVER `git add -A`
 - keep | user's files | b8bf1795 2026-08-11 four review agents' findings | never a path in the installed plugin tree
+- keep | user's files | text since 016203d7 2026-10-08 (cla-setup replaces cla-init) | plugin tree). Never expand to `-A`.
 - not-a-rule | - | - | every line in it must be `key: value`
 - keep | honesty | f42baae9 2026-09-12 (#247) check the trailer block parsed | **Check that it parsed, before you push.** These must agree:
 - keep | honesty | 0c18f62b 2026-11-05 (#479) push in background and verify remote head | They must be equal. Different, non-zero
@@ -307,6 +323,8 @@ benchmark run.
 ## skills/_shared/references/skill-authoring.md
 - keep | shipped to other repos | ee4034ad 2026-07-23 extract; check_no_project_tokens.py | Never let a repo token land
 - keep | shipped to other repos | ee4034ad 2026-07-23 extract; a skipped read must not lose a gate | Each stub MUST be **self-sufficient for its own invariant**
+- not-a-rule | - | - | a skipped read loses the procedure, never the gate
+- remove? | none | soften: a stub that restates its reference only costs words, no protected area; "need not restate" says it. text since 9cd5f32f 2026-10-08 | **Beyond those one-liners a stub never restates its reference**
 - keep | shipped to other repos | ee4034ad 2026-07-23 extract | **Always stays inline:**
 - keep | user's files | ee4034ad 2026-07-23 extract; git_state check dropped in a restructure, caught by review | this MUST be a hoisted one-liner
 - keep | user's files | ee4034ad 2026-07-23 extract; repeat-offender list | never `git add -A` / path-scoped staging
@@ -322,8 +340,10 @@ benchmark run.
 ## skills/_shared/references/subagent-brief.md
 - keep | honesty | a55f4d98 2026-08-25 (#155) fix-brief-binding-defect | authority and must not arrive as one instruction.
 - keep | user's files | a43f5ca1 2026-10-26 (#426) toolkit reviewers; docs/history.md: a reviewer `git checkout --` over ~344 uncommitted lines | and never `git checkout`, `git switch`
+- keep | honesty | 775fa0b9 2026-10-25, Reviewer agents: say which line number the line field means (#420) | never a line counted inside the diff file
 - not-a-rule | - | - | there is no reflog for content that was never
 - keep | security | 33c55751 2026-11-02 (#452) review brief constraints | The list never suppresses a Critical security, money or data-loss finding.
+- keep | security | 33c55751 2026-11-02, docs: name target in merge prompts, rename tier for lite-pr, review... | Report those always, flagged as overriding the stated constraints
 - keep | honesty | d6c99eec 2026-08-25 (#152) open-issues-lane2 | Never omit the field.
 - not-a-rule | - | - | so the orchestrator must re-decide the remedy
 - keep | honesty | a55f4d98 2026-08-25 (#155); an unrun check lets `done` pass with the defect intact | the orchestrator must have RUN it and seen it exhibit the defect
@@ -369,6 +389,8 @@ benchmark run.
 - keep | shipped to other repos | #47 (c8d91de6, 2026-08-09), resolve the real branch rather than a spelled prefix | Never spell `feature/<change-name>`
 - keep | user's files | e4ad3989 2026-08-14 stacked chain mode: a bare merge lands a stacked child against the wrong base | Handoff never prints a bare `gh pr merge` for a stacked child
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: an untracked file or sibling change rides into the commit | **Never run `git add -A`. Stage named paths only:**
+- keep | user's files | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | per capability the change modifies, never `openspec/`
+- keep | user's files | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | An untracked file never rides into a commit it does not belong to
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: an external cherry-pick is invisible to `git status` | never special-case "exit 1 is probably fine"
 - guidance | none | design-tradeoffs "Continue-on-everything": owner policy, the user is the safety net | not a halt: the report is the safety net
 - keep | user's files | none found (text since 9cd5f32f 2026-10-08); guards the base branch and publishing | **Development only.** Never `gh pr merge`
@@ -395,6 +417,7 @@ benchmark run.
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: sweeps a sibling's untracked change dir | **Stage the named path groups, NEVER a broad `git add openspec/`.**
 - keep | user's files | none found (text since 9cd5f32f 2026-10-08); the scope check against swept-in paths | Every staged path in `git diff --name-only --cached` must match one of:
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: silent drift of the live spec | every capability under the change's `specs/` must have its `openspec/specs/<cap>/spec.md` staged
+- not-a-rule | - | - | its live spec is never materialized
 - keep | user's files | 4eb407fe 2026-08-10; reason in line: a bare `openspec/` re-sweeps the siblings | A path you missed is added alone (never `openspec/`, never `-A`)
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); reason in file: a 0-exit push can skip the commit | # must equal <branch>
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); reason in file: a 0-exit push can skip the commit | # must equal the captured HEAD sha
@@ -403,6 +426,8 @@ benchmark run.
 
 ## skills/spec-to-pr/references/branch-and-pr-base.md
 - keep | user's files | e4ad3989 2026-08-14 stacked chain mode: a default base silently puts the whole parent chain in the PR diff | `gh pr create` MUST pass `--base <pr-base>` explicitly
+- not-a-rule | - | - | would skip phases that never ran
+- keep | user's files | 00fec679 2026-08-14, fix: make the stacked chain executable end-to-end | next-steps must NOT print the bare `gh pr merge` line for a stacked child
 - keep | user's files | d8156380 2026-08-14, measured on a throwaway 3-deep stack: a squash makes the child conflict with its parent | Use a **merge commit, never a squash**, on a stack.
 
 ## skills/spec-to-pr/references/concurrent-runs.md
@@ -416,6 +441,7 @@ benchmark run.
 - not-a-rule | - | - | a suppression ships and Revise never sees it
 - not-a-rule | - | - | reads as consent the user never gave
 - not-a-rule | - | - | Propose has always created the directory
+- not-a-rule | - | - | a round whose check never ran prints `gh pr merge`
 - not-a-rule | - | - | never needs a direct push to the base branch
 
 ## skills/spec-to-pr/references/handoff.md
@@ -423,9 +449,11 @@ benchmark run.
 - keep | honesty | #324 (2ecdbdfd, 2026-10-11) risk-sized review: an assumed risk level and unreviewed fixes are stated | Also, always when they apply
 - keep | honesty | design-tradeoffs "Deferred items in three named subsections": one heading hid an undone fix | **split into three named subsections, always, even when empty:**
 - keep | honesty | #516 (86f13b82, 2026-11-17); a skipped review must not get a bare merge line | is shown as ⚠ and never gets a bare merge line
+- keep | user's files | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | (`--pr-base` passed):** never a bare merge command
 - guidance | none | none found (predates extraction ee4034ad, 2026-07-23); Archive already ran the command | Leave out `openspec archive`: Archive already ran it.
 - keep | honesty | design-tradeoffs "Built from the example, not memory": a reconstruction gives the plausible number | from the entries written as each round closed — never reconstructed here
 - keep | honesty | #511 (dec3edcb, 2026-11-17); a guessed or dropped round falsifies the retro's yield | never guess `protected`, and never drop the round
+- remove? | none | soften: a run-log failure leaves the run status alone; state it as a plain fact, no protected area. text since 9cd5f32f 2026-10-08 | the run finishes; it never marks the run `warn`
 - not-a-rule | - | - | It never fails, never blocks, and changes nothing about the run's status.
 
 ## skills/spec-to-pr/references/implement-delegate.md
@@ -441,12 +469,16 @@ benchmark run.
 - guidance | none | e8c8fc7b 2026-10-08, narrower comment-analyzer; cost of a reviewer with nothing to read | not when no comment, docstring or `.md` hunk changed: it would have nothing to read
 - keep | shipped to other repos | #426 (a43f5ca1, 2026-10-26): the toolkit file names `inherit`, so a reviewer would run below its sized model | Pass `model:` on EVERY dispatch, never relying on the toolkit file
 - keep | user's files | #426 (a43f5ca1, 2026-10-26) and #420 (775fa0b9): reviewers hold Bash and Edit in the user's checkout | run no git command (not `git diff`, and never `git checkout`
+- keep | honesty | 775fa0b9 2026-10-25, Reviewer agents: say which line number the line field means (#420) | never a line counted inside the diff file
 - keep | user's files | #344 (0c8e10ff, 2026-10-12); reason in line: a `git add` can sweep the diff file in | **Write the diff to a file; pass its path, never the text.**
+- keep | user's files | 0c8e10ff 2026-10-12, feat: reviewer-agents (#344) | never inside the working tree, where `git status` shows it
 - keep | shipped to other repos | design-tradeoffs "Revise": raw diff text breaks the script's template literal | Each prompt names its diff file's absolute path (never the diff text)
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); a lost Critical would read as reviewed | a Critical is never displaced by a lower-severity
 - keep | honesty | design-tradeoffs "Revise" (a crashed reviewer is a `null`); text since 9cd5f32f 2026-10-08 | A crashed reviewer never vanishes silently.
+- not-a-rule | - | - | the agents the journal confirms never returned
 - keep | honesty | none found (text since 9cd5f32f 2026-10-08); a failed fan-out must not read as reviewed | **Round 1 always happens.**
 - keep | shipped to other repos | #324 (2ecdbdfd, 2026-10-11) risk-sized review; a lower level weakens the review of a high-risk fix | at round 1's final level (never lower)
+- keep | user's files | 0c8e10ff 2026-10-12, feat: reviewer-agents (#344) | never in the tree), name that file's absolute path
 - keep | honesty | none found (text since 9cd5f32f 2026-10-08); an empty diff reviewed would read as clean | never review nothing and call it clean
 - keep | honesty | #152 (d6c99eec, 2026-08-25); design-tradeoffs "Round 2 asks its own question" | never a skipped step
 - keep | honesty | #485 (0781b607, 2026-11-10); a lower rating could drop a finding below the bar | is triaged at the **higher** severity, always.
@@ -457,7 +489,9 @@ benchmark run.
 - keep | shipped to other repos | design-tradeoffs "The three-status rejection": the two-status form makes a delegate apply a wrong remedy | never the two-status `done`/`blocked` form
 - keep | honesty | design-tradeoffs "The three-status rejection" (recording it as failure teaches delegates to apply wrong remedies) | Never recorded as a delegate failure.
 - keep | honesty | none found (text since 9cd5f32f 2026-10-08); a missing field would hide a wrong fact row | **Never read a missing `Fact corrections:` field as `(none)`.**
+- keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | recover inline, but never silently
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); INT-CAP / INT-SYC | a finding never silently evaporates
+- keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | never because an edit was made where the finding pointed
 - keep | shipped to other repos | none found (text since 9cd5f32f 2026-10-08); reason in line: the command fails on an uncommitted change dir | Never `git show HEAD:<path>`
 - keep | safe writes | 7ded852d 2026-09-23, mutation-gate backup wording | Never put a backup anywhere else outside the
 - keep | safe writes | none found (text since 9cd5f32f 2026-10-08); a delegate must not mutate the live file | It mutates a scratchpad copy, never the live file.
@@ -466,6 +500,7 @@ benchmark run.
 - keep | honesty | design-tradeoffs "The empty-staging guard": keying on zero Applied hides a `done` with no edit | never by "zero findings triaged Applied"
 - keep | honesty | none found (text since 9cd5f32f 2026-10-08); an empty commit would fake a round | Never manufacture an empty commit for the counter.
 - keep | honesty | #357 via #362 (51df1d46, 2026-10-13): the retro splits round-2 yield by the trigger | never drop the field to clear a refusal
+- keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | it is never reconstructed there
 - keep | honesty | #155 (a55f4d98, 2026-08-25); design-tradeoffs "Two exit counts": an open Critical exited `ok` | both must be zero to exit clean
 
 ## skills/spec-to-pr/references/test-notes.md
@@ -479,14 +514,18 @@ benchmark run.
 - guidance | none | #329 (b561b82c, 2026-10-12); diagnose-escalation.md: an unattended chain has nobody to answer | invoke it without asking; nobody is there to answer.
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); same contract as spec-to-pr's git_state rule | never infer "probably fine" on a non-zero exit
 - keep | user's files | #426 (a43f5ca1, 2026-10-26) and #420 (775fa0b9): reviewers hold Bash and Edit in the user's checkout | run no git command (not `git diff`, and never `git checkout`
+- keep | honesty | 775fa0b9 2026-10-25, Reviewer agents: say which line number the line field means (#420) | never a line counted inside the diff file
 - remove? | none | duplicates the intro's "A path the user states wins" a few sections up; #515 (94280abd, 2026-11-17) | a path the user states always wins
 - not-a-rule | - | - | one pass, plus one pass over the fix diff of a protected-area fix; never a third.
 
 ## skills/lite-pr/references/diagnose-escalation.md
 - keep | honesty | #233 (a227647a, 2026-09-12): a second edit after a failed diagnose risks a symptom fix; a `diagnose` commit would land on the base branch | never another edit round
+- keep | shipped to other repos | a227647a 2026-09-12, feat: add the /cla:diagnose skill and its two Test-phase escalations... | never put a question mid-chain to a user who is not there
 
 ## skills/lite-pr/references/measured-by.md
 - keep | honesty | #145 (eaa579b0, 2026-08-24): a trailer that certifies a check nobody ran | never `Measured-by: none`
+- keep | honesty | 74cb2be9 2026-09-12, feat: a pair of numbers asserting sameness must come from one tree... | "no regression" — must come from one tree
+- keep | honesty | 74cb2be9 2026-09-12, feat: a pair of numbers asserting sameness must come from one tree... | and the trailer must name it
 - not-a-rule | - | - | that paragraph must be `key: value` lines throughout
 - keep | honesty | #247 (f42baae9, 2026-09-12): a blank line took three written trailers to 0 parsed | must agree — what you wrote against what git's parser sees
 
@@ -507,20 +546,27 @@ benchmark run.
 - keep | user's files | a24ef7e7 2026-09-28; issue #281, unattended destructive-git prompt stalls the chain | Never `ALLOW_DESTRUCTIVE_GIT=1`.
 - keep | user's files | #74 (f096f799 2026-08-14), conflict-resolution procedure | a non-zero exit halts and surfaces — never special-case it
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | halts the chain; a content finding never does.
+- not-a-rule | - | - | Ship never opening a PR, Archive not reaching the PR, or an unresolved
 - keep | user's files | 6df50092 2026-10-08, shared chain-merge reference | is outside this run: never merge, rebase or push it as part of the chain
-- keep | user's files | 4eb407fe 2026-08-10; none found earlier | **A dependency cycle is never guessed past**
+- keep | user's files | 4eb407fe 2026-08-10; none found earlier | **A dependency cycle is never guessed past** — it's always its own explicit question
 - keep | user's files | #94 (c5d73be8 2026-08-21), --pr-base promise scoped to policy | **A prerequisite the chain cannot supply is never guessed past either.**
+- keep | user's files | text since 6df50092 2026-10-08 (one shared chain-merge reference) | since the chain never merges a PR it did not open
 - keep | user's files | a43ed1fb 2026-10-04, autonomy modes reconciled with the blocker list | except the cycle question, which is never skipped
+- keep | user's files | a43ed1fb 2026-10-04, Reconcile autonomy modes with the blocker list and permission ask | the closed blocker list above — never guess past one
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | Tier B (content findings) never does.**
+- not-a-rule | - | - | Ship never opening a PR, Archive not reaching the PR, an unresolved
 - keep | honesty | ee4034ad 2026-07-23 (extraction); none found earlier | A change never counts done while a Deferred-Known-Issue
 - not-a-rule | - | - | response key or required behaviour that the change itself never consumes
+- not-a-rule | - | - | is indistinguishable from never having written it
 - keep | safe writes | #361 (issue #272), a second --fix run moves cites again | Never run the recheck twice on one change: its fixes would move again.
 - keep | user's files | 6df50092 2026-10-08, head-commit guards adopted | **Never merge a head the change's review and full gate did not cover:**
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | a fresh session always re-asks, since it has no way to know
 
 ## skills/multi-pr/references/change-loop.md
 - keep | user's files | ca5a9ac7 2026-10-08, review findings on chain-merge (resume never merges unfixed findings) | a moved head is never merged (`chain-merge.md`, "Record the head")
+- keep | user's files | ca5a9ac7 2026-10-08, fix: review findings on chain-merge — resume never merges unfixed... | **Never infer them fixed.**
 - not-a-rule | - | - | because the review that must act on them runs inside
+- not-a-rule | - | - | already-finished changes are simply never selected
 - not-a-rule | - | - | a row written but never turned into a flag has bought nothing
 - keep | safe writes | #361 (issue #272), --fix rewrites cites and a rerun moves them again | **Never run it twice on one change.**
 - keep | safe writes | #361 (issue #272) | Never substitute today's `origin/<base-branch>`.
@@ -540,25 +586,32 @@ benchmark run.
 - keep | user's files | 082c4678 2026-10-04, the four P1 gaps in multi-pr | (never a rebase or force-push)
 - keep | user's files | 6df50092 2026-10-08, shared chain-merge reference | Never retry a merge hoping for green.
 - keep | safe writes | #361 (issue #272) | never from a new run of the script
+- not-a-rule | - | - | passing the flag on a resume is never wasted
 - keep | user's files | 45ee062e 2026-10-08, run notes stay local and untracked | gitignored, never added or committed.
 
 ## skills/multi-pr/references/cleanup.md
 - not-a-rule | - | - | (an older PR, or local commits never pushed)
 - keep | user's files | #485 (0781b607 2026-11-10), teardown refuses to delete unrecoverable files | never compare a full clone under the worktrees folder with itself
 - keep | user's files | 2746a5c6 2026-09-28; rm through a junction deletes the target's files | Never `rm -r` or `rm -rf` the link in Git Bash.
+- keep | user's files | 7ded852d 2026-09-23, docs: fix PowerShell junction removal and the mutation-gate backup... | In PowerShell, never combine `-Recurse` with `-Force`
 - keep | user's files | a24ef7e7 2026-09-28; issue #281, -D prompts and stalls the chain | never retry with `-D`.
 
 ## skills/multi-pr/references/discover-and-gate.md
 - keep | user's files | 6df50092 2026-10-08, shared chain-merge reference | The chain never merges a PR it did not open
 - keep | user's files | #88 (issue #87), prerequisite sweep missed change references | `depends_on` is a hint, never the dependency graph.**
+- keep | user's files | 5ae3048c 2026-08-21, fix: multi-pr prerequisite sweep covers change references, not just... | Never use it as the sole source for ordering or prerequisite discovery
 - not-a-rule | - | - | authored on a *local branch never merged to `<base-branch>`*
+- keep | user's files | text since 016203d7 2026-10-08 (cla-setup replaces cla-init) | The check is never optional, whether or not this repo has hit the gap before.
 - not-a-rule | - | - | one call per change, awaited sequentially, never parallel
 - not-a-rule | - | - | and never touches `openspec/specs/`, which is
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | **Always ask, batched into one `AskUserQuestion` call:**
 - keep | honesty | #149 (760962fb 2026-08-24), the two chain edges depends_on cannot express | **A NO carries its derivation, never the bare word.**
 - not-a-rule | - | - | a question whose default is NO and whose NO is never shown is
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | both must land before Phase 2 starts
+- not-a-rule | - | - | before or after the always-ask call
+- not-a-rule | - | - | as context alongside the always-ask call
 - keep | shipped to other repos | 082c4678 2026-10-04, the four P1 gaps in multi-pr | They never take a slot in the always-ask call
+- not-a-rule | - | - | Before the always-ask call, derive what the chain will execute
 - keep | shipped to other repos | ee4034ad 2026-07-23 (extraction); "seen on two separate chains" (line text) | never emit a mid-chain `AskUserQuestion` outside the closed blocker list
 
 ## skills/multi-lite/SKILL.md
@@ -571,8 +624,14 @@ benchmark run.
 - not-a-rule | - | - | `/cla:lite-pr` deliberately never does it.
 - keep | honesty | ba21ee82 2026-09-16, second-round review findings on merge-each-clean | A gate with no test commands to run blocks the merge; it is never a pass.
 - keep | shipped to other repos | ee4034ad 2026-07-23 (extraction); none found earlier | never substitute whole-chain-halt behavior here
+- not-a-rule | - | - | Test-phase halt (it never opened a PR)
+- not-a-rule | - | - | for a candidate that must merge before a later one (Phase 3 step 8
 - keep | user's files | 1325ac6a 2026-09-16 merge-each-clean policy; reworded in #511 (dec3edcb) | **Never merge a candidate carrying an unresolved blocking finding**
+- not-a-rule | - | - | *defers* blocking findings (it never halts on them)
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | so a re-derived guess is never a substitute for reading this file back
+- keep | user's files | 751bed9e 2026-09-16, fix: address review findings | **Resume never infers clean:**
+- keep | user's files | ba21ee82 2026-09-16, fix: address second-round review findings | **Resume never merges a moved head either:**
+- keep | user's files | 45ee062e 2026-10-08, refactor: run notes stay local and untracked | `head unverifiable (ledger lost)`, never merged
 - guidance | none | ee4034ad 2026-07-23 (extraction); none found earlier | one PR per candidate, so a failure stays in its subtree;
 
 ## skills/multi-lite/references/bootstrap-and-tracking.md
@@ -592,22 +651,34 @@ benchmark run.
 - not-a-rule | - | - | Don't run a candidate on a base its dependency never landed on.
 - keep | user's files | ba21ee82 2026-09-16, second-round review findings | never by branch or title, which can match a different PR
 - keep | user's files | ba21ee82 2026-09-16, second-round review findings | **A resume never merges a head this run did not test and review.**
+- keep | user's files | ba21ee82 2026-09-16, fix: address second-round review findings | it never re-enters step 7 or step 8
 - not-a-rule | - | - | For a candidate that must merge before a later one (step 8's definition, including its changed-files check), set `failed-merge — <reason>` and quarantine as step 8 says.
 - keep | honesty | 751bed9e 2026-09-16, review findings (findings lost on resume) | **Never infer clean.**
 - keep | user's files | ba21ee82 2026-09-16, second-round review findings | (three separate commands) — never `<base-branch>` — because
 - keep | user's files | 87aeac6a 2026-09-16, third-round review findings | The status must be empty;
+- keep | user's files | text since d452a82d 2026-07-28 (downstream port) | `depends_on` must already be merged into `<base-branch>` before it runs
+- keep | user's files | 751bed9e 2026-09-16, fix: address review findings | every candidate in `depends_on` must have ledger `status: merged`
+- keep | user's files | 751bed9e 2026-09-16, fix: address review findings | `git merge-base --is-ancestor <merge_commit> HEAD` must exit 0 after the pull
 - keep | shipped to other repos | ee4034ad 2026-07-23 (extraction); an Explore Q&A blocks the unattended run | **Descriptions must be concrete enough that
+- keep | shipped to other repos | text since ee4034ad 2026-07-23 (extraction) | Never let a candidate enter `/cla:lite-pr`'s interactive
 - not-a-rule | - | - | **Test-phase halt (hard failure — never opened a PR).**
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | never a re-derived branch name or an "in-context" PR number
 - not-a-rule | - | - | *defers* blocking findings — it never halts on them, and it has already spent
 - keep | user's files | 1325ac6a 2026-09-16, merge-each-clean policy | Never treat it as silently clean
+- keep | user's files | dec3edcb 2026-11-17, refactor: review skills fix only protected-area and correctness... | and **never merge a candidate carrying an unresolved blocking finding.**
+- not-a-rule | - | - | If this candidate must merge before a later one
 - guidance | none | ee4034ad 2026-07-23 (extraction); principle 5, cla.io/decisions/cla-foundation-2026-11-17.md | reported only, with no fix round or quarantine: they block no merge
 - keep | user's files | 87aeac6a 2026-09-16, third-round review findings | or `failed-review` from step 7), never `open`:
+- not-a-rule | - | - | **"Must merge before a later one" has one meaning
+- not-a-rule | - | - | A candidate must merge before a later one when a later candidate
 - not-a-rule | - | - | Treat the candidate as one that must merge before a later one with the reason
 - not-a-rule | - | - | A candidate that must merge before a later one gets `failed-merge — merge refused earlier in the run`
 - not-a-rule | - | - | Any reason, on a candidate that must → set `failed-merge — <reason>`
 - keep | user's files | 6df50092 2026-10-08, shared chain-merge reference | Never rebase a `conflicts` PR: it is left open and flagged.
 - keep | user's files | 1325ac6a 2026-09-16, merge-each-clean policy | And it never merges a moved head
+- not-a-rule | - | - | the previous run never finished deciding
+- keep | user's files | ba21ee82 2026-09-16, fix: address second-round review findings | Two things a resume never does. It never infers `review: clean`
+- not-a-rule | - | - | The run-notes file is local and never committed
 
 ## skills/multi-lite/references/phase4-and-log.md
 - not-a-rule | - | - | Every other reason is something the user must act on before the PR can merge.
@@ -622,6 +693,7 @@ benchmark run.
 - keep | user's files | ee4034ad 2026-07-23 (extraction); an unverified push reproduces the dead-disk loss (line text) | Mismatch → halt via `AskUserQuestion`, never silently retry.
 - keep | user's files | ee4034ad 2026-07-23 (extraction); sequential is what makes commit-before-next possible | awaited sequentially — never parallel.**
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier | **This is a proposals-only skill.** Never invoke `Skill(cla:spec-to-pr)`
+- keep | user's files | text since ee4034ad 2026-07-23 (extraction) | (Phase 4) always runs BEFORE the PR opens (Phase 5) — never the reverse
 - keep | user's files | ee4034ad 2026-07-23 (extraction); durability needs a committed decisions file | Never proceed to Phase 1 from transient conversation state
 - guidance | none | ee4034ad 2026-07-23 (extraction); none found earlier | Its first push sets the upstream (`-u`), as the branch is new; later pushes are bare.
 - not-a-rule | - | - | a crash mid-batch loses at most the change in flight, never the whole batch
@@ -648,11 +720,13 @@ benchmark run.
 - keep | user's files | d452a82d 2026-07-28, git-global-option regex hardening and downstream port | a Phase-1 commit would land on `<base-branch>`, which this skill may never push
 - not-a-rule | - | - | other change names **in this same batch** that must be authored
 - keep | user's files | ee4034ad 2026-07-23 (extraction); a log can go stale or be lost (line text) | Resume always re-derives "is this change done" from the repository itself
+- keep | user's files | text since ee4034ad 2026-07-23 (extraction) | never from a status field in this plan
 - not-a-rule | - | - | this file is written once per batch and never appended to again.
 
 ## skills/multi-spec/references/review-gate.md
 - guidance | none | #291 (7607bf13 2026-10-07), lighter OpenSpec packages (design.md optional) | an absent one reads as "(absent)", not as an incomplete change.
 - not-a-rule | - | - | the checklist will never issue one.)*
+- keep | honesty | text since ee4034ad 2026-07-23 (extraction) | must be checked against change B's actual `design.md`/`specs/`
 - keep | honesty | #155 (a55f4d98 2026-08-25), fix-brief binding defect | report that, and never record it clean.
 - keep | honesty | 1d36b90d 2026-10-07, review machinery trimmed (no loop catches a withdrawn remedy) | A finding never leaves this gate merely because its first remedy was wrong.
 
@@ -663,6 +737,7 @@ benchmark run.
 - not-a-rule | - | - | ## Never-clobber contract
 - keep | user's files | 2.0.0 (016203d7), cla-setup never-clobber contract | via a guarded idiom, never a bare redirect
 - keep | user's files | 2.0.0 (016203d7), a bare redirect truncates an existing file | ALWAYS guard with `if [ -e "$f" ]`
+- not-a-rule | - | - | never-clobber. ALWAYS guard with
 - keep | user's files | 2.0.0 (016203d7), never-clobber contract | `notes.md` is ALWAYS skipped, even though the seed content differs
 - keep | shipped to other repos | 2.0.0 (016203d7), overlays become optional, nothing seeds one | **Overlays are optional, and this skill never creates one.**
 - keep | honesty | #388 (2.1.1), seed block run as a script; unchecked config must not read as current | say so, never call the rules current
@@ -713,6 +788,7 @@ benchmark run.
 ## skills/cla-setup/references/spec-map-scaffold.md
 - keep | user's files | #395 (spec-map), the map is written only on a yes | This skill offers a default scaffold and never imposes one.
 - keep | user's files | #395 (spec-map) | a path that already exists is never overwritten, so ask for another
+- keep | user's files | cf91149f 2026-10-16, feat: spec-map (#395) | other path inside the repo, never under the plugin tree
 
 ## skills/review-change/references/checklist.md
 - keep | shipped to other repos | pre-extract (ee4034ad); two callers read these files, so behaviour must not diverge | Any change to review behavior MUST be made in these two files
@@ -720,6 +796,7 @@ benchmark run.
 - keep | honesty | pre-extract (ee4034ad) | ### High-yield checks (always do — these catch the vast majority of real issues)
 - keep | honesty | #291 (2.0.0), lighter OpenSpec packages | ### Weight and proof checks (always do, on both size-gate paths)
 - keep | honesty | #516 (audit B/C); exit 2 means the budget was not checked | so report an `[Open]` line saying so and never write "no breach"
+- remove? | none | soften: budget remedy is reviewer guidance, no protected area; "prefer the cut over a split" says it. 86f13b82 2026-11-17 (#516) | the remedy is the cut, never a split into more capabilities
 - keep | honesty | #378, marker-honesty rules | it never means "no test yet"
 - keep | honesty | pre-extract (ee4034ad), a stand-in that is already unique hides the collision | the harness MUST structurally mirror the real object
 - keep | honesty | pre-extract (ee4034ad), phantom findings survived into Revise | MUST resolve to one of exactly two things
@@ -733,18 +810,24 @@ benchmark run.
 - guidance | none | #511/#516, verdict rubric; none found for "always" | judge by the fix's nature, since the retro reads the verdict.
 - keep | honesty | pre-extract (ee4034ad); spec-to-pr Revise SIR-TEST applies a fix only with its test | the artifact fix MUST add a proving test
 - not-a-rule | - | - | "these two values must reconcile to the same total"
+- keep | honesty | text since ee4034ad 2026-07-23 (extraction) | the fix MUST also add (or extend) a `tasks.md` subtask
 - keep | honesty | pre-extract (ee4034ad), INT-SYC no-sycophancy check | never facts to accept
+- keep | honesty | text since ee4034ad 2026-07-23 (extraction) | A READY verdict must rest on your own grounded verifications
 - keep | honesty | #511 (principle 5), inherited obligations stay blocking | Inherited obligations and Step 2b are always blocking.
 - keep | honesty | #169 (follow-up to #158); a Critical filed under Suggestions is dropped | never prints under `### Suggestions`
+- keep | honesty | 5901d2e4 2026-08-27, fix: close the three findings PR #158 merged without (#169) | never edit the label down to match the section
 
 ## skills/review-change/references/dispatch.md
 - guidance | none | pre-extract (ee4034ad), token economy | to verify claims; the artifacts' full text is already above.
 - not-a-rule | - | - | say what the artifacts must state instead
 - keep | shipped to other repos | 1d36b90d (2026-10-07); an unfilled placeholder sends a reviewer in blind | <pr-base>' <file>`; it must print 0
 - keep | shipped to other repos | 2.0.0 (016203d7); a dispatched agent never loads the skill | Never leave a bare pointer to a file instead
+- not-a-rule | - | - | a dispatched agent never loads the skill or reads those files
 - keep | user's files | #164, a review agent's "temporary" revert destroyed uncommitted work | > **Read only — never write to the working tree.**
 - keep | shipped to other repos | #511 (principle 5); a brief never says nothing is protected | never `(none recorded)`
+- remove? | none | soften: scope guidance for a non-protected edge case; "usually a Risks line, not a requirement" says it. dec3edcb 2026-11-17 (#511) | in proposal.md, never a new requirement
 - keep | honesty | pre-extract (ee4034ad), lockstep formula docs | and must update the load-bearing spec/doc files for that formula together
+- not-a-rule | - | - | the exact formulas that calculation must preserve
 - keep | honesty | #158 (grounding-contract-claim-shapes); a relabelled question manufactures a finding | > An `[Open]` line is NOT a finding and carries no severity. Never relabel one
 - keep | user's files | #164, a review agent's "temporary" revert destroyed uncommitted work | > **Read only — never write to the working tree.**
 - guidance | none | pre-extract (ee4034ad), i18n parity rubric | is incomplete; every language file needs the key.
@@ -760,6 +843,7 @@ benchmark run.
 ## skills/project-review/references/review-agents.md
 - guidance | none | 2.0.0 (016203d7), placeholders filled at dispatch | `(none recorded)`, not left for the agent, which reads none of these
 - keep | honesty | pre-extract (ee4034ad); evidence-grounded findings | every finding MUST name the app/package it applies to
+- keep | honesty | text since ee4034ad 2026-07-23 (extraction) | its evidence MUST cite a specific path + line or grep result
 - guidance | none | #511/#516, grading rubric | is reported N/A with one line of why, not graded down for absence.
 - guidance | none | #75, plugin-repo review fallback | "no product code" is this repo's design, not a Vision gap;
 - remove? | none | #75, plugin-repo review fallback; duplicates the standard "Not applicable" instruction every agent already gets ("everything else ... is unchanged") | never graded D for absence.
