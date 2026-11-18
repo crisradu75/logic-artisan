@@ -26,7 +26,7 @@ the skills fall back to the default list of protected areas.
   would be lost on the next update, and a repo's rules go in `cla.io/overlays/<skill>.md` or
   `cla.io/project-facts.md`. A plugin run with `--plugin-dir` and the plugin's `data/` directory
   are not checked. Bad input fails open; if the hook itself fails to load, every Edit and Write
-  asks. The Edit/Write dispatcher now passes a hook's ask through (#PR).
+  asks. The Edit/Write dispatcher now passes a hook's ask through (#529).
 - **An `ask-broad-git-add` guard hook:** a `git add` of the current directory, the repo root or a bare
   `openspec/` (`-A`, `--all`, `.`, `:/`, `*`) asks first when it would stage untracked files, and
   names up to ten of them. It stays silent for `-u`, named paths and tracked-only changes, and
