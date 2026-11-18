@@ -10,12 +10,17 @@ What the plugin promises when a batch of changes from one decisions doc is propo
 
 ### Requirement: Proposing a batch of changes
 
-`/cla:multi-spec [decisions-file]` SHALL turn a decisions file, by default the newest under `cla.io/decisions/`, into a batch of OpenSpec change proposals committed one change at a time, reviewed together and opened as one pull request, without implementing them.
+`/cla:multi-spec [decisions-file]` SHALL turn a decisions file, by default the newest under `cla.io/decisions/`, into a batch of OpenSpec change proposals, one for each change that touches a protected area or behaviour shipped to other repos, committed one change at a time, reviewed together and opened as one pull request, without implementing them. When no change touches a protected area or shipped behaviour, no pull request opens.
 
 #### Scenario: A decisions file with three decisions
 
-- **WHEN** a user runs `/cla:multi-spec` on a decisions file describing three changes
+- **WHEN** a user runs `/cla:multi-spec` on a decisions file describing three changes that each touch a protected area or behaviour shipped to other repos
 - **THEN** one pull request opens holding three reviewed change proposals and no implementation
+
+#### Scenario: A change that touches no protected area
+
+- **WHEN** a user runs `/cla:multi-spec` on a decisions file where a change touches no protected area and no behaviour shipped to other repos
+- **THEN** no proposal is written for it, and the report lists it as a `lite-pr` item with its scope, its decision ids and a one-line reason, and no pull request opens when every change is such a one
 
 ### Requirement: Running a batch of OpenSpec changes in dependency order
 
