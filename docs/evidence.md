@@ -64,6 +64,11 @@ about which worker gets which file, not evidence of safety". The premium over pl
 the whole price of not finding out the hard way, and the run above is what finding out
 looks like.
 
+**Worker cap, 2026-11-18** (owner decision): raised from `-n 2` to `-n 4`. Measured on Linux,
+4 cores, on the tree of the PR that raised it, each 3228 passed and 14 skipped:
+`pytest plugin-tests -q -n <N> --dist loadfile` took 52.0s at 2, 38.1s at 3 and 31.9s at 4.
+Not measured on Windows.
+
 ### Why the twelve test scopes became one
 
 The twelve-scope split existed for exactly one reason — pytest's default import mode cannot hold

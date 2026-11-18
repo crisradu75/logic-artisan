@@ -36,7 +36,7 @@ git rev-parse --abbrev-ref HEAD
 git status --porcelain
 git fetch origin
 git status -sb
-pytest plugin-tests -q -n 2 --dist loadfile
+pytest plugin-tests -q -n 4 --dist loadfile
 openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 python3 .claude/skills/release/scripts/check_copilot_models.py
@@ -47,7 +47,7 @@ python3 .claude/skills/release/scripts/check_copilot_models.py
 | On the repo's default branch | A tag cut from a feature branch pins commits that may never merge. |
 | Working tree clean (`git status --porcelain` prints nothing) | An uncommitted edit is either in the release or it isn't; a dirty tree means nobody knows which. **Nothing is excluded, and nothing should be:** no pathspec, so the check covers the whole repo from any directory, and a half-resolved merge conflict shows up here too. The run ledgers under `cla.io/retro/` are written at a controlled moment and should be committed, not hidden. |
 | Up to date with `origin` | Tagging a stale local branch publishes a tree that is not what `main` holds. |
-| `pytest plugin-tests -q -n 2 --dist loadfile` fully green | There is no CI. This run, plus the spec validation below, is the whole gate that exists. |
+| `pytest plugin-tests -q -n 4 --dist loadfile` fully green | There is no CI. This run, plus the spec validation below, is the whole gate that exists. |
 | `openspec validate --specs --strict` passes with no warning | It is the second command in CLAUDE.md's "Before opening a PR" gate, so the OpenSpec CLI is now a release precondition: without it on `PATH` this step fails and no tag is cut. |
 | The work is reviewed and merged | See the invariant above. |
 | The docs match the code since the last tag | Re-check every count and present-tense claim in `README.md`, `DEVELOPER-GUIDE.md` and `.claude/plugins/cla/README.md` against `git log <last-tag>..HEAD`, and fix them in a PR first. A release that ships stale counts needs a docs PR after it. |
@@ -118,7 +118,7 @@ default branch never moves:
 
 ```bash
 git checkout -b release/<new>
-pytest plugin-tests -q -n 2 --dist loadfile
+pytest plugin-tests -q -n 4 --dist loadfile
 openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude/plugins/cla/plugin.json .claude-plugin/marketplace.json .github/plugin/marketplace.json CLAUDE.md CHANGELOG.md
