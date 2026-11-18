@@ -25,8 +25,9 @@ that was not run to completion.
   OpenSpec proposal, a pre-build review and `spec-to-pr`. Batches of either run unattended.
 - **Review built in.** Every PR gets an automated review pass, sized by the risk the change
   declares.
-- **Guardrails always on.** Nine hooks block, ask about or warn on risky tool calls: a force-push,
-  an `rm -rf` through a symlink, a `git stash` mid-merge, a file rewritten shorter.
+- **Guardrails always on.** Seventeen hooks block, ask about or warn on risky tool calls: a
+  force-push or a rebase of pushed commits, an `rm -rf` through a symlink, a broad `git add`, a
+  secret in a checkpoint, a commit that claims a check nobody ran, a file rewritten shorter.
 - **Portable procedure, local facts.** The plugin carries only steps that work in any repo. Each
   repo's commands, paths and ports live in its own `cla.io/project-facts.md`.
 - **It learns.** `codify-learnings` turns a session's failures into fixes, and `spec-to-pr-retro`
@@ -47,7 +48,7 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 
 ## Engineering highlights
 
-**19 skills · 16 guard hooks · 4,865 tests · 67 mutation batches · 17 live OpenSpec specs ·
+**19 skills · 17 guard hooks · 4,865 tests · 67 mutation batches · 17 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
@@ -82,7 +83,7 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
 
 ```bash
 git ls-files .claude/plugins/cla/skills | cut -d/ -f5 | grep -v '^_' | sort -u | wc -l   # skills (tracked only)
-ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn)-.*\.py$' | wc -l    # guard hooks
+ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn|guard)-.*\.py$' | wc -l    # guard hooks
 pytest plugin-tests --collect-only -q | tail -1                            # tests
 find plugin-tests/mutants -name '*.py' | wc -l                             # mutation batches
 ls openspec/specs | wc -l                                                  # live specs

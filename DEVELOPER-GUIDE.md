@@ -270,6 +270,7 @@ and `warn-agent-dispatch` and `warn-agent-reply-format` on their own before and 
 | **Block**: the call does not run | `block-cd-in-bash` | a `cd`, which persists across calls (the working directory is already the repo root; use absolute paths) |
 | | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a Write or Edit outside the current worktree (section 7) |
+| | `block-dishonest-commit` | a `git commit` whose message ends in a `Measured-by: none` trailer (it certifies a check nobody ran), or an `--allow-empty` commit with a `fix: review round N` subject; any other `--allow-empty` only warns. Silent for a mention in the body and for a commit inside another command's heredoc |
 | | `guard-bash-text` | in a Bash or PowerShell command's text: **blocks** a `${CLAUDE_PLUGIN_ROOT}/` or `$CLAUDE_PLUGIN_ROOT/` path the shell would expand (the Bash tool's shell never has the variable, so it becomes `/...`); **asks** before a redirect, `tee`, `mkdir` or `cp`/`mv` destination that starts with `..` and lands outside the checkout; **warns** on a multi-line `git commit -m` or `gh pr|issue --body` (newline or `$(cat <<...)`). Enforcing, at no budget cost: one linear pass over the text, no subprocess |
 | **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, a saving `git stash` during a merge, cherry-pick or revert, a `git rebase` (or a rebasing `git pull`) that would rewrite commits already on a remote-tracking ref (it sees this clone's remote-tracking refs only, so a stale or missing one, as in a single-branch clone or a push to a URL, is a known miss), a `switch -C`/`checkout -B` that would orphan commits, and a merging switch (`-m`) over staged work; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
 | | `ask-plugin-cache-edit` | a Write or Edit whose resolved target is inside an installed plugin copy: `cache/` or `marketplaces/` under the plugins directory (`~/.claude/plugins`, or where `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_PLUGIN_CACHE_DIR` puts it), or `$CLAUDE_PLUGIN_ROOT` when that root is in there; silent for a `--plugin-dir` working tree (this repo), for `data/` and on bad input. Enforcing, at no budget cost: it runs no subprocess, and if it fails to load the dispatcher asks on every Edit and Write |
@@ -387,10 +388,13 @@ CLA installs *into* a repo, scoped to that project, not globally. In the repo th
    skill still reads the cost rules. Then it proposes `cla.io/project-facts.md` from the repo's own
    manifests, and writes it on your yes: workspace members, install/dev/build/test commands, ports, the affected-file map,
    test locations, env files. In a repo with `openspec/` it asks whether tests prove each
-   requirement or each scenario, and offers a spec-map scaffold. It also lists retired ledgers and
+   requirement or each scenario, offers a spec-map scaffold, and asks for the facts file's
+   `## Stakes` section (who uses the repo, what a bug costs, the protected areas) and the change
+   budget (`lean` or `protected`) those answers point to. It also lists retired ledgers and
    offers to delete them, and adds a `.gitignore` line so `multi-lite` and `multi-pr` run notes stay
    out of git. It is safe to re-run: apart from that line and the rules file, it writes facts and
-   changes an existing file only on your yes. Re-run it whenever a skill reports missing or stale facts.
+   changes an existing file only on your yes; `setup_guard.py` checks at the end of the run that it
+   kept that promise. Re-run it whenever a skill reports missing or stale facts.
 
 4. **Install the push guard**, once per clone (section 8). Here and below, `<plugin>` is the
    installed plugin's directory, a version-keyed copy under `~/.claude/plugins/cache/`;
@@ -401,8 +405,10 @@ CLA installs *into* a repo, scoped to that project, not globally. In the repo th
    ```
 
 **Updating.** Run `claude plugin marketplace update cris-logic-artisan`, then
-`claude plugin update cla@cris-logic-artisan`, then restart the session. `cla.io/` is untouched,
-because it lives in the repo and not in the plugin directory.
+`claude plugin update cla@cris-logic-artisan`, then restart the session and re-run
+`/cla:cla-setup` to accept the updates it lists (the `CHANGELOG.md` entry for each version says
+what they are). `cla.io/` is untouched by the update itself, because it lives in the repo and not
+in the plugin directory.
 
 Overlays are optional: add `cla.io/overlays/<skill>.md` only when one skill needs a rule specific
 to this repo.
