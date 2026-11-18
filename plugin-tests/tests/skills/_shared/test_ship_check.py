@@ -64,6 +64,15 @@ def _commit(work: Path, msg: str = "change", *extra: str) -> None:
     _git(work, "commit", "-q", "-m", msg, *extra)
 
 
+def _single_branch_clone(tmp_path: Path) -> Path:
+    """A `--single-branch` clone of `main`: its fetch refspec maps `main` only."""
+    _git(tmp_path, "clone", "-q", "--single-branch", "-b", "main", "origin.git", "single")
+    clone = tmp_path / "single"
+    _git(clone, "config", "user.email", "s@example.com")
+    _git(clone, "config", "user.name", "S")
+    return clone
+
+
 def _unreachable(work: Path) -> None:
     _git(work, "remote", "set-url", "origin", "../no-such-remote.git")
 
@@ -96,14 +105,14 @@ def test_preflight_create_fails_on_a_branch_only_the_remote_has(work: Path):
     assert r.stdout.splitlines()[1:] == ["PROBLEM remote-branch: origin has refs/heads/feature/x"]
 
 
-@pytest.mark.parametrize("longer", ["team/feature/x", "refs/heads/feature/x"])
+@pytest.mark.parametrize("longer", ["feature/feat", "refs/heads/feat"])
 def test_preflight_matches_the_remote_ref_name_exactly(work: Path, longer: str):
-    # `git ls-remote origin <pattern>` lists every ref whose name ENDS in the pattern, so a branch
-    # literally named `refs/heads/feature/x` is listed for `refs/heads/feature/x`. Neither is a
-    # collision with `feature/x`.
+    # `git ls-remote origin <pattern>` lists every ref whose name ENDS in the pattern. A bare `feat`
+    # lists `refs/heads/feature/feat`; even the full `refs/heads/feat` lists a branch literally named
+    # `refs/heads/feat`. Neither is a collision with `feat`: each case fails without the exact match.
     _git(work, "push", "-q", "origin", f"main:refs/heads/{longer}")
     _git(work, "update-ref", "-d", f"refs/remotes/origin/{longer}")
-    r = _run(work, "preflight", "--branch", "feature/x", "--base", "main")
+    r = _run(work, "preflight", "--branch", "feat", "--base", "main")
     assert r.returncode == 0, r.stdout
 
 
@@ -214,7 +223,7 @@ def test_preflight_pr_base_whose_upstream_left_the_remote_fails(work: Path):
     _git(Path(work).parent / "origin.git", "update-ref", "-d", "refs/heads/feature/parent")
     r = _run(work, "preflight", "--branch", "feature/child", "--base", "main", "--pr-base", "feature/parent")
     assert r.returncode == 1
-    assert "PROBLEM upstream-missing: feature/parent's upstream origin/feature/parent is not on origin" in r.stdout
+    assert "PROBLEM upstream-missing: feature/parent's upstream refs/heads/feature/parent is not on origin" in r.stdout
 
 
 def test_preflight_pr_base_tracking_a_local_branch_fails(work: Path):
@@ -222,6 +231,93 @@ def test_preflight_pr_base_tracking_a_local_branch_fails(work: Path):
     r = _run(work, "preflight", "--branch", "feature/child", "--base", "main", "--pr-base", "feature/parent")
     assert r.returncode == 1
     assert "PROBLEM upstream-not-remote:" in r.stdout
+
+
+def _stacked_parent(work: Path) -> None:
+    """`feature/parent`, pushed with an upstream and one commit ahead of `main`; back on `main`."""
+    _git(work, "checkout", "-q", "-b", "feature/parent")
+    _commit(work, "parent work")
+    _git(work, "push", "-q", "-u", "origin", "feature/parent")
+    _git(work, "checkout", "-q", "main")
+
+
+# requirement: change-workflow / A new branch is checked for collisions before it is made
+def test_preflight_stacked_run_on_the_default_branch_never_approves_renaming_it(work: Path):
+    # The run is stacked on feature/parent but sits on main: `git branch -m` would rename main.
+    _stacked_parent(work)
+    r = _run(work, "preflight", "--branch", "child", "--base", "main", "--pr-base", "feature/parent")
+    assert r.returncode == 1, r.stdout
+    assert _first(r) == "FAIL preflight rename: 1 problem(s)"
+    assert r.stdout.splitlines()[1].startswith("PROBLEM on-base: on main, which must not be renamed")
+
+
+# requirement: change-workflow / A new branch is checked for collisions before it is made
+def test_preflight_stacked_create_on_the_parent_passes(work: Path):
+    _stacked_parent(work)
+    _git(work, "checkout", "-q", "feature/parent")
+    r = _run(work, "preflight", "--branch", "child", "--base", "main", "--pr-base", "feature/parent")
+    assert r.returncode == 0, r.stdout
+    assert _first(r) == "OK preflight create: child"
+
+
+def test_preflight_stacked_rename_counts_against_the_parent(work: Path):
+    # A fresh worktree branch cut from origin/feature/parent holds the parent's commit, which is
+    # not on main; counted against the parent it has nothing to lose.
+    _stacked_parent(work)
+    _git(work, "checkout", "-q", "-b", "worktree-abc", "origin/feature/parent")
+    r = _run(work, "preflight", "--branch", "child", "--base", "main", "--pr-base", "feature/parent")
+    assert r.returncode == 0, r.stdout
+    assert _first(r) == "OK preflight rename: child"
+
+
+def test_preflight_unstacked_on_another_pushed_branch_is_a_plain_rename(work: Path):
+    # Without --pr-base, feature/parent is just another branch: no `on-base` problem, and its
+    # commit not on main is a commit to lose.
+    _stacked_parent(work)
+    _git(work, "checkout", "-q", "feature/parent")
+    r = _run(work, "preflight", "--branch", "child", "--base", "main")
+    assert r.returncode == 1
+    assert "PROBLEM commits-to-lose: HEAD has 1 commit(s) not on origin/main" in r.stdout
+    assert "PROBLEM on-base" not in r.stdout
+
+
+def test_preflight_pr_base_on_an_unknown_remote_is_unchecked(work: Path):
+    # The parent's upstream names a remote that does not exist: the remote cannot be asked.
+    _git(work, "checkout", "-q", "-b", "feature/parent")
+    _git(work, "push", "-q", "-u", "origin", "feature/parent")
+    _git(work, "config", "branch.feature/parent.remote", "ghost")
+    r = _run(work, "preflight", "--branch", "child", "--base", "main", "--pr-base", "feature/parent")
+    assert r.returncode == 2, r.stdout
+    assert _first(r).startswith("UNCHECKED remote: 'git ls-remote ghost refs/heads/feature/parent' failed")
+
+
+def test_preflight_pr_base_with_the_remote_unreachable_is_unchecked(work: Path):
+    _stacked_parent(work)
+    _git(work, "checkout", "-q", "feature/parent")
+    _unreachable(work)
+    r = _run(work, "preflight", "--branch", "child", "--base", "main", "--pr-base", "feature/parent")
+    assert r.returncode == 2, r.stdout
+    assert all(line.startswith("UNCHECKED remote:") for line in r.stdout.splitlines())
+
+
+def test_preflight_pr_base_in_a_single_branch_clone_passes(tmp_path: Path, work: Path):
+    # The parent's upstream is set by `push -u`, but the clone's refspec maps only main, so
+    # `feature/parent@{u}` resolves to nothing; the configured upstream still counts.
+    clone = _single_branch_clone(tmp_path)
+    _git(clone, "checkout", "-q", "-b", "feature/parent")
+    _commit(clone, "parent work")
+    _git(clone, "push", "-q", "-u", "origin", "feature/parent")
+    assert _git(clone, "rev-parse", "--verify", "--quiet", "feature/parent@{u}", check=False).returncode != 0
+    r = _run(clone, "preflight", "--branch", "child", "--base", "main", "--pr-base", "feature/parent")
+    assert r.returncode == 0, r.stdout
+
+
+def test_preflight_rename_with_a_base_the_remote_lacks_is_unchecked(work: Path):
+    # ls-remote answers, but the fetch of the base fails: the commit count could not be taken.
+    _git(work, "checkout", "-q", "-b", "worktree-abc")
+    r = _run(work, "preflight", "--branch", "feature/x", "--base", "no-such-base")
+    assert r.returncode == 2, r.stdout
+    assert _first(r).startswith("UNCHECKED remote: 'git fetch origin no-such-base' failed")
 
 
 # ---------------------------------------------------------------- pushed
@@ -270,7 +366,7 @@ def test_pushed_fails_with_no_upstream_and_no_remote_branch(work: Path):
     lines = r.stdout.splitlines()[1:]
     assert lines == [
         "PROBLEM remote-missing: origin has no refs/heads/feature/x",
-        "PROBLEM no-upstream: @{u} is not set for the checked-out branch",
+        "PROBLEM no-upstream: no upstream is configured for feature/x",
     ]
 
 
@@ -278,7 +374,47 @@ def test_pushed_fails_when_only_the_upstream_is_unset(work: Path):
     _git(work, "branch", "--unset-upstream")
     r = _run(work, "pushed", "--branch", "main")
     assert r.returncode == 1
-    assert r.stdout.splitlines()[1:] == ["PROBLEM no-upstream: @{u} is not set for the checked-out branch"]
+    assert r.stdout.splitlines()[1:] == ["PROBLEM no-upstream: no upstream is configured for main"]
+
+
+# requirement: change-workflow / A push is verified against the remote
+def test_pushed_passes_in_a_single_branch_clone(tmp_path: Path, work: Path):
+    # No refs/remotes/origin/feat is ever made here, so `@{u}` resolves to nothing after a correct
+    # `push -u`; the configured upstream and ls-remote decide.
+    clone = _single_branch_clone(tmp_path)
+    _git(clone, "checkout", "-q", "-b", "feat")
+    _commit(clone)
+    _git(clone, "push", "-q", "-u", "origin", "feat")
+    assert _git(clone, "rev-parse", "--verify", "--quiet", "@{u}", check=False).returncode != 0
+    r = _run(clone, "pushed", "--branch", "feat")
+    assert r.returncode == 0, r.stdout
+
+
+def test_pushed_fails_when_the_upstream_is_another_branch(work: Path):
+    # A branch cut from origin/main tracks main; a bare push from it would not go to feature/x.
+    _git(work, "checkout", "-q", "-b", "feature/x", "origin/main")
+    _git(work, "push", "-q", "origin", "feature/x")
+    r = _run(work, "pushed", "--branch", "feature/x")
+    assert r.returncode == 1
+    assert r.stdout.splitlines()[1:] == [
+        "PROBLEM upstream-elsewhere: feature/x tracks refs/heads/main on origin, expected refs/heads/feature/x on origin",
+    ]
+
+
+def test_pushed_on_a_branch_with_no_commit_is_unchecked(work: Path):
+    _git(work, "checkout", "-q", "--orphan", "fresh")
+    r = _run(work, "pushed", "--branch", "fresh")
+    assert r.returncode == 2
+    assert _first(r) == "UNCHECKED push not verified: head: HEAD names no commit"
+
+
+def test_pushed_a_problem_wins_over_an_unanswered_remote(work: Path):
+    _unreachable(work)
+    r = _run(work, "pushed", "--branch", "feature/x")
+    assert r.returncode == 1
+    assert _first(r) == "FAIL push not verified: 2 problem(s)"
+    assert "PROBLEM wrong-branch: on main, expected feature/x" in r.stdout
+    assert any(line.startswith("UNCHECKED remote:") for line in r.stdout.splitlines())
 
 
 # requirement: change-workflow / A push is verified against the remote
@@ -322,6 +458,15 @@ def test_trailers_split_by_a_blank_line_fails(work: Path):
     assert r.returncode == 1
     assert _first(r) == "FAIL trailers: 2 written as 'Measured-by:', 0 parsed by git"
     assert r.stdout.splitlines()[1].startswith("PROBLEM trailers:")
+
+
+# requirement: change-workflow / Measurement trailers are checked before a push
+def test_trailers_an_empty_value_fails(work: Path):
+    # git parses `Measured-by:` with nothing after it, but it names no command.
+    _commit(work, "feat: x", "-m", f"Measured-by:\n{_ATTRIBUTION}")
+    r = _run(work, "trailers")
+    assert r.returncode == 1, r.stdout
+    assert _first(r) == "FAIL trailers: 1 written as 'Measured-by:', 0 parsed by git"
 
 
 def test_trailers_a_bare_line_in_the_block_fails(work: Path):

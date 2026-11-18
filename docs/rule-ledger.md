@@ -301,6 +301,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | 00fec679 2026-08-14 make the stacked chain executable end-to-end | The parent must exist on the remote
 - keep | user's files | 4eb407fe 2026-08-10 delete the seven wrapper scripts; moved by 9cd5f32f | never create the branch on an unanswered question
 - keep | user's files | d452a82d 2026-07-28 (#11) branch collision preflight and rename-in-place guard; `ship_check.py preflight` holds the checks since add-ship-check-script 2026-11-18 | `origin/<base-branch>..HEAD` must hold 0 commits — no commits to lose
+- keep | user's files | add-ship-check-script review 2026-11-18: a stacked run on the default branch was approved for `git branch -m`; `ship_check.py preflight` refuses it | the default branch or the parent, which is never renamed.
 - keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved); diagnose's debug tag leaking into a commit | must return nothing; remove any tagged line before staging
 - keep | shipped to other repos | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | a rename must touch both, or this grep searches for a string nothing writes
 - keep | user's files | ee4034ad 2026-07-23 extract; tool-redirect bug wrote a scratch file into the repo root | Never fold it into the commit

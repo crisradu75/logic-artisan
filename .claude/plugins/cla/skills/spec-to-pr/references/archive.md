@@ -65,7 +65,7 @@ A path you missed is added alone (never `openspec/`, never `-A`), then the two-s
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" pushed --branch <branch>
 gh pr view <#> --json commits
 ```
-The script must exit 0: it checks that the current branch is `<branch>`, that `HEAD` equals the remote's `refs/heads/<branch>`, and that `@{u}` is set and equals `HEAD`, and its first line names that sha. The sha must appear in the returned `commits[]`, compared in your own context: a commit on the remote branch is not yet proof it is in this PR. Any failing → Archive `⚠ proceeded with issues`, captured for Handoff, and a prominent warning in the report: "archive commit DID NOT REACH the PR — merging the PR will not include the archive". Never mark Archive `✓` on the local file moves or a 0-exit push alone.
+The script must exit 0: it checks that the current branch is `<branch>`, that `HEAD` equals the remote's `refs/heads/<branch>`, and that the branch's configured upstream is that branch on `origin`, and its first line names that sha. The sha must appear in the returned `commits[]`, compared in your own context: a commit on the remote branch is not yet proof it is in this PR. Any failing → Archive `⚠ proceeded with issues`, captured for Handoff, and a prominent warning in the report: "archive commit DID NOT REACH the PR — merging the PR will not include the archive". Never mark Archive `✓` on the local file moves or a 0-exit push alone.
 
 ## 4. No re-review
 

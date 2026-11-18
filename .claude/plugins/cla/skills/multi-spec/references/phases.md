@@ -40,7 +40,7 @@ After every push named anywhere in this skill:
 ```
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" pushed --branch docs/propose-<batch-slug>
 ```
-It checks that the current branch is `docs/propose-<batch-slug>`, that `HEAD` equals the remote's branch, and that `@{u}` is set and equals `HEAD`. Exit 0 → the push genuinely landed, proceed. Exit 1 (`push not verified`) or 2 (the remote did not answer) → halt and surface to the user via `AskUserQuestion` — do not silently retry and do not mark the phase done.
+It checks that the current branch is `docs/propose-<batch-slug>`, that `HEAD` equals the remote's branch, and that the branch's configured upstream is that branch on `origin`. Exit 0 → the push genuinely landed, proceed. Exit 1 (`push not verified`) or 2 (the remote did not answer) → halt and surface to the user via `AskUserQuestion` — do not silently retry and do not mark the phase done.
 
 ## Phase 5 — open the PR
 

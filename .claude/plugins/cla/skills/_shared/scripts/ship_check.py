@@ -30,25 +30,29 @@ EXIT CODES (the same for every subcommand):
       did not answer, a bad argument). Never a pass: the caller treats it as not verified.
 
 preflight
-  Run before a new branch is made. The mode, named on the first line, follows from the branch
-  checked out (``--pr-base``, when given, stands in for ``--base`` everywhere):
+  Run before a new branch is made. ``--base`` is always the repo's default branch; ``--pr-base``
+  names the parent of a stacked change. The change is cut from ``<cut-from>``: ``--pr-base`` when
+  given, else ``--base``. The mode, named on the first line, follows from the branch checked out:
     on-branch  already on ``--branch``: no collision check (it would find the branch you are on).
-    create     on the base: ``refs/heads/<branch>``, ``refs/remotes/origin/<branch>`` and the
+    create     on ``<cut-from>``: ``refs/heads/<branch>``, ``refs/remotes/origin/<branch>`` and the
                remote's ``refs/heads/<branch>`` (``git ls-remote``, exact ref name) must all be absent.
     rename     on any other branch: the same three, plus ``git rev-list --count
-               origin/<base>..HEAD`` must be 0 (no commits to lose) after fetching the base.
-               A detached HEAD is a problem here: there is no branch to rename.
-  With ``--pr-base``, in every mode: ``<pr-base>@{u}`` must resolve, its remote must be a real
-  remote (not ``.``), and its branch must exist on that remote.
+               origin/<cut-from>..HEAD`` must be 0 (no commits to lose) after fetching it. A
+               detached HEAD is a problem (no branch to rename), and so is being on ``--base`` or
+               ``--pr-base`` (renaming either would rename the default branch or the parent).
+  With ``--pr-base``, in every mode: ``branch.<pr-base>.remote`` and ``.merge`` must be set, the
+  remote must be a real remote (not ``.``), and that branch must exist on it.
 
 pushed
   Run after a push. The checked-out branch must be ``--branch`` (a detached HEAD fails), local
-  ``HEAD`` must equal the remote's ``refs/heads/<branch>``, and ``@{u}`` must be set and equal
-  ``HEAD``. Any failure prints ``push not verified`` on the first line.
+  ``HEAD`` must equal the remote's ``refs/heads/<branch>`` (the deciding check), and the branch's
+  configured upstream must be ``refs/heads/<branch>`` on ``origin``. The remote-tracking ref is
+  compared with ``HEAD`` only where it exists: a single-branch or shallow clone never creates it.
+  Any failure prints ``push not verified`` on the first line.
 
 trailers
   Run before a push. The count of message lines starting ``Measured-by:`` must equal the count of
-  ``Measured-by`` trailers git parses. Git parses trailers only from the last paragraph, and only
+  ``Measured-by`` trailers git parses with a non-empty value. Git parses trailers only from the last paragraph, and only
   when every line in it is ``key: value``, so a blank line or a bare line in the block hides all
   of them. ``0`` and ``0`` passes.
 """
@@ -152,6 +156,22 @@ def _rev(root: Path, rev: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
 
 
+def _upstream_config(root: Path, branch: str) -> tuple[str, str]:
+    """(remote, merge ref) of ``branch``'s configured upstream; empty strings when unset.
+
+    Read from ``branch.<name>.remote`` and ``branch.<name>.merge``, not from ``@{u}``: in a
+    single-branch or shallow clone the fetch refspec maps only the cloned branch, so ``@{u}`` and
+    ``%(upstream)`` resolve to nothing for any other branch even after ``git push -u`` set it.
+    """
+    values = []
+    for key in ("remote", "merge"):
+        r = _git(root, "config", "--get", f"branch.{branch}.{key}")
+        if r.returncode not in (0, 1):
+            raise Unchecked("upstream", f"git config branch.{branch}.{key} failed: {_first_err(r)}")
+        values.append(r.stdout.strip() if r.returncode == 0 else "")
+    return values[0], values[1]
+
+
 class Findings:
     """PROBLEM lines and UNCHECKED lines from one run. A check that cannot run is recorded and the
     others still run, so a problem found before or after it is not lost."""
@@ -189,24 +209,15 @@ def _collisions(root: Path, branch: str, out: Findings) -> None:
 
 
 def _upstream_on_remote(root: Path, pr_base: str, out: Findings) -> None:
-    r = _git(root, "rev-parse", "--abbrev-ref", f"{pr_base}@{{u}}")
-    if r.returncode != 0 or not r.stdout.strip():
-        out.problem("no-upstream", f"{pr_base} has no upstream ({_first_err(r)}); push the parent first")
+    remote, ref = _upstream_config(root, pr_base)
+    if not remote or not ref:
+        out.problem("no-upstream", f"{pr_base} has no upstream configured; push the parent first")
         return
-    upstream = r.stdout.strip()
-    r = _git(
-        root, "for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)",
-        f"refs/heads/{pr_base}",
-    )
-    fields = r.stdout.strip().split("\x00") if r.returncode == 0 else []
-    if len(fields) != 2 or not fields[0] or not fields[1]:
-        raise Unchecked("upstream", f"could not read the remote and ref of {pr_base}'s upstream {upstream}")
-    remote, ref = fields
     if remote == ".":
         out.problem("upstream-not-remote", f"{pr_base} tracks the local {ref}, not a branch on a remote")
         return
     if _remote_sha(root, remote, ref) is None:
-        out.problem("upstream-missing", f"{pr_base}'s upstream {upstream} is not on {remote} ({ref} is absent)")
+        out.problem("upstream-missing", f"{pr_base}'s upstream {ref} is not on {remote}")
 
 
 def _commits_to_lose(root: Path, base: str, out: Findings) -> None:
@@ -224,19 +235,30 @@ def _commits_to_lose(root: Path, base: str, out: Findings) -> None:
 
 
 def preflight(root: Path, branch: str, base: str, pr_base: str | None, out: Findings) -> str:
-    """Run the checks for the mode the checked-out branch selects; return the mode."""
-    base = pr_base or base
+    """Run the checks for the mode the checked-out branch selects; return the mode.
+
+    ``base`` is always the repo's default branch. ``cut_from`` is the branch this change is cut from:
+    ``pr_base`` when stacked, else ``base``. Being on ``cut_from`` is the create case. Being on any
+    other branch is the rename case, which must never rename ``base`` or ``pr_base`` themselves:
+    on the default branch in a stacked run, ``git branch -m`` would rename the default branch.
+    """
+    cut_from = pr_base or base
     if pr_base:
         out.attempt(_upstream_on_remote, root, pr_base, out)
     current = _current_branch(root)
     if current == branch:
         return "on-branch"
     _collisions(root, branch, out)
-    if current == base:
+    if current == cut_from:
         return "create"
     if current is None:
         out.problem("detached", "HEAD is detached, so there is no branch to rename")
-    out.attempt(_commits_to_lose, root, base, out)
+    elif current in (base, pr_base):
+        out.problem(
+            "on-base",
+            f"on {current}, which must not be renamed; a change cut from {cut_from} is made from {cut_from}",
+        )
+    out.attempt(_commits_to_lose, root, cut_from, out)
     return "rename"
 
 
@@ -259,22 +281,31 @@ def pushed(root: Path, branch: str, out: Findings) -> None:
             out.problem("remote-missing", f"{REMOTE} has no refs/heads/{branch}")
         elif remote != head:
             out.problem("remote-differs", f"HEAD is {head}, {REMOTE} refs/heads/{branch} is {remote}")
-    upstream = _rev(root, "@{u}")
-    if upstream is None:
-        out.problem("no-upstream", "@{u} is not set for the checked-out branch")
-    elif upstream != head:
-        out.problem("upstream-differs", f"HEAD is {head}, @{{u}} is {upstream}")
+    remote_name, merge = _upstream_config(root, branch)
+    want = f"refs/heads/{branch}"
+    if not remote_name or not merge:
+        out.problem("no-upstream", f"no upstream is configured for {branch}")
+    elif remote_name != REMOTE or merge != want:
+        out.problem("upstream-elsewhere", f"{branch} tracks {merge} on {remote_name}, expected {want} on {REMOTE}")
+    else:
+        # The tracking ref is absent in a single-branch clone; compare it only where it exists.
+        tracking = _rev(root, f"refs/remotes/{REMOTE}/{branch}")
+        if tracking is not None and tracking != head:
+            out.problem("upstream-differs", f"HEAD is {head}, refs/remotes/{REMOTE}/{branch} is {tracking}")
 
 
 # ---------------------------------------------------------------- trailers
 
 
 def trailers(root: Path, rev: str) -> tuple[int, int]:
-    """(lines written as ``Measured-by:``, trailers git parses with that key)."""
+    """(lines written as ``Measured-by:``, trailers git parses with that key and a non-empty value).
+
+    An empty ``Measured-by:`` names no command, so it is not counted as parsed and the counts differ.
+    """
     if _rev(root, rev) is None:
         raise Unchecked("rev", f"{rev!r} names no commit")
     body = _git(root, "log", "-1", "--format=%B", rev, "--")
-    parsed = _git(root, "log", "-1", f"--format=%(trailers:key={TRAILER_KEY},unfold=true)", rev, "--")
+    parsed = _git(root, "log", "-1", f"--format=%(trailers:key={TRAILER_KEY},valueonly=true,unfold=true)", rev, "--")
     for r in (body, parsed):
         if r.returncode != 0:
             raise Unchecked("log", f"git log failed: {_first_err(r)}")
@@ -299,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("preflight", parents=[common], help="before a new branch is made")
     p.add_argument("--branch", required=True, help="the branch about to be made")
-    p.add_argument("--base", help="the repo's default branch, resolved")
+    p.add_argument("--base", help="the repo's default branch, resolved (required; never the stacked parent)")
     p.add_argument("--pr-base", help="the branch this change is built on and opened against, when stacked")
     p = sub.add_parser("pushed", parents=[common], help="after a push")
     p.add_argument("--branch", required=True, help="the branch that was pushed")
@@ -307,8 +338,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rev", default="HEAD", help="the commit to read (default: HEAD)")
     args = ap.parse_args(argv)
 
-    if args.cmd == "preflight" and not (args.base or args.pr_base):
-        print("UNCHECKED preflight: pass --base <base-branch> (or --pr-base <pr-base>)")
+    if args.cmd == "preflight" and not args.base:
+        print("UNCHECKED preflight: pass --base <base-branch>, the repo's default branch")
         return 2
 
     root = Path(args.root).resolve()

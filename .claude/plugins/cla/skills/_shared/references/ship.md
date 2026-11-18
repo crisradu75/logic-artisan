@@ -4,19 +4,19 @@ The Ship phase's procedure. **Run inline**: stage, commit, push and open the PR 
 
 ## 1. Branch preflight
 
-**With `--pr-base <branch>` passed** (a stacked chain), read every `<base-branch>` in this preflight as `<pr-base>`, and add `--pr-base <pr-base>` to the call below. The parent must exist on the remote: a child branched off an unpushed parent opens a PR whose base does not resolve. Step 4 then passes `--base <pr-base>`.
+**With `--pr-base <branch>` passed** (a stacked chain), add `--pr-base <pr-base>` to the call below and keep `--base <base-branch>` as the repo's default branch: the script needs both, and passing `<pr-base>` as `--base` would let it approve renaming the default branch. Everywhere else in this preflight, read `<base-branch>` as `<pr-base>`. The parent must exist on the remote: a child branched off an unpushed parent opens a PR whose base does not resolve. Step 4 then passes `--base <pr-base>`.
 
 One call checks the branch before it is made:
 ```
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" preflight --branch <branch> --base <base-branch>
 ```
-It reads the current branch and names the mode on its first line. `create` (on `<base-branch>`) and `rename` (any other branch) require `<branch>` to be absent locally, as a remote-tracking ref, and on the remote by exact name. `rename` also fetches the base: `origin/<base-branch>..HEAD` must hold 0 commits — no commits to lose. With `--pr-base`, every mode also requires `<pr-base>@{u}` to resolve to a branch the remote has. Exit 0 passes, 1 is a `PROBLEM` line per failure, 2 means a check could not run. Act on it:
+It reads the current branch and names the mode on its first line. `create` (on the branch the change is cut from: `<pr-base>` when stacked, else `<base-branch>`) and `rename` (any other branch) require `<branch>` to be absent locally, as a remote-tracking ref, and on the remote by exact name. `rename` also fetches the cut-from branch: `origin/<base-branch>..HEAD` must hold 0 commits — no commits to lose — and it refuses to rename the repo's default branch or `<pr-base>` themselves. With `--pr-base`, every mode also requires `<pr-base>` to have an upstream on a remote that has that branch. Exit 0 passes, 1 is a `PROBLEM` line per failure, 2 means a check could not run. Act on it, first match wins:
 
 - **Exit 2, any mode** → the remote could not answer (network, auth, no `origin`) or git could not run: never create the branch on an unanswered question — `warn`, and **Ship, Revise and Archive all become `skip`** (no PR will open).
-- **A `no-upstream`, `upstream-missing` or `upstream-not-remote` line** (`--pr-base` only) → STOP and surface it.
+- **Exit 1 with a `no-upstream`, `upstream-missing` or `upstream-not-remote` line** (`--pr-base` only), whatever else it lists → STOP and surface it: the parent is not on the remote.
 - **`OK preflight on-branch`** (typically a worktree made for a concurrent run) → skip the checkout; stage directly. The collision check is skipped here: it would false-positive on the branch you are on and wrongly `skip` Ship, Revise and Archive.
-- **`preflight create`**: exit 0 → `git pull` (so the branch is not cut from a `<base-branch>` gone stale since this session's last fetch), then `git checkout -b <branch>`. Exit 1 → the branch exists and you are not on it: `warn`, name `<branch>-<today's date>` as the name to rerun with, and Ship, Revise and Archive become `skip` the same way.
-- **`preflight rename`**: only a fresh `/cla:new-worktree` branch with nothing on it yet may go on. Exit 0 → `git branch -m <branch>` and continue as on-branch. Exit 1 → fail loudly; a non-zero count would carry unrelated commits into this PR.
+- **`preflight create`**: exit 0 → `git pull` (so the branch is not cut from a `<base-branch>` gone stale since this session's last fetch), then `git checkout -b <branch>`. Exit 1 → the branch exists and you are not on it: `warn`, name `<branch>-<today's date>` as the name to rerun with, and Ship, Revise and Archive become `skip` the same way. If the only line is `remote-tracking`, the branch may be gone from the remote and its ref stale: say so, and name `git fetch --prune origin` as the fix before a rerun.
+- **`preflight rename`**: only a fresh `/cla:new-worktree` branch with nothing on it yet may go on. Exit 0 → `git branch -m <branch>` and continue as on-branch. Exit 1 → fail loudly; a non-zero count would carry unrelated commits into this PR, and an `on-base` line means the run sits on the default branch or the parent, which is never renamed.
 
 **Branch name.** Use `<branch>`. A change name long enough to read awkwardly in `git log --oneline` (somewhere past 50 characters; judgment, not a rule) may be shortened to a form that keeps a recognizable hint of the change. Do not pause to confirm a branch name.
 
@@ -84,7 +84,7 @@ Exit 0 passes, `0` and `0` included. Exit 1 means the block is split: `git commi
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" pushed --branch <branch>
 ```
 
-It requires the current branch to be `<branch>`, `HEAD` to equal the remote's `refs/heads/<branch>`, and `@{u}` to be set and equal `HEAD`. The push exiting non-zero or with no exit code, or this check exiting anything but 0: report `push not verified` and STOP before step 4. Do not retry the push blindly; a rejected or half-run hook needs a look first.
+It requires the current branch to be `<branch>`, `HEAD` to equal the remote's `refs/heads/<branch>`, and the branch's configured upstream to be that branch on `origin`. The push exiting non-zero or with no exit code, or this check exiting anything but 0: report `push not verified` and STOP before step 4. Do not retry the push blindly; a rejected or half-run hook needs a look first.
 
 ## 4. Open the PR
 

@@ -114,7 +114,7 @@ Each requirement a change adds or modifies SHALL be proven by a test carrying a 
 
 ### Requirement: A new branch is checked for collisions before it is made
 
-Before a change's branch is made, the ship check's `preflight` SHALL exit 1 when a branch of that name exists locally, as a remote-tracking ref or on the remote, when a branch to be renamed holds commits the base does not, or when a stacked parent has no upstream on the remote, and SHALL exit 2, never 0, when it cannot ask the remote.
+Before a change's branch is made, the ship check's `preflight` SHALL exit 1 when a branch of that name exists locally, as a remote-tracking ref or on the remote, when a branch to be renamed is the default branch or the stacked parent or holds commits the branch it is cut from does not, or when a stacked parent has no upstream on the remote, and SHALL exit 2, never 0, when it cannot ask the remote.
 
 #### Scenario: The branch is already on the remote
 
@@ -133,7 +133,7 @@ Before a change's branch is made, the ship check's `preflight` SHALL exit 1 when
 
 ### Requirement: A push is verified against the remote
 
-After a push, the ship check's `pushed` SHALL exit 0 only when the checked-out branch is the one named, its head equals that branch's head on the remote, and its upstream is set to the same commit, and SHALL print `push not verified` on its first line otherwise.
+After a push, the ship check's `pushed` SHALL exit 0 only when the checked-out branch is the one named, its head equals that branch's head on the remote, and its configured upstream is that branch on the remote, and SHALL print `push not verified` on its first line otherwise.
 
 #### Scenario: The commit did not reach the remote
 

@@ -32,3 +32,9 @@ Leftover review suggestions. The inbox is emptied by regular sweep PRs.
 - The `Edit|Write` matcher misses NotebookEdit, and Bash writes (`sed -i`, `cp`) into the cache are not checked.
 - The Edit/Write dispatcher's docstring says "deny > ask > allow", but a child's stdout `permissionDecision: "deny"` at exit 0 is dropped (no hook does that today).
 - `test_a_plugin_root_in_the_cache_asks` does not exercise rule 2 (the subtree rule already asks); the `synced/` tests do.
+
+## From the ship_check review (Suggestions, not fixed)
+
+- `_shared/references/chain-merge.md` "Record the head" still compares `git rev-parse HEAD` with `git ls-remote origin <branch>` by eye, and `multi-lite`'s candidate loop (step 7) points to it. Left for the chain head gate (audit check 2).
+- `multi-spec/references/phases.md` Phase 2 finds an existing branch with `git ls-remote --heads origin docs/propose-<batch-slug>`, which also matches a longer branch name ending in it.
+- Rule ledger: the `ship.md` rows for "must be EMPTY" and "They must be equal" are gone; those obligations remain in the text, held by `ship_check.py`, without absolute wording.
