@@ -94,9 +94,10 @@ per item. Reading another skill's reference file is not calling it: `spec-to-pr`
 ## Always-on guardrails (hooks)
 
 The hooks wire themselves from the plugin's own `hooks/hooks.json` when it loads; there is no
-`settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 10 leaf hooks between
-them in one Python process each, and `warn-wholesale-rewrite` runs on its own after a Write: 11 leaf
-hooks, active in every phase.
+`settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 11 leaf hooks between
+them in one Python process each; `warn-wholesale-rewrite` runs on its own after a Write, and
+`warn-agent-dispatch` and `warn-agent-reply-format` on their own before and after an Agent call:
+14 leaf hooks, active in every phase.
 
 | Severity | Hook | Fires on |
 |---|---|---|
@@ -105,12 +106,15 @@ hooks, active in every phase.
 | | `block-worktree-path-escape` | a write that escapes the worktree boundary |
 | **Ask**: a permission prompt | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete and PR merges (`ALLOW_PR_MERGE=1` drops only the merge prompt, for the chainers' unattended runs); `git checkout <path>`, `git restore <path>`, a forced `checkout -f`/`switch -f` and `git clean`, but only when they would destroy uncommitted work; a saving `git stash` while a merge, cherry-pick or revert is in progress, because it drops `MERGE_HEAD`; a `git rebase` or rebasing `git pull` that would rewrite commits already on a remote-tracking ref (this clone's refs: a stale or missing one, as in a single-branch clone or a push to a URL, is missed); `git switch -C`/`git checkout -B` over a branch whose commits nothing else reaches; a merging `switch`/`checkout -m` while changes are staged; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
 | | `ask-plugin-cache-edit` | an Edit or Write whose target, resolved through symlinks and `..`, lies inside an installed plugin copy: the `cache/` or `marketplaces/` part of the plugins directory (`~/.claude/plugins`, moved by `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_PLUGIN_CACHE_DIR`), or the plugin's own root when that root is in there. The edit would be lost on the next update; a repo's rules go in `cla.io/overlays/<skill>.md` or `cla.io/project-facts.md`. Silent for a plugin run with `--plugin-dir`, for the plugin's `data/` directory and on bad input; if the hook itself fails to load, every Edit and Write asks |
+| | `ask-secret-in-checkpoint` | an Edit or Write under `cla.io/checkpoints/`, `cla.io/decisions/`, `cla.io/feedback/` or `cla.io/lessons-learned/` (committed briefings) whose new text holds a secret-shaped string: an AWS, GitHub, Anthropic, OpenAI, Slack, Google or Stripe live key, a `PRIVATE KEY` header, a JWT, or a `scheme://user:password@host` URL whose password is not a placeholder. It names the kind and the line, leaves the value out, and points at the checkpoint rule: name the file, not its value. Silent for placeholders (`<password>`, `***`, `${VAR}`), ordinary prose and on bad input; if the hook itself fails to load or its scan crashes, every Edit and Write asks. |
 | | `ask-broad-git-add` | a `git add` of the current directory, the repo root or a bare `openspec/` (`-A`, `--all`, `.`, `:/`, `*`) that would stage untracked files; it names up to ten and suggests staging named paths. Silent for `-u`, for named paths (`-A <path>` included), when only tracked files changed, and whenever it cannot check; skipped, like a warning, when the hook time budget is spent |
 | **Warn**: a caution, and the call runs | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
 | | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
 | | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
 | | `warn-heredoc-escape-mangling` | a heredoc body whose backslash escape the shell layers eat |
 | | `warn-wholesale-rewrite` | a Write that replaces a tracked file with a much shorter one |
+| | `warn-agent-dispatch` | an Agent call that passes no `model` (it runs on an unplanned model), a prompt with a line starting `diff --git ` (pass the diff file's path instead), or a review brief whose protected-areas slot reads `(none recorded)`. A `Workflow` script's `agent()` calls are not Agent calls and are not checked |
+| | `warn-agent-reply-format` | a completed `doc-sweeper` reply with no `Scanned:` footer line, or a reply with no `Fact corrections:` field when the brief asked for one. Presence only: a wrong count or a wrong `(none)` passes. A report handed back through `SubagentHandback` is checked only when the result carries it |
 
 **Direct pushes to `main` are NOT guarded by any of these.** That protection is a git `pre-push`
 hook at `hooks/git/pre-push`, which sees the refspec git already resolved, so no way of naming the
@@ -332,8 +336,11 @@ models were unavailable; the current source omits profile model IDs so Copilot i
 session model. Release `cla--v2.3.0` adds separate Copilot `PreToolUse`/`PostToolUse`
 guard wiring without changing Claude's hooks. Live checks covered allow, block, warning, and
 destructive-git confirmation. In autopilot, confirmation is denied because Copilot cannot prompt.
-Copilot documents hook timeouts as fail-open. Edit/Write behavior is adapter-tested but not
-live-tested; Windows PowerShell wiring is untested. A live
+Copilot documents hook timeouts as fail-open. Every Copilot Edit or Write whose payload has no
+`file_path`, or no `new_string` (Edit) or `content` (Write), is denied, because the guards could
+not check it. Edit/Write behavior is adapter-tested but not
+live-tested. The adapter handles shell and file tools only, so `warn-agent-dispatch` and
+`warn-agent-reply-format` do not run under Copilot CLI; Windows PowerShell wiring is untested. A live
 Copilot CLI timeout probe confirmed the hook is killed at its timeout while the tool call proceeds;
 the exact probe command and result are in the repository README. Hook timeout is 30 seconds and
 fail-open, so it is not a guaranteed block. Direct pushes to `main` remain protected by the

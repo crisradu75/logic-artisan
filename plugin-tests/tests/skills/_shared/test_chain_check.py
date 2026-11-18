@@ -808,3 +808,93 @@ def test_deps_name_the_unmet_dependency_when_a_later_row_cannot_be_read(merged):
     assert r.returncode == 1
     assert _first(r) == "FAIL deps: not merged into HEAD: a"
     assert r.stdout.splitlines()[-1].startswith("UNCHECKED notes:")
+
+
+# ---------------------------------------------------------------- paths not covered above
+
+
+def test_after_merge_on_a_recorded_pr_gh_cannot_find_cannot_be_checked(chain: Chain):
+    # after-merge runs right after `gh pr merge`; a PR gh no longer finds is not a verdict either way.
+    chain.gh(stderr="GraphQL: Could not resolve to a PullRequest with the number of 7.\n", code=1)
+    r = chain.check("after-merge")
+    assert r.returncode == 2, r.stdout
+    assert _first(r) == "UNCHECKED gh: gh reports no pull request #7"
+
+
+def test_a_crash_reads_as_could_not_check(chain: Chain, monkeypatch, capsys):
+    # Any unexpected exception exits 2 with an UNCHECKED first line, never 0 or 1.
+    import importlib.util
+
+    monkeypatch.syspath_prepend(str(_SCRIPT.parent))
+    monkeypatch.setattr(sys, "dont_write_bytecode", sys.dont_write_bytecode)  # the module sets it
+    spec = importlib.util.spec_from_file_location("chain_check_crash", _SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, mod)  # its dataclasses look their module up
+    spec.loader.exec_module(mod)
+
+    def boom(*_args, **_kw):
+        raise RuntimeError("planted")
+
+    monkeypatch.setattr(mod, "before_merge", boom)
+    code = mod.main(["before-merge", "--notes", str(chain.notes), "--id", "a", "--base", "main", "--root", str(chain.work)])
+    out = capsys.readouterr()
+    assert code == 2
+    assert out.out.splitlines()[0] == "UNCHECKED error: unexpected RuntimeError: planted"
+    assert "Traceback" in out.err
+
+
+def test_a_64_hex_head_is_a_full_commit_id(chain: Chain):
+    # A SHA-256 repository's heads have 64 hex digits; the row and gh agreeing on one passes.
+    head = "ab" * 32
+    chain.write_notes([("a", "open", "feature/a", "7", head, "0", "clean", "")])
+    chain.gh_pr(headRefOid=head)
+    r = chain.check("resume")
+    assert r.returncode == 0, r.stdout
+    assert _first(r) == f"OK resume open: #7 at {head}"
+    chain.gh_pr(headRefOid=head[:-1] + "c")
+    r = chain.check("resume")
+    assert r.returncode == 1 and _first(r) == "FAIL resume: head moved since review"
+
+
+def _submodule_chain(chain: Chain) -> Path:
+    """`chain.work` added as a submodule of a new superproject: its git directory is
+    `<super>/.git/modules/sub`, which names its checkout in core.worktree."""
+    sup = chain.tmp / "super"
+    sup.mkdir()
+    _git(sup, "init", "-q", "-b", "main")
+    _git(sup, "config", "user.email", "s@example.com")
+    _git(sup, "config", "user.name", "S")
+    _git(sup, "-c", "protocol.file.allow=always", "submodule", "add", "-q", "-b", "feature/a", "../origin.git", "sub")
+    sub = sup / "sub"
+    _git(sub, "remote", "set-url", "origin", str(chain.tmp / "origin.git"))
+    common = _git(sub, "rev-parse", "--git-common-dir").stdout.strip()
+    assert Path(common).name != ".git"
+    return sub
+
+
+def test_a_relative_notes_path_is_read_from_a_submodules_own_checkout(chain: Chain):
+    sub = _submodule_chain(chain)
+    chain.write_notes([("a", "open", "feature/a", "7", chain.head, "0", "clean", "")],
+                      to=sub / "cla.io" / "retro" / "multi-lite-run-notes-2026-11-18.md")
+    env = dict(os.environ, PATH=str(chain.bin) + os.pathsep + os.environ.get("PATH", ""))
+    r = subprocess.run(
+        [sys.executable, str(_SCRIPT), "resume", "--notes", "cla.io/retro/multi-lite-run-notes-2026-11-18.md",
+         "--id", "a", "--base", "main", "--root", str(sub)],
+        cwd=Path(__file__).parent, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _first(r) == f"OK resume open: #7 at {chain.head}"
+
+
+def test_a_relative_notes_path_in_a_bare_repository_layout_cannot_be_placed(chain: Chain):
+    _git(chain.tmp, "clone", "-q", "--bare", "origin.git", "bare.git")
+    tree = chain.tmp / "bare-wt"
+    _git(chain.tmp / "bare.git", "worktree", "add", "-q", str(tree), "feature/a")
+    env = dict(os.environ, PATH=str(chain.bin) + os.pathsep + os.environ.get("PATH", ""))
+    r = subprocess.run(
+        [sys.executable, str(_SCRIPT), "resume", "--notes", "cla.io/retro/multi-lite-run-notes-2026-11-18.md",
+         "--id", "a", "--base", "main", "--root", str(tree)],
+        cwd=Path(__file__).parent, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+    )
+    assert r.returncode == 2
+    assert _first(r).startswith("UNCHECKED repo: cannot tell the primary checkout") and "absolute path" in _first(r)

@@ -1259,6 +1259,36 @@ def test_the_override_sentence_alone_does_not_state_the_repo_budget(repo):
     assert csp.read_change_budget(repo) == ({}, {"requirements": 4, "words": 100000})
 
 
+# requirement: spec-proof / A change can opt in to the protected budget
+def test_a_budget_protected_line_inside_a_code_fence_selects_nothing(repo, capsys):
+    _write(repo, CONFIG, _OVERRIDE_CONFIG)
+    _change(repo, "c1", 3)
+    fence = "`" * 3
+    _write(repo, "openspec/changes/c1/proposal.md", f"Why.\n\n{fence}text\nBudget: protected\n{fence}\n")
+    assert "changes/c1: 3 requirements, the budget is 2" in _budget_problems(repo, capsys)[1]
+
+
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_a_byte_order_mark_adds_no_word_and_hides_no_requirement(repo):
+    d = repo / "openspec" / "changes" / "c1"
+    _write(repo, "openspec/changes/c1/proposal.md", "\ufeff\nword word\n")
+    _write(repo, "openspec/changes/c1/specs/beta/spec.md", "\ufeff### Requirement: R0\n")
+    reqs, words = csp.change_totals(d)
+    assert (reqs, words) == (1, 5)  # "word word" plus "###", "Requirement:", "R0"
+
+
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_every_active_change_is_held_to_the_budget_whatever_the_base_or_tests_filter(repo, capsys):
+    # The budget is a property of the change in the tree: a branch that does not touch the change,
+    # and a --tests glob that matches only the old test, still report it.
+    _write(repo, CONFIG, _BUDGET_CONFIG.format(reqs=1, words="6,000"))
+    _change(repo, "c1", 2)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "c1")
+    code, out, _ = run(repo, capsys, "--base", "HEAD", "--tests", "tests/test_old.py")
+    assert code == 1 and "PROBLEM budget: openspec/changes/c1: 2 requirements, the budget is 1" in out
+
+
 _WRAPPED_OVERRIDE = (
     "    - \"A change whose proposal.md carries the line `Budget: protected` is held to this budget instead:\n"
     "      at most 25 requirements across all its specs and at most 6,000 words in total.\"\n"

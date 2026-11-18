@@ -168,6 +168,9 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # Resolves the write target and the plugins roots with `realpath`; no
     # subprocess, so it is enforcing in the Edit/Write dispatcher at no cost.
     "ask-plugin-cache-edit.py": 0.0,
+    # Regex scan of the new text of a write under `cla.io/<briefing dir>/`; no
+    # subprocess and no file I/O, so it is enforcing in the Edit/Write dispatcher.
+    "ask-secret-in-checkpoint.py": 0.0,
     # 3 x run_git(3s): one `git status --porcelain` for the checkout/restore/
     # switch paths, one for the `git clean` paths, and one memoised pathless
     # fallback both fall back to when git refuses a merged pathspec batch. Every

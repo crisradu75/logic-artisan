@@ -29,6 +29,29 @@ the skills fall back to the default list of protected areas.
   `--conflict`) while changes are staged. All three fail open with a note on stderr, pass no
   command text to git as an option, and their git calls spend only what the hook's other checks
   left of its time budget (#PR).
+- **An `ask-secret-in-checkpoint` guard hook:** an Edit or Write under `cla.io/checkpoints/`,
+  `cla.io/decisions/`, `cla.io/feedback/` or `cla.io/lessons-learned/` asks first when its new text
+  holds a secret-shaped string: an AWS, GitHub, Anthropic, OpenAI, Slack, Google or Stripe live key,
+  a `PRIVATE KEY` header, a JWT, or a `scheme://user:password@host` URL whose password is not a
+  placeholder. The ask names the kind and the line, never the value, and points at the checkpoint
+  rule: name the file, not its value. Bad input fails open; if the hook itself fails to load or its
+  scan crashes, the call asks. Under Copilot CLI, an Edit or Write whose payload carries no
+  `new_string` or `content` is now denied, as one with no `file_path` already was (#537).
+- **Two warn hooks check subagent dispatches.** `warn-agent-dispatch` warns before an Agent call
+  that passes no `model` (it would run on an unplanned model), whose prompt holds a line starting
+  `diff --git ` (pass the diff file's path instead), or whose review brief fills the protected-areas
+  slot with `(none recorded)`. `warn-agent-reply-format` warns after a completed `doc-sweeper`
+  reply with no `Scanned:` footer line, and after a reply with no `Fact corrections:` field when the
+  brief asked for one; it checks that the line is there, not that it is true. Both only warn, are
+  silent on bad input, and do not run under Copilot CLI, whose adapter handles shell and file tools
+  only (#535).
+- **A `setup_guard.py` script** checks that `/cla:cla-setup` left alone the files it promises to:
+  `snapshot` records them before the run writes anything, and `verify` at the end reports each
+  instruction file, settings file, rules file of the repo's own, existing `notes.md`, `*.local.md`
+  file, terminology file or overlay changed, created or deleted without the owner's yes, and every
+  overlay or terminology file created. On a problem the skill reports every line the check printed
+  and does not call the run clean. Exit 0 passes, 1 is a problem, 2 means it could not check (an
+  unreadable file, or a missing, corrupt or stale snapshot) and is never a pass (#534).
 - **A `chain_check.py` script** replaces the comparisons `multi-pr` and `multi-lite` made by eye before
   they merge or resume a pull request: `before-merge` (the recorded head against the PR, the remote
   branch and the checkout; a clean tree; the PR open, on the recorded branch, not a fork, against the
@@ -154,6 +177,23 @@ the skills fall back to the default list of protected areas.
 - **Worktree teardown checks for files it cannot recover.** `multi-pr`'s cleanup lists a
   worktree's untracked and gitignored files first and removes it only when the list is empty or the
   user accepts it; `new-worktree`'s manual teardown skips a worktree that holds such files (#485).
+- **`/cla:cla-setup` reads the change budget sentence as the checker does.** A config that
+  capitalises "At most N requirements" is no longer listed as missing the budget, and a
+  commented-out budget line no longer counts as carrying it (#536).
+- **`check_spec_proof.py` budget counts.** A `Budget: protected` line inside a code fence in
+  `proposal.md` no longer selects the protected budget, and a byte-order mark no longer adds a word
+  or hides a requirement heading on line 1. It still checks every active change whatever `--base`
+  or `--tests` says, and now says why (#536).
+- **Proposal size in review and authoring.** The review checklist's ~400-word proposal Suggestion
+  leaves out the `## Open questions` and `## Risks noted` sections the `multi-spec` authoring brief
+  asks for, and the brief keeps `## Risks noted` to about 5 lines; the seeded rule is unchanged (#536).
+- **The design snapshot is never read with `git show HEAD:<path>`** in the shared review sweeps,
+  which had softened it to "avoid"; all three snapshot sites now agree (#536).
+- **`multi-spec` finds an existing `docs/propose-<slug>` branch by its exact name**, through
+  `ship_check.py preflight`; `git ls-remote --heads` also matched a longer name ending in it (#536).
+- **`chain_check.py` finds a submodule's run notes** from a relative `--notes`; a bare-repository
+  layout still exits 2 and now says to pass an absolute path. The chain merge steps name the fork
+  workflow as a known limitation: every merge there stops as `not opened by this chain` (#536).
 
 ### Development
 
@@ -165,7 +205,10 @@ git-guards and guard-warnings, #494 drift fixes and the 2.2.3 and 2.3.0 changelo
 foundation checklist, #521 the mnemo benchmark run of the finished plugin, #488 requirement shape in the `plugin-distribution` and `review-agents`
 specs); the repo's own OpenSpec skills regenerated for OpenSpec 2.0, with the old
 `/opsx:*` command files removed (#506); and the `/release` skill, which now asks one question, with
-a "Don't release" option, before any edit (#517), and runs the test gate at `-n 4` (#518).
+a "Don't release" option, before any edit (#517), and runs the test gate at `-n 4` (#518). The
+rule ledger re-tags its catch-all `shipped to other repos` entries to their real areas, and its
+test catches `mustn't`, scans shipped JSON comments and fails on a not-a-rule fragment that spans a
+rule (#536).
 
 ## [2.3.0] — 2026-11-04
 

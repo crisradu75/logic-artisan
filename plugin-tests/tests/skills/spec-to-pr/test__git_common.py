@@ -159,19 +159,15 @@ def test_an_absent_overlay_is_silent(monkeypatch, capsys, tmp_path):
     configured is the ORDINARY state, so a warning here would fire in every repo
     carrying no overlay — which is most of them, including this one.
 
-    The overlay path is repo-root-relative, so `is_file` is intercepted for
-    that one leaf name and delegated for everything else, rather than writing
-    into the live `cla.io/overlays/` directory.
+    The overlay path is repo-root-relative and the root comes from the working
+    directory, so the test runs in a fresh repo of its own: started from a
+    folder that is not a repo, the root lookup itself would warn, and started in
+    a repo that has an overlay, the overlay would be read.
     """
-    real_is_file = _git_common.Path.is_file
-
-    def _fake_is_file(self):
-        if self.name == _git_common._BRANCH_PREFIX_OVERLAY:
-            return False
-        return real_is_file(self)
-
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLA_BRANCH_PREFIX", raising=False)
-    monkeypatch.setattr(_git_common.Path, "is_file", _fake_is_file)
+    assert not _git_common.overlay_path().is_file()
     assert _git_common.branch_prefix() == _git_common.DEFAULT_BRANCH_PREFIX
     assert capsys.readouterr().err == "", "an un-configured repo must not be warned at"
 
