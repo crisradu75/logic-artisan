@@ -95,8 +95,9 @@ per item. Reading another skill's reference file is not calling it: `spec-to-pr`
 
 The hooks wire themselves from the plugin's own `hooks/hooks.json` when it loads; there is no
 `settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 11 leaf hooks between
-them in one Python process each, and `warn-wholesale-rewrite` runs on its own after a Write: 12 leaf
-hooks, active in every phase.
+them in one Python process each; `warn-wholesale-rewrite` runs on its own after a Write, and
+`warn-agent-dispatch` and `warn-agent-reply-format` on their own before and after an Agent call:
+14 leaf hooks, active in every phase.
 
 | Severity | Hook | Fires on |
 |---|---|---|
@@ -112,6 +113,8 @@ hooks, active in every phase.
 | | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
 | | `warn-heredoc-escape-mangling` | a heredoc body whose backslash escape the shell layers eat |
 | | `warn-wholesale-rewrite` | a Write that replaces a tracked file with a much shorter one |
+| | `warn-agent-dispatch` | an Agent call that passes no `model` (it runs on an unplanned model), a prompt with a line starting `diff --git ` (pass the diff file's path instead), or a review brief whose protected-areas slot reads `(none recorded)`. A `Workflow` script's `agent()` calls are not Agent calls and are not checked |
+| | `warn-agent-reply-format` | a completed `doc-sweeper` reply with no `Scanned:` footer line, or a reply with no `Fact corrections:` field when the brief asked for one. Presence only: a wrong count or a wrong `(none)` passes. A report handed back through `SubagentHandback` is checked only when the result carries it |
 
 **Direct pushes to `main` are NOT guarded by any of these.** That protection is a git `pre-push`
 hook at `hooks/git/pre-push`, which sees the refspec git already resolved, so no way of naming the
@@ -336,7 +339,8 @@ destructive-git confirmation. In autopilot, confirmation is denied because Copil
 Copilot documents hook timeouts as fail-open. Every Copilot Edit or Write whose payload has no
 `file_path`, or no `new_string` (Edit) or `content` (Write), is denied, because the guards could
 not check it. Edit/Write behavior is adapter-tested but not
-live-tested; Windows PowerShell wiring is untested. A live
+live-tested. The adapter handles shell and file tools only, so `warn-agent-dispatch` and
+`warn-agent-reply-format` do not run under Copilot CLI; Windows PowerShell wiring is untested. A live
 Copilot CLI timeout probe confirmed the hook is killed at its timeout while the tool call proceeds;
 the exact probe command and result are in the repository README. Hook timeout is 30 seconds and
 fail-open, so it is not a guaranteed block. Direct pushes to `main` remain protected by the

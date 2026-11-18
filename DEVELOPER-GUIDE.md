@@ -261,8 +261,9 @@ stale absolute path sneaks into a prompt.
 
 The hooks wire themselves from `hooks/hooks.json` when the plugin loads; there is no
 `settings.json` step. Two dispatchers each run several leaf hooks in one Python process (7 on the
-Bash/PowerShell matcher, 4 on Edit/Write), and `warn-wholesale-rewrite` runs on its own after a
-Write: **12 leaf hooks**, in three severities.
+Bash/PowerShell matcher, 4 on Edit/Write); `warn-wholesale-rewrite` runs on its own after a Write,
+and `warn-agent-dispatch` and `warn-agent-reply-format` on their own before and after an Agent call:
+**14 leaf hooks**, in three severities.
 
 | Severity | Hook | Fires on |
 |---|---|---|
@@ -278,6 +279,8 @@ Write: **12 leaf hooks**, in three severities.
 | | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
 | | `warn-heredoc-escape-mangling` | a heredoc body whose backslash escape the shell layers eat (`\n` arrives as a real newline) |
 | | `warn-wholesale-rewrite` | a Write that replaces a tracked file with a much shorter one (it asks you to name what you dropped) |
+| | `warn-agent-dispatch` | an Agent call with no `model` (it would run on the agent file's model or the session's), a prompt line starting `diff --git ` (pasted diff text where a diff file's path belongs), or a review brief whose protected-areas slot reads `(none recorded)`; `Workflow` `agent()` calls are not Agent calls, so they are not checked |
+| | `warn-agent-reply-format` | after a completed Agent call: a `doc-sweeper` reply with no `Scanned:` footer line, or a reply with no `Fact corrections:` field when the brief named it. Presence only, not truth; a report handed back through `SubagentHandback` is checked only when the result carries its text |
 
 The Bash/PowerShell dispatcher also asks, without running any guard, when a command is over 500,000
 characters as Python decodes them from stdin, which on Windows can exceed the text's own character
@@ -671,6 +674,10 @@ what enforces it; read that code rather than a copy of it here.
    `test_hooks_wiring.py`, `test_every_dispatcher_sibling_hook_exists` and
    `test_no_outcome_changing_hook_is_marked_advisory` fail on a miss. A post-edit warning is wired
    by hand: its own `PostToolUse` entry in `hooks/hooks.json` (as `warn-wholesale-rewrite.py` is).
+   So is a warning on a tool no dispatcher covers: the two Agent warnings
+   (`warn-agent-dispatch.py`, `warn-agent-reply-format.py`) each have their own `Agent` entry. A
+   hook wired by hand has no `HOOK_WORST_CASE_SECONDS` entry, so keep it free of subprocesses or
+   state its worst case in its own file.
 3. **Add its `HOOK_WORST_CASE_SECONDS` entry** in `hooks/_dispatch_lib.py`: the seconds it can spend
    (git calls times their timeout; `0.0` for pure text inspection), with the arithmetic in a comment
    on that entry. `test_the_budget_table_covers_every_dispatched_hook` and
@@ -683,7 +690,8 @@ what enforces it; read that code rather than a copy of it here.
    reaches the same dispatchers through `hooks/copilot-pretooluse.py`, whose `_DISPATCHERS` maps a
    tool name to a dispatcher, and runs the post-edit warning through `hooks/copilot-posttooluse.py`;
    a new tool or dispatcher needs a line there and an entry in
-   `com.github.copilot/hooks/hooks.json`. `test_copilot_hooks.py` pins that wiring.
+   `com.github.copilot/hooks/hooks.json`. `test_copilot_hooks.py` pins that wiring. The Agent
+   warnings have no Copilot wiring: the adapter handles shell and file tools only.
 5. **Write the tests in `plugin-tests/tests/hooks/test_<hook_name>.py`**: calls the guard must
    refuse, ask about or warn on, and calls it must let through, including the near-miss spelling of
    each. A guard that only has deny tests passes while it blocks everything. Tests never go

@@ -31,7 +31,7 @@ Think broadly, then write narrowly.
    - a comparison or score measured against the wrong baseline, such as one that lacks the thing being measured.
 2. Sort each risk:
    - **It touches a protected area** (it could lose, corrupt or leak what the Stakes protect, or break something shipped to others): write it as a requirement, stating the outcome the owner would notice, with a scenario. These matter most; never cut one to save words.
-   - **Otherwise:** one line under `## Risks noted` in proposal.md. Don't design machinery against it.
+   - **Otherwise:** one line under `## Risks noted` in proposal.md. Don't design machinery against it. Keep that section to about 5 lines: name the likeliest risks.
 3. For each protected-area risk, check whether a decision rules out the obvious fix. If it does, keep the decision, and raise the conflict under `## Open questions` with your proposed fix.
 
 Requirements state outcomes, not how to build them. Write design.md only when a real choice needs recording. A number that changes behaviour (a time limit, a retry count) gets a concrete default, in a scenario or in design.md. A check or score says what counts as a pass, or asks. design.md and the specs must agree; where they would differ, the spec wins and design.md follows it.

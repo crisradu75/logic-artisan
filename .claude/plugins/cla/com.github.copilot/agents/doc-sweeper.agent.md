@@ -42,7 +42,7 @@ caller supplied — you are read-only and scope-only-what-you're-told.
   and count what it resolves to. A supplied path or glob that resolves to ZERO files is never
   skipped silently: name it in the accounting footer's `unresolved` list — the caller supplied it
   expecting coverage, and silence here is how a sweep once reported zero hits over a surface it
-  never searched. Never fall back to a different path shape (e.g. a repo-wide glob) if the caller
+  had not searched. Never fall back to a different path shape (e.g. a repo-wide glob) if the caller
   supplied a skill-directory-style list, or vice versa.
 - **Grounding contract:** every hit you report MUST carry the *actual matched line*, quoted verbatim
   (trimmed) with its real `path:line`. Never report a hit you did not literally match, and never

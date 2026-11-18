@@ -217,6 +217,15 @@ def test_preflight_pr_base_without_an_upstream_fails(work: Path):
     assert "PROBLEM no-upstream: feature/parent has no upstream" in r.stdout
 
 
+def test_preflight_pr_base_with_a_merge_but_no_remote_fails(work: Path):
+    # `branch.<pr-base>.merge` alone names no remote to ask: a problem (exit 1), not an unchecked run.
+    _git(work, "checkout", "-q", "-b", "feature/parent")
+    _git(work, "config", "branch.feature/parent.merge", "refs/heads/feature/parent")
+    r = _run(work, "preflight", "--branch", "feature/child", "--base", "main", "--pr-base", "feature/parent")
+    assert r.returncode == 1, r.stdout
+    assert r.stdout.splitlines()[1:] == ["PROBLEM no-upstream: feature/parent has no upstream configured; push the parent first"]
+
+
 def test_preflight_pr_base_whose_upstream_left_the_remote_fails(work: Path):
     _git(work, "checkout", "-q", "-b", "feature/parent")
     _git(work, "push", "-q", "-u", "origin", "feature/parent")
@@ -398,6 +407,33 @@ def test_pushed_fails_when_only_the_upstream_is_unset(work: Path):
     r = _run(work, "pushed", "--branch", "main")
     assert r.returncode == 1
     assert r.stdout.splitlines()[1:] == ["PROBLEM no-upstream: no upstream is configured for main"]
+
+
+def test_pushed_fails_with_a_merge_but_no_remote(work: Path):
+    # Pushed, but only `branch.<name>.merge` is set: a bare `git push` has no remote to go to.
+    _git(work, "checkout", "-q", "-b", "feat")
+    _commit(work)
+    _git(work, "push", "-q", "origin", "feat")
+    _git(work, "config", "branch.feat.merge", "refs/heads/feat")
+    r = _run(work, "pushed", "--branch", "feat")
+    assert r.returncode == 1, r.stdout
+    assert r.stdout.splitlines()[1:] == ["PROBLEM no-upstream: no upstream is configured for feat"]
+
+
+def test_pushed_reports_the_short_merge_form_as_elsewhere(work: Path):
+    # `branch.feat.merge = feat` (no refs/heads/) is not an upstream git honours: `@{u}` fails with
+    # "not stored as a remote-tracking branch" and a bare `git push` refuses. So it is reported.
+    _git(work, "checkout", "-q", "-b", "feat")
+    _commit(work)
+    _git(work, "push", "-q", "origin", "feat")
+    _git(work, "config", "branch.feat.remote", "origin")
+    _git(work, "config", "branch.feat.merge", "feat")
+    assert _git(work, "rev-parse", "--verify", "--quiet", "feat@{u}", check=False).returncode != 0
+    r = _run(work, "pushed", "--branch", "feat")
+    assert r.returncode == 1, r.stdout
+    assert r.stdout.splitlines()[1:] == [
+        "PROBLEM upstream-elsewhere: feat tracks feat on origin, expected refs/heads/feat on origin",
+    ]
 
 
 # requirement: change-workflow / A push is verified against the remote
