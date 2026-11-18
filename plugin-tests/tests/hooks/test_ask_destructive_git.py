@@ -3076,7 +3076,8 @@ def test_every_revision_probe_ends_its_options(history, monkeypatch, capsys):
             assert args[:4] == ["rev-parse", "--verify", "--quiet", "--end-of-options"], args
         elif args[0] in ("rev-list", "merge-base"):
             for arg in args[1:]:
-                assert arg.startswith("-") or len(arg.lstrip("^")) == 40, args
+                # SHA-1 or SHA-256 object names, never command text.
+                assert arg.startswith("-") or len(arg.lstrip("^")) in (40, 64), args
 
 
 # --- quoted options read like their unquoted forms ---------------------------
@@ -3360,3 +3361,227 @@ def test_a_pull_whose_setting_probes_cannot_run_is_silence_not_an_error(
     captured = capsys.readouterr()
     assert captured.out.strip() == ""
     assert "raised" not in captured.err and "did not run" in captured.err
+
+
+
+# --- review round 2: fork-point and the no-replay set ---------------------------
+
+
+@pytest.fixture
+def rewound(history: Path) -> Path:
+    """Branch `fp` holds Y and T, both pushed (`origin/fp`); its upstream
+    `origin/base` once held Y and was then rewound to X. A fork-point rebase
+    drops Y and replays T although X is an ancestor of `fp` (measured)."""
+    x = _sha(history, "main~1")
+    _git(history, "update-ref", "-m", "fetch", "refs/remotes/origin/base", x)
+    y = _commit_off(history, x, "Y")
+    _git(history, "update-ref", "-m", "fetch", "refs/remotes/origin/base", y)
+    t = _commit_off(history, y, "T")
+    _git(history, "update-ref", "refs/heads/fp", t)
+    _git(history, "update-ref", "refs/remotes/origin/fp", t)
+    _git(history, "branch", "-q", "--set-upstream-to=origin/base", "fp")
+    _git(history, "update-ref", "-m", "forced-update", "refs/remotes/origin/base", x)
+    _git(history, "switch", "-q", "fp")
+    return history
+
+
+# requirement: git-guards / A rebase of pushed commits asks first
+@pytest.mark.parametrize(
+    "command",
+    ["git rebase", "git rebase --fork-point origin/base", "git rebase -q", "git -C . rebase"],
+)
+def test_a_fork_point_rebase_that_drops_a_pushed_commit_asks(
+    command, rewound, monkeypatch, capsys
+):
+    payload = _run(command, monkeypatch, capsys, cwd=str(rewound))
+    assert payload is not None, command
+    assert hook.REBASE_REASON in _reason(payload)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git rebase origin/base",
+        "git rebase --no-fork-point",
+        "git -c rebase.forkPoint=false rebase",
+        "git -c rebase.forkpoint=no rebase",
+    ],
+)
+def test_without_fork_point_the_same_branch_is_up_to_date(
+    command, rewound, monkeypatch, capsys
+):
+    """An upstream operand turns fork-point off by default; so do the flag and
+    the setting. Then X is an ancestor of `fp` and git moves nothing."""
+    assert _run(command, monkeypatch, capsys, cwd=str(rewound)) is None, command
+
+
+def test_the_fork_point_setting_in_the_repository_is_read(rewound, monkeypatch, capsys):
+    _git(rewound, "config", "rebase.forkPoint", "false")
+    assert _run("git rebase", monkeypatch, capsys, cwd=str(rewound)) is None
+    assert _run("git -c rebase.forkPoint=true rebase", monkeypatch, capsys, cwd=str(rewound)) is not None
+
+
+def test_the_fork_point_probe_names_a_ref_never_command_text(rewound, monkeypatch, capsys):
+    calls = _history_probe(monkeypatch)
+    _run("git rebase", monkeypatch, capsys, cwd=str(rewound))
+    fork = [args for args, _ in calls if args[:2] == ["merge-base", "--fork-point"]]
+    assert fork == [["merge-base", "--fork-point", "--end-of-options",
+                     "refs/remotes/origin/base", _sha(rewound, "fp")]], calls
+
+
+# requirement: git-guards / A rebase of pushed commits asks first
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git rebase --ignore-date main~1",
+        "git rebase --whitespace=fix main~1",
+        "git rebase --committer-date-is-author-date main~1",
+        "git rebase --apply main~1",
+        "git rebase -C3 main~1",
+        # An abbreviation of a no-replay option is not in the measured set.
+        "git rebase --autosq main~1",
+    ],
+)
+def test_an_unmeasured_option_turns_the_up_to_date_shortcut_off(
+    command, history, monkeypatch, capsys
+):
+    """Measured on git 2.43: the first three replay an up-to-date branch, and
+    f1 is pushed. Anything outside the measured set is treated the same."""
+    payload = _run(command, monkeypatch, capsys, cwd=str(history))
+    assert payload is not None, command
+    assert hook.REBASE_REASON in _reason(payload)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git rebase -r main~1",
+        "git rebase --rebase-merges main~1",
+        "git rebase --rebase-merges=rebase-cousins main~1",
+        "git rebase --keep-base main~1",
+        "git rebase --autosquash main~1",
+        "git rebase -q main~1",
+        "git rebase -v main~1",
+        "git rebase -qv main~1",
+        "git rebase --update-refs main~1",
+        "git rebase -s ort main~1",
+        "git rebase -X theirs main~1",
+        "git rebase --strategy=ort main~1",
+        "git rebase --strategy-option theirs main~1",
+        "git rebase --autostash --no-verify --stat main~1",
+        "git rebase -m main~1",
+    ],
+)
+def test_a_measured_no_replay_option_keeps_the_shortcut(
+    command, history, monkeypatch, capsys
+):
+    """Each measured on git 2.43: an up-to-date branch is left as it was."""
+    assert _run(command, monkeypatch, capsys, cwd=str(history)) is None, command
+
+
+# --- -c overrides ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git -c pull.rebase=true pull origin main",
+        "git -c 'pull.rebase=true' pull origin main",
+        'git -c "pull.rebase=merges" pull origin main',
+        "git -c Pull.Rebase=true pull origin main",
+        "git -c pull.rebase pull origin main",
+        "git -c branch.feat.rebase=true pull origin main",
+    ],
+)
+def test_a_dash_c_setting_makes_a_pull_rebase(command, history, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys, cwd=str(history))
+    assert payload is not None, command
+    assert hook.REBASE_REASON in _reason(payload)
+
+
+def test_a_dash_c_setting_outranks_the_repository(history, monkeypatch, capsys):
+    _git(history, "config", "pull.rebase", "true")
+    assert _run(
+        "git -c pull.rebase=false pull origin main", monkeypatch, capsys, cwd=str(history)
+    ) is None
+    assert _run(
+        "git -c branch.feat.rebase=false pull origin main", monkeypatch, capsys, cwd=str(history)
+    ) is None
+
+
+def test_config_keys_compare_as_git_does():
+    assert hook._config_key("Pull.Rebase") == "pull.rebase"
+    assert hook._config_key("BRANCH.Feat.REBASE") == "branch.Feat.rebase"
+    assert hook._config_overrides("-c a.b=1 -c 'x.y=two words' -c z.w ") == {
+        "a.b": "1", "x.y": "two words", "z.w": "true",
+    }
+
+
+# --- quoting ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "word,expected",
+    [
+        ("main", "main"),
+        ("'main'", "main"),
+        ('"main"', "main"),
+        ('ma"in"', "main"),
+        ("m'a'in", "main"),
+        ("$'main'", "main"),
+        ("$'ma\\x69n'", "main"),
+        ("$'ma\\151n'", "main"),
+        ("$'a\\tb'", "a\tb"),
+        ('$"main"', "main"),
+        ("ma\\in", "main"),
+        ('"a\\"b"', 'a"b'),
+        ('--force-create="uniq"', "--force-create=uniq"),
+        ("'unterminated", "unterminated"),
+    ],
+)
+def test_unquote_reads_a_word_as_the_shell_does(word, expected):
+    assert hook._unquote(word) == expected
+
+
+# requirement: git-guards / A rebase of pushed commits asks first
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git rebase $'main'",
+        'git rebase ma"in"',
+        "git rebase $'ma\\x69n'",
+        "git rebase ':/m2'",
+        "git pull --rebase . main",
+        'git pull --rebase="true" origin main',
+    ],
+)
+def test_a_quoted_or_searched_upstream_still_asks(command, history, monkeypatch, capsys):
+    """`:/m2` is the commit whose message says m2 (main's tip); `.` is this
+    repository, so `pull --rebase . main` is `git rebase main`."""
+    payload = _run(command, monkeypatch, capsys, cwd=str(history))
+    assert payload is not None, command
+    assert hook.REBASE_REASON in _reason(payload)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git pull --rebase="false" origin main',
+        'git pull "--rebase=false" origin main',
+        "git pull --rebase . origin/feat",
+    ],
+)
+def test_a_quoted_false_or_local_only_pull_stays_silent(command, history, monkeypatch, capsys):
+    assert _run(command, monkeypatch, capsys, cwd=str(history)) is None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    ['git switch --force-create="uniq"', "git switch -C uniq ':/m2'", "git switch -C $'uniq'"],
+)
+def test_a_quoted_reset_name_or_searched_start_still_asks(
+    command, history, monkeypatch, capsys
+):
+    payload = _run(command, monkeypatch, capsys, cwd=str(history))
+    assert payload is not None, command
+    assert "orphans them" in _reason(payload)

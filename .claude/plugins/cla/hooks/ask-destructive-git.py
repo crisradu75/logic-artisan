@@ -116,14 +116,19 @@ Detection scope
   branch pushed without `-u` is published all the same. Rewriting it takes a
   force-push, and the guarded `--force-with-lease` form does not ask, so this
   is the checkpoint. A pull rebases onto `<remote>/<branch>` when it names
-  them, else onto `@{upstream}`, read BEFORE its fetch runs.
+  them (onto `<branch>` itself when the remote is `.`, this repository), else
+  onto `@{upstream}`, read BEFORE its fetch runs. Settings come from a
+  `git -c` override in the command first, then the repository's config.
   Silent: a rebase of local-only commits onto a fresh base (nobody else has
   them and `ORIG_HEAD` undoes it); a rebase onto an upstream that is already
-  an ancestor of the branch, which replays nothing, unless an option replays it
-  anyway (`-f`, `--no-ff`, `--signoff`, `--reset-author-date`, `-i`, `--exec`,
-  `--onto`, `--root`; never applied to a pull, whose fetch can move the
-  upstream); a rebase on a dirty tree, because git refuses that itself and
-  `--autostash` keeps the changes in the stash when the re-apply conflicts
+  an ancestor of the branch, which replays nothing, but only when every option
+  is in a measured no-replay set (`_REBASE_NO_REPLAY_LONG`; any other option,
+  an abbreviation included, asks) and, under fork-point (the default without
+  an upstream operand, unless `--no-fork-point` or `rebase.forkPoint=false`),
+  `merge-base --fork-point` finds no older point in the upstream's reflog;
+  never for a pull, whose fetch can move the upstream; a rebase on a dirty
+  tree, because git refuses that itself and `--autostash` keeps the changes in
+  the stash when the re-apply conflicts
   (measured, git 2.43); and `--continue`, `--abort`, `--skip`, `--quit`,
   `--edit-todo` and `--show-current-patch`, which rewrite nothing new and are
   never probed.
@@ -987,16 +992,22 @@ _REBASE_ACTION = re.compile("--(?:" + "|".join((
     _abbrev("edit-todo", 2), _abbrev("show-current-patch", 2),
 )) + ")")
 _REBASE_ROOT = re.compile("--" + _abbrev("root", 2))
-# Options that rewrite commits even when the branch is already up to date with
-# its upstream, so the up-to-date shortcut must not apply. Measured on 2.43:
-# `-f`, `--no-ff`, `--signoff` and `--reset-author-date` replay an up-to-date
-# branch; `--onto` moves it (`--root` returns its own answer); `-i` and `--exec` hand the todo list
-# or a command the chance to. `--keep-base`, `-r` and `--autosquash` do not.
-_REBASE_REWRITES = re.compile("--(?:" + "|".join((
-    _abbrev("interactive", 2), _abbrev("exec", 2), _abbrev("force-rebase", 4), "no-ff",
-    _abbrev("signoff", 2), _abbrev("reset-author-date", 4), _abbrev("onto", 1),
-)) + ")")
-_REBASE_REWRITES_SHORT = "ifx"
+# The up-to-date shortcut (an upstream that is already an ancestor of the branch
+# replays nothing) holds only when EVERY option is one of these, each measured on
+# git 2.43 against an up-to-date branch whose author and committer dates differ:
+# none of them moved HEAD. Any other option turns the shortcut off, so an option
+# nobody measured asks instead of passing (`--whitespace=fix`, `--ignore-date`
+# and `--committer-date-is-author-date` all replayed it; a list of replaying
+# options missed those). Full spellings only: an abbreviation asks.
+_REBASE_NO_REPLAY_LONG = frozenset({
+    "--rebase-merges", "--no-rebase-merges", "--keep-base", "--no-keep-base",
+    "--autosquash", "--no-autosquash", "--quiet", "--verbose", "--stat", "--no-stat",
+    "--update-refs", "--no-update-refs", "--strategy", "--strategy-option",
+    "--autostash", "--no-autostash", "--verify", "--no-verify", "--ff",
+    "--fork-point", "--no-fork-point", "--rerere-autoupdate", "--no-rerere-autoupdate",
+    "--merge",
+})
+_REBASE_NO_REPLAY_SHORT = "rqvnsXm"
 # Long options whose value is the NEXT word, so that word is not an operand.
 # `--strategy` has no abbreviation: every prefix is shared with
 # `--strategy-option`, whose own floor is `--strategy-`.
@@ -1021,8 +1032,23 @@ _PULL_VALUE_LONG = frozenset({
 })
 _PULL_VALUE_SHORT = "sXo"
 _PULL_OPTIONAL_SHORT = "rjS"
-# The values git reads as "do not rebase" for `--rebase=` and the settings.
+# The values git reads as "do not rebase" for `--rebase=` and the settings, and as
+# false for `rebase.forkPoint`. An empty setting is false as well.
 _NOT_REBASE = frozenset({"false", "no", "off", "0"})
+# `git -c <key>=<value>`, which outranks the repository's own config.
+_DASH_LOWER_C = re.compile(r"(?<![\w-])-c" + _SEP + r"""((?:"[^"]*"|'[^']*'|[^\s"'])+)""")
+# One segment of a shell word each: `$'...'`, `'...'`, `"..."` or `$"..."`, a
+# backslash escape, or plain text; a closing quote may be missing.
+_QUOTED = re.compile(
+    r"""\$'((?:[^'\\]|\\.)*)'?|'([^']*)'?|\$?"((?:[^"\\]|\\.)*)"?|\\(.)|([^'"\\$]+|.)""", re.S
+)
+_ANSI_ESCAPE = re.compile(r"\\(x[0-9a-fA-F]{1,2}|[0-7]{1,3}|.)", re.S)
+# Inside double quotes a backslash escapes only these.
+_DOUBLE_ESCAPE = re.compile(r'\\([\\"$`])')
+_ANSI_C = {
+    "n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\f", "v": "\v",
+    "e": "\x1b", "E": "\x1b", "\\": "\\", "'": "'", '"': '"', "?": "?",
+}
 
 # `-C <name>`/`--force-create <name>` (switch only) and `-B <name>` (checkout)
 # reset an existing branch to the start point. `--force-` is the floor: `--forc`
@@ -1063,7 +1089,7 @@ def _words(scanned_tail: str, raw_tail: str) -> list[str]:
     target = False
     for m in re.finditer(r"\S+", scanned_tail):
         flag = scanned_tail[m.start():m.end()]
-        real = raw_tail[m.start():m.end()].rstrip("\\)`").strip("'\"`")
+        real = _unquote(raw_tail[m.start():m.end()].rstrip("\\)`"))
         if not real:
             continue
         if target:
@@ -1077,6 +1103,50 @@ def _words(scanned_tail: str, raw_tail: str) -> list[str]:
     return words
 
 
+def _unquote(word: str) -> str:
+    """One shell word as the command receives it: `'...'`, `"..."`, `$'...'`
+    (ANSI-C escapes), `$"..."` and backslashes, at any point in the word, so
+    `ma"in"`, `$'main'` and `--rebase="false"` read as `main` and `--rebase=false`.
+    An unterminated quote runs to the end of the word."""
+    out: list[str] = []
+    for m in _QUOTED.finditer(word):
+        ansi, single, double, escaped, plain = m.groups()
+        if ansi is not None:
+            out.append(_ANSI_ESCAPE.sub(_ansi_char, ansi))
+        elif double is not None:
+            out.append(_DOUBLE_ESCAPE.sub(r"\1", double))
+        else:
+            out.append(next(g for g in (single, escaped, plain) if g is not None))
+    return "".join(out)
+
+
+def _ansi_char(m: re.Match) -> str:
+    """One `$'...'` escape: hex `x` plus digits, octal digits, or a named one (`t`)."""
+    code = m.group(1)
+    if code[0] == "x" and len(code) > 1:
+        return chr(int(code[1:], 16))
+    if code[0] in "01234567":
+        return chr(int(code, 8))
+    return _ANSI_C.get(code, "\\" + code)
+
+
+def _config_overrides(opts: str) -> dict[str, str]:
+    """`git -c <key>=<value>` settings from an invocation's raw global options,
+    keyed as `_config_key` spells them. A bare `-c <key>` is true."""
+    found: dict[str, str] = {}
+    for m in _DASH_LOWER_C.finditer(opts):
+        key, eq, value = _unquote(m.group(1)).partition("=")
+        found[_config_key(key)] = value if eq else "true"
+    return found
+
+
+def _config_key(key: str) -> str:
+    """A config key as git compares it: section and name ignore case, a
+    subsection (`branch.<name>.rebase`) does not."""
+    parts = key.split(".")
+    return ".".join([parts[0].lower(), *parts[1:-1], parts[-1].lower()])
+
+
 def _cluster(letters: str, required: str, optional: str) -> bool:
     """True when a short-option cluster ends in an option whose value is the
     next word (`-ix`), not attached (`-xmake`) or optional (`-ri`)."""
@@ -1088,11 +1158,13 @@ def _cluster(letters: str, required: str, optional: str) -> bool:
     return False
 
 
-def _rebase_range(words: list[str]) -> tuple[str, str | None, bool] | None:
-    """`(branch, upstream, rewrites)` for the commits a rebase rewrites,
-    `upstream..branch`; `upstream` is None under `--root`, where it is all of
-    `branch`. `rewrites` is True when an option rewrites even an up-to-date
-    branch. None for an action on a rebase already under way.
+def _rebase_range(words: list[str]) -> tuple[str, str | None, bool, bool | None] | None:
+    """`(branch, upstream, rewrites, fork_point)` for the commits a rebase
+    rewrites, `upstream..branch`; `upstream` is None under `--root`, where it is
+    all of `branch`. `rewrites` is True unless every option is in the measured
+    no-replay set. `fork_point` is the explicit `--[no-]fork-point`, else False
+    with an upstream operand and None (the settings decide) without one, which
+    is git's own default. None for an action on a rebase already under way.
 
     `git rebase [<upstream> [<branch>]]`: the upstream defaults to the current
     branch's `@{upstream}` and the branch to HEAD; `--onto` moves where the
@@ -1100,6 +1172,7 @@ def _rebase_range(words: list[str]) -> tuple[str, str | None, bool] | None:
     """
     operands: list[str] = []
     root = rewrites = skip = False
+    fork_point: bool | None = None
     for word in words:
         key = word.partition("=")[0]
         if skip:
@@ -1108,20 +1181,27 @@ def _rebase_range(words: list[str]) -> tuple[str, str | None, bool] | None:
             if _REBASE_ACTION.fullmatch(key):
                 return None
             root = root or _REBASE_ROOT.fullmatch(key) is not None
-            rewrites = rewrites or _REBASE_REWRITES.fullmatch(key) is not None
+            rewrites = rewrites or key not in _REBASE_NO_REPLAY_LONG
+            fork_point = {"--fork-point": True, "--no-fork-point": False}.get(key, fork_point)
             skip = key == word and _REBASE_VALUE_LONG.fullmatch(key) is not None
         elif word.startswith("-") and word != "-":
             letters = word[1:]
-            rewrites = rewrites or any(ch in _REBASE_REWRITES_SHORT for ch in letters)
+            for ch in letters:
+                rewrites = rewrites or ch not in _REBASE_NO_REPLAY_SHORT
+                if ch in _REBASE_VALUE_SHORT + _REBASE_OPTIONAL_SHORT:
+                    break
             skip = _cluster(letters, _REBASE_VALUE_SHORT, _REBASE_OPTIONAL_SHORT)
         else:
             operands.append("@{-1}" if word == "-" else word)
     if root:
-        return (operands[0] if operands else "HEAD"), None, True
+        return (operands[0] if operands else "HEAD"), None, True, False
+    if fork_point is None and operands:
+        fork_point = False
     return (
         operands[1] if len(operands) > 1 else "HEAD",
         operands[0] if operands else "@{upstream}",
         rewrites,
+        fork_point,
     )
 
 
@@ -1162,6 +1242,10 @@ def _pull_upstream(operands: list[str]) -> str | None:
     if len(operands) < 2:
         return "@{upstream}"
     branch = operands[1].lstrip("+").partition(":")[0]
+    if operands[0] == ".":
+        # `.` is this repository: the pull rebases onto the local branch, the
+        # same rewrite as `git rebase <branch>`, so it is probed the same way.
+        return branch
     if branch.startswith("refs/heads/"):
         branch = branch[len("refs/heads/"):]
     return "refs/remotes/" + operands[0] + "/" + branch
@@ -1254,15 +1338,37 @@ class _Probes:
         refused outright."""
         if not rev or rev.startswith("-"):
             return None
-        out = self.git(directory, [
-            "rev-parse", "--verify", "--quiet", "--end-of-options", rev + "^{commit}",
-        ])
+        # `:/<text>` names the youngest commit whose message matches, so it is
+        # a commit already; a `^{commit}` suffix would join the search text.
+        peeled = rev if rev.startswith(":/") else rev + "^{commit}"
+        out = self.git(directory, ["rev-parse", "--verify", "--quiet", "--end-of-options", peeled])
         sha = out.stdout.strip() if out is not None and out.returncode == 0 else ""
         return sha if re.fullmatch(r"[0-9a-f]{40,64}", sha) else None
 
+    def ref(self, directory: str, rev: str) -> str | None:
+        """The full ref name `rev` spells (`refs/remotes/origin/main`), or None
+        for a revision that is not a ref. git prints it; the command never
+        reaches `merge-base` itself."""
+        if rev.startswith("-"):
+            return None
+        out = self.git(directory, [
+            "rev-parse", "--verify", "--quiet", "--symbolic-full-name", "--end-of-options", rev,
+        ])
+        name = out.stdout.strip() if out is not None and out.returncode == 0 else ""
+        return name if re.fullmatch(r"refs/[^\s]+", name) else None
+
+    def setting(self, directory: str, key: str, overrides: dict[str, str]) -> str | None:
+        """A config value: a `-c` override from the command first, else the
+        repository's own, else None when unset."""
+        if _config_key(key) in overrides:
+            return overrides[_config_key(key)]
+        out = self.git(directory, ["config", "--get", key])
+        return out.stdout.strip() if out is not None and out.returncode == 0 else None
+
 
 def _rewrites_published(
-    directory: str, branch: str, upstream: str | None, rewrites: bool, probes: _Probes
+    directory: str, branch: str, upstream: str | None, rewrites: bool,
+    fork_point: bool, probes: _Probes,
 ) -> bool:
     """True when the commits the rebase rewrites include one already reachable
     from a remote-tracking branch: two counts over the same range, the second
@@ -1270,7 +1376,9 @@ def _rewrites_published(
     upstream, because a branch pushed without `-u` is published all the same.
 
     A branch already up to date with its upstream (the upstream is an ancestor
-    of it) replays nothing, unless `rewrites` says an option forces it.
+    of it) replays nothing, unless `rewrites` says an option may force it, or
+    fork-point finds an older point in the upstream's reflog: there git drops
+    the commits the upstream has since lost and replays the rest.
     """
     tip = probes.commit(directory, branch)
     if tip is None:
@@ -1280,10 +1388,8 @@ def _rewrites_published(
         base = probes.commit(directory, upstream)
         if base is None:
             return False
-        if not rewrites:
-            up_to_date = probes.git(directory, ["merge-base", "--is-ancestor", base, tip])
-            if up_to_date is None or up_to_date.returncode == 0:
-                return False
+        if not rewrites and _replays_nothing(directory, upstream, base, tip, fork_point, probes):
+            return False
         span.append("^" + base)
     every = probes.git(directory, ["rev-list", "--count", *span, "--"])
     if every is None or every.returncode != 0:
@@ -1294,10 +1400,34 @@ def _rewrites_published(
     return int(every.stdout) > int(local.stdout)
 
 
-def _pull_rebases(directory: str, rebase: bool | None, probes: _Probes) -> bool:
+def _replays_nothing(
+    directory: str, upstream: str, base: str, tip: str, fork_point: bool, probes: _Probes
+) -> bool:
+    """True when git would report the branch up to date: `base` is an ancestor
+    of `tip` and, under fork-point, the fork point is `base` or there is none.
+    A probe that cannot run counts as up to date, so the check fails open."""
+    ancestor = probes.git(directory, ["merge-base", "--is-ancestor", base, tip])
+    if ancestor is None:
+        return True
+    if ancestor.returncode != 0:
+        return False
+    ref = probes.ref(directory, upstream) if fork_point else None
+    if ref is None:
+        return True
+    out = probes.git(directory, ["merge-base", "--fork-point", "--end-of-options", ref, tip])
+    if out is None:
+        return True
+    found = out.stdout.strip() if out.returncode == 0 else ""
+    return found in ("", base)
+
+
+def _pull_rebases(
+    directory: str, rebase: bool | None, overrides: dict[str, str], probes: _Probes
+) -> bool:
     """Whether a `git pull` rebases: the command's own flag, else
-    `branch.<current>.rebase`, else `pull.rebase`. Both keys come from git's
-    own output, never from the command."""
+    `branch.<current>.rebase`, else `pull.rebase`, each from a `-c` override
+    before the repository's config. The branch name comes from git's own
+    output, never from the command."""
     if rebase is not None:
         return rebase
     head = probes.git(directory, ["symbolic-ref", "--quiet", "--short", "HEAD"])
@@ -1305,10 +1435,15 @@ def _pull_rebases(directory: str, rebase: bool | None, probes: _Probes) -> bool:
     if head is not None and head.stdout.strip():
         keys.insert(0, "branch." + head.stdout.strip() + ".rebase")
     for key in keys:
-        out = probes.git(directory, ["config", "--get", key])
-        if out is not None and out.returncode == 0:
-            return out.stdout.strip().lower() not in _NOT_REBASE
+        value = probes.setting(directory, key, overrides)
+        if value is not None:
+            return _is_true(value)
     return False
+
+
+def _is_true(value: str) -> bool:
+    """A config value as git's `--rebase`/`forkPoint` reading takes it."""
+    return value.strip().lower() not in _NOT_REBASE and value.strip() != ""
 
 
 def _orphans_commits(directory: str, name: str, start: str, probes: _Probes) -> bool:
@@ -1346,7 +1481,12 @@ def _history_reasons(command: str, scanned: str, cwd: str, started: float) -> li
         directory = _invocation_dir(command[m.start(1):m.end(1)], scanned, cwd)
         target = _rebase_range(_words(m.group(2), command[m.start(2):m.end(2)]))
         if directory and target and REBASE_REASON not in found:
-            if _rewrites_published(directory, *target, probes):
+            branch, upstream, rewrites, fork_point = target
+            if fork_point is None:
+                overrides = _config_overrides(command[m.start(1):m.end(1)])
+                setting = probes.setting(directory, "rebase.forkPoint", overrides)
+                fork_point = setting is None or _is_true(setting)
+            if _rewrites_published(directory, branch, upstream, rewrites, fork_point, probes):
                 found.append(REBASE_REASON)
     for m in _PULL.finditer(scanned):
         directory = _invocation_dir(command[m.start(1):m.end(1)], scanned, cwd)
@@ -1355,8 +1495,9 @@ def _history_reasons(command: str, scanned: str, cwd: str, started: float) -> li
         if directory and upstream and REBASE_REASON not in found:
             # Always `rewrites`: the fetch can move the upstream past HEAD, so
             # "up to date" before it says nothing about after.
-            if _pull_rebases(directory, rebase, probes) and _rewrites_published(
-                directory, "HEAD", upstream, True, probes
+            overrides = _config_overrides(command[m.start(1):m.end(1)])
+            if _pull_rebases(directory, rebase, overrides, probes) and _rewrites_published(
+                directory, "HEAD", upstream, True, False, probes
             ):
                 found.append(REBASE_REASON)
     for m in _BRANCH_CHANGE.finditer(scanned):
