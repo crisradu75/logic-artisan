@@ -8,8 +8,6 @@ Run the shared bootstrap once before the chain starts (`/cla:lite-pr` does not r
 
 - From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`. Non-zero → stop: "run /cla:cla-setup first (run notes would be visible to git)". Any ignore source counts here: this run only needs git to ignore the notes on this machine, while `/cla:cla-setup` checks for the repo's own `.gitignore` line.
 
-Each candidate's `/cla:lite-pr` run must branch off an up-to-date `<base-branch>`.
-
 ## Phase 2 — Task tracking + the run-notes ledger
 
 Use `TaskCreate` once to lay down the chain — one task per candidate (`"<id>: lite-pr + merge per policy"`). A multi-candidate unattended run is exactly the "recoverable across sessions / gated by external state" shape where task tracking earns its keep (unlike inside a single `/cla:lite-pr` run, where it's noise). `TaskUpdate` each candidate to `in_progress` when its `/cla:lite-pr` starts and `completed` once step 8 has either merged its PR or left it open.
