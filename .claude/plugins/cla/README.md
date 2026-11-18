@@ -138,7 +138,7 @@ CLA is portable because it separates *procedure* (generic, synced everywhere) fr
   is a read-only cache with no pytest gate over it.
 - **Overlays** — optional `cla.io/overlays/<skill>.md` files holding a rule specific to one skill in
   your repo, plus the machine-read `*.local.md` files beside them (such as `branch-prefix.local.md`).
-  A skill reads its overlay only if it is there; no skill needs one. Facts never go in an overlay.
+  A skill reads its overlay only if it is there; no skill needs one. Facts go in `project-facts.md`, where skills read them.
   They live in YOUR repo, not in the plugin: the installed plugin tree is a read-only, version-keyed
   cache, so anything stored there would be unwritable and would vanish on the next update.
 - **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, the run ledger

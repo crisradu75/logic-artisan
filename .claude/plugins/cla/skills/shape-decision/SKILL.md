@@ -83,8 +83,8 @@ On a yes, use `Write` to save `cla.io/decisions/{topic-slug}-{date}.md` at the r
 - The topic, and what was inferred if it was not given
 - Each question asked, the chosen option, and its one-line rationale
 - The final Decision Summary table, with its **Noted, not asked** lines
-- A short closing note on why the decision matters and the natural next step. When it ends in a recommendation to build, name a path per change, with a one-line reason from the Stakes section of `cla.io/project-facts.md`: `/cla:lite-pr` by default, and `/cla:spec-to-pr` for a change that touches a protected area (defined in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`, "What is protected") or behaviour shipped to other repos. A path the user states always wins.
+- A short closing note on why the decision matters and the natural next step. When it ends in a recommendation to build, name a path per change, with a one-line reason from the Stakes section of `cla.io/project-facts.md`: `/cla:lite-pr` by default, and `/cla:spec-to-pr` for a change that touches a protected area (defined in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`, "What is protected") or behaviour shipped to other repos. A path the user states replaces this default.
 
 ## Domain terminology
 
-Most runs touch no term; do not hunt for one. Only a term specific to this repo's own product or code counts, never a general programming idea. If the user uses such a term differently from its entry in `cla.io/terminology.md`, ask which meaning holds. When an answer settles such a term, write the entry at once, creating the file if absent, in the format of `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/terminology-format.md`.
+Most runs touch no term; do not hunt for one. Only a term specific to this repo's own product or code counts; a general programming idea needs no entry. If the user uses such a term differently from its entry in `cla.io/terminology.md`, ask which meaning holds. When an answer settles such a term, write the entry at once, creating the file if absent, in the format of `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/terminology-format.md`.

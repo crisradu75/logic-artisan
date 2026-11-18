@@ -33,7 +33,7 @@ Unlocks: {the decision this answer settles}
 
 Mark exactly one option, whichever the reasoning below picks, as `[Recommended] **{Option}** — {one-line rationale}`.
 
-Never recommend a shortcut or heuristic that leaves the stated need half met. When a simpler option fully meets the stated need, recommend it, unless the larger option removes a named cost that is present now; the rationale then names that cost. An earlier answer or a written repo rule that excludes an option is a fact, not a cost to weigh. Cost is a con to list; the user can always choose either path.
+Do not recommend a shortcut or heuristic that half meets the stated need: the gap comes back as rework. When a simpler option fully meets the stated need, recommend it, unless the larger option removes a named cost that is present now; the rationale then names that cost. An earlier answer or a written repo rule that excludes an option is a fact, not a cost to weigh. Cost is a con to list; the user can always choose either path.
 
 When a cleaner option becomes possible mid-session (for example, a capability an earlier answer unlocked), offer it even if it was not in the original set.
 

@@ -38,7 +38,7 @@ For each failure, search for a rule that should have prevented it: every instruc
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/instruction-files.md`),
 `cla.io/overlays/`, the hooks in `${CLAUDE_PLUGIN_ROOT}/hooks/` and `.claude/settings*.json`, the
 memory index (skip it if the overlay does not say where it is and you cannot find it), and the
-lessons log. Grep with the failure's keywords — never read the log whole:
+lessons log. Grep with the failure's keywords; a whole read of the long log costs tokens:
 
 ```bash
 grep -rn -i '<keyword>' cla.io/lessons-learned/
@@ -48,7 +48,7 @@ This one grep also searches `cla.io/lessons-learned/lessons-learned-archive.md`,
 live; never read either file whole.
 
 - **A hit is a re-offense**: the rule existed and did not hold. Key it by that artifact's path or
-  hook name (an instruction file, `hooks/block-cd-in-bash.py`), never by a slug you made up. In the
+  hook name (an instruction file, `hooks/block-cd-in-bash.py`), not a made-up slug no file has. In the
   lessons log only an APPLIED line names an artifact, and that artifact is the key; any other log
   hit is context, not a re-offense. Its fix goes **one rung above** that artifact (reference,
   "The ladder").
@@ -90,7 +90,7 @@ N fixes proposed. Apply which? (y = all / n = none / indices, e.g. 1,3)
 
 - Indices apply those and mark the rest REJECTED; `y` applies all; `n` rejects all.
 - **Empty input is not consent.** Ask once more; a second empty answer is `n`.
-- Rejection is an ordinary outcome. Never argue a rejected fix back onto the list.
+- Rejection is an ordinary outcome. The user has decided: leave a rejected fix off the list.
 - Nothing is written before this answer — memory included.
 
 Apply each accepted fix with the tool it needs; for one going upstream, invoke

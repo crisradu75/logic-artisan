@@ -56,8 +56,8 @@ update — while reporting as applied.
 | `cla.io/**`, repo `CLAUDE.md` or `AGENTS.md`, `.claude/settings*.json`, memory | edit | edit |
 | a `SKILL.md`, `references/**`, `hooks/**`, `lib/**`, any plugin script | edit | `/cla:report-upstream` |
 
-Read-only never means dropping the lesson, and never means writing a portable fix into a local
-overlay to make it stick: that reaches no other repo and leaves the prose that missed unchanged.
+Read-only still keeps the lesson: send a portable fix upstream, not into a local overlay, which
+reaches no other repo and leaves the prose that missed unchanged.
 Say in the fix's line that it is going upstream.
 
 ## Failure prompts

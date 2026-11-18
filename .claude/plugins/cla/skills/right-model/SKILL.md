@@ -46,7 +46,7 @@ Map to the cheapest tier that clears the bar:
 - **Split** (plan on the largest model, execute on a mid-size one) — when deciding what to do is the
   expensive part. Often missed; check the session actually offers such an alias.
 
-Take the live model roster from the `Agent` tool's `model` enum, never from a list written here.
+Take the live model roster from the `Agent` tool's `model` enum; a list written here goes stale.
 For effort, use what the session exposes and pick the lowest level the classification supports:
 
 - The scale runs past `high`, and `high` is often the default — "recommend high" may change nothing.

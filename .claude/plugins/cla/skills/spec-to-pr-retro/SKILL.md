@@ -22,7 +22,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggrega
 ## What each field means
 
 - `ledgers`, `runs_analyzed`, `window`: the sample. Every metric, `round_2_yield` included, covers the last N records per ledger; `--limit 0` reads all history. `found: false` is a repo with no ledger yet. Give each ledger's `skipped` in the window line; call a ledger with skips unmigrated or damaged, and its numbers partial. Under five runs is an anecdote: say so and stop.
-- `warn_reasons`: a reason that recurs is one fix to make. `warn_reasons_unrecorded` and `asks_unrecorded` count migration placeholders: never rank them.
+- `warn_reasons`: a reason that recurs is one fix to make. `warn_reasons_unrecorded` and `asks_unrecorded` count migration placeholders, not real reasons: leave them out of the ranking.
 - `cap_exhaustion.<phase>`: `hit/total` at or above 30% means the default cap is too low. Revise's `hit` counts only runs that ended at the cap still `warn` or `fail`, since a second round after a protected-area fix is expected.
 - `revise_findings.<agent>`: `found/runs` far below `code-reviewer`'s marks a trigger to narrow. `phantom/found` at or above 0.4 over five or more runs: demote that agent one tier, or narrow it. `found` is blocking Critical and Important together.
 - `asks`: one answer chosen 80% of the time or more should become the default, with no prompt.
