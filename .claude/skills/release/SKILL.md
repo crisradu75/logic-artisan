@@ -58,17 +58,28 @@ Resolve the default branch, never assume it: `git symbolic-ref --quiet refs/remo
 (take the segment after the last `/`); if unset, use whichever of `main` / `master`
 exists.
 
-## Step 2 — Choose the version
+## Step 2 — Choose the version and ask once
 
 Read the current version from `.claude/plugins/cla/.claude-plugin/plugin.json`.
 
-If `$ARGUMENTS` names a bump (`major` / `minor` / `patch`) or an explicit version, use
-it. Otherwise ask with `AskUserQuestion`, showing what changed since the last tag
-(`git log --oneline <last-tag>..HEAD`) so the choice is informed:
+Propose a version. If `$ARGUMENTS` names a bump (`major` / `minor` / `patch`) or an explicit
+version, propose that. Otherwise propose the bump the changes call for:
 
 - **patch** — fixes and doc corrections only.
 - **minor** — a skill added or removed, a new guard, a restructure consumers will notice.
 - **major** — a change that breaks a consuming repo's existing usage.
+
+**This is the release's only question.** Call `AskUserQuestion` one time, before any file is
+edited, any branch is made or anything is pushed. It shows:
+
+- the proposed version, with the patch, minor and major alternatives as the other options;
+- the output of `git log --oneline <last-tag>..HEAD`;
+- the `CHANGELOG.md` section that will move under the new version heading (the `[Unreleased]`
+  entries, or the entry Step 3 will write from that log when `[Unreleased]` is empty).
+
+Choosing a version approves the release at that version. Choosing no stops: nothing is edited,
+branched, pushed, merged or tagged. Once a version is chosen, Step 3 and Step 4 run with no second
+question, including the merge and the tag push.
 
 ## Step 3 — The five-file edit, in one commit
 
@@ -121,15 +132,9 @@ branch, open the PR, merge it, then return:
 git push -u origin release/<new>
 gh pr create --base <default-branch> --title "release: <new>" \
   --body "Version bump: <old> → <new>."
-# ask the release question below, merge only on yes, then:
+# merge (Step 2's answer already approved it), then:
 git checkout <default-branch> && git pull --ff-only
 ```
-
-**Ask once before the merge.** With the PR open and before merging, call `AskUserQuestion` one
-time. It shows the version, the output of `git log --oneline <last-tag>..HEAD`, and the
-`CHANGELOG.md` section that is moving under the new version heading. The options are yes and no. On
-no, stop: nothing is merged and nothing is tagged. On yes, merge, and Step 4 pushes the tag with no
-second question.
 
 Pass `--body`: without it `gh pr create` opens an interactive editor, which in a
 non-interactive session is a hang two steps before an irreversible action.
@@ -138,8 +143,9 @@ non-interactive session is a hang two steps before an irreversible action.
 until Step 4's tag reaches `origin` that `ref` names a tag that does not exist, so
 `/plugin marketplace update` fails in every consuming repo. A cloud session's credentials
 push only its own branch, and a tag push there returns HTTP 403 — which is how 2.0.0 sat
-merged and untagged until the owner pushed the tag by hand. In such a session, open the PR
-and stop: hand the owner the merge and Step 4's commands.
+merged and untagged until the owner pushed the tag by hand. In such a session, Step 2's
+question is asked first, as everywhere. On no, stop before anything is pushed. On a chosen
+version, open the PR and stop: hand the owner the merge and Step 4's commands.
 
 **Why a PR and not `git push`.** `hooks/git/pre-push` refuses a direct push to the default
 branch. The hook's message names an `ALLOW_PUSH_TO_MAIN=1` override, and it is not the

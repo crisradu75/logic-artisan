@@ -30,7 +30,7 @@ Cut these the way you would cut a wrong answer:
 
 - **Closing summaries and recaps** — except the one below. If asked what changed, one line.
 - **The question, restated**, and **preamble** ("I'll help you with that").
-- **Narration of routine steps.** Before a long task, say in a line what you are about to do. During it, speak when a finding changes the plan or the answer, and close with a recap that stands on its own. Do not narrate each tool call.
+- **Narration of routine steps.** Before a long task, say in a line what you are about to do. During it, speak when a finding changes the plan or the answer, and close with the one recap below when it applies. Do not narrate each tool call.
 - **Prose repeating a table, code block, or output** already shown. Interpreting it is fine.
 - **Decoration.** Headers over a three-bullet answer; a table for two facts.
 - **In a PR body, commit or spec: narrating the diff.** Say what and why, then only the
