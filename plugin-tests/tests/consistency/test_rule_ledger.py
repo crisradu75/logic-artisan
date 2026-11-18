@@ -7,12 +7,17 @@ every session does not grow. This test is what keeps the ledger true: a prose li
 failed in every repo that had one (the same decision's evidence base).
 
 What it checks:
-- every whole word `never`, `always` or `must` in a shipped `.md` file sits inside the fragment of
+- every whole word `never`, `always`, `must` or `mustn't` in a shipped prose file sits inside the fragment of
   one of that file's ledger entries, so a rule added to a line that already has an entry is caught
   (one fragment may still span two words when they belong to one rule);
 - every fragment occurs in its file as many times as it has entries (once, unless the file repeats a
   rule word for word), so a reworded or deleted rule makes its entry fail;
 - verdicts and areas agree: a `keep` names a protected area, `guidance` and `remove?` name `none`.
+
+Prose files are the `.md` files and the `.json` files (whose `_comment` strings an agent reads). The
+code files (`.py`, `.sh`, `.ps1`, the git hook) are not scanned: a `never` in a comment or docstring
+there describes what the code below it does, and that code's own tests hold it, so a ledger line
+would add a second, weaker check of the same thing.
 """
 from __future__ import annotations
 
@@ -26,7 +31,8 @@ _REPO = Path(__file__).resolve().parents[3]
 _PLUGIN = _REPO / ".claude" / "plugins" / "cla"
 _LEDGER = _REPO / "docs" / "rule-ledger.md"
 
-KEYWORD = re.compile(r"\b(never|always|must)\b", re.IGNORECASE)
+KEYWORD = re.compile(r"\b(never|always|must|mustn['\u2019]t)\b", re.IGNORECASE)
+PROSE_SUFFIXES = {".md", ".json"}
 VERDICTS = {"keep", "guidance", "remove?", "not-a-rule"}
 PROTECTED = {
     "money", "personal data", "accessibility", "user's files", "shipped to other repos",
@@ -57,8 +63,8 @@ def parse_ledger(text: str) -> tuple[dict[str, list[tuple[str, str, str, str]]],
     return sections, problems
 
 
-def shipped_md() -> list[Path]:
-    return sorted(p for p in _PLUGIN.rglob("*.md") if p.is_file())
+def shipped_prose() -> list[Path]:
+    return sorted(p for p in _PLUGIN.rglob("*") if p.is_file() and p.suffix in PROSE_SUFFIXES)
 
 
 @pytest.fixture(scope="module")
@@ -114,6 +120,17 @@ def test_every_fragment_occurs_once_per_entry_in_its_file(ledger):
     assert not bad, "\n".join(bad)
 
 
+def covered_keywords(line: str, fragments: list[str]) -> set[int]:
+    """The start offsets of the never/always/must occurrences in `line` that a fragment spans."""
+    spans = []
+    for f in fragments:
+        start = line.find(f)
+        while start != -1:
+            spans.append((start, start + len(f)))
+            start = line.find(f, start + 1)
+    return {m.start() for m in KEYWORD.finditer(line) if any(a <= m.start() and m.end() <= b for a, b in spans)}
+
+
 def uncovered_keywords(line: str, fragments: list[str]) -> list[str]:
     """The never/always/must occurrences in `line` that no fragment found in `line` spans.
 
@@ -130,9 +147,9 @@ def uncovered_keywords(line: str, fragments: list[str]) -> list[str]:
 
 
 def test_every_absolute_rule_in_the_shipped_text_has_an_entry(ledger):
-    """A new never/always/must in a shipped `.md` file needs its ledger line in the same change."""
+    """A new never/always/must in a shipped prose file needs its ledger line in the same change."""
     missing = []
-    for md in shipped_md():
+    for md in shipped_prose():
         rel = md.relative_to(_PLUGIN).as_posix()
         fragments = [e[3] for e in ledger.get(rel, [])]
         for n, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
@@ -144,10 +161,34 @@ def test_every_absolute_rule_in_the_shipped_text_has_an_entry(ledger):
     )
 
 
+def test_no_not_a_rule_fragment_spans_a_real_rules_keyword(ledger):
+    """A `not-a-rule` fragment that also covers a rule's keyword would keep the test green if that
+    rule's own entry were deleted, so each keyword is covered by one kind of entry only."""
+    bad = []
+    for path, entries in ledger.items():
+        target = _PLUGIN / path
+        if not target.is_file():
+            continue
+        words = [e[3] for e in entries if e[0] == "not-a-rule"]
+        rules = [e[3] for e in entries if e[0] != "not-a-rule"]
+        for n, line in enumerate(target.read_text(encoding="utf-8").splitlines(), 1):
+            if covered_keywords(line, words) & covered_keywords(line, rules):
+                bad.append(f"{path}:{n}: a not-a-rule fragment spans a rule's keyword: {line.strip()}")
+    assert not bad, "\n".join(bad)
+
+
 def test_a_second_rule_on_an_entered_line_is_still_reported():
     line = "Never push to main, and the check must run first."
     assert uncovered_keywords(line, ["Never push to main"]) == ["must"]
     assert uncovered_keywords(line, ["Never push to main", "the check must run first"]) == []
+
+
+def test_the_keyword_catches_mustnt_in_both_apostrophes():
+    assert [m.group(0) for m in KEYWORD.finditer("You mustn't push; you mustn\u2019t merge.")] == ["mustn't", "mustn\u2019t"]
+
+
+def test_a_json_file_is_scanned():
+    assert any(p.suffix == ".json" for p in shipped_prose())
 
 
 def test_the_parser_rejects_a_malformed_entry():

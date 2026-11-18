@@ -48,7 +48,7 @@ This one grep also searches `cla.io/lessons-learned/lessons-learned-archive.md`,
 live.
 
 - **A hit is a re-offense**: the rule existed and did not hold. Key it by that artifact's path or
-  hook name (an instruction file, `hooks/block-cd-in-bash.py`), not a made-up slug no file has. In the
+  hook name (an instruction file, `hooks/block-cd-in-bash.py`), not by a label you invent. In the
   lessons log only an APPLIED line names an artifact, and that artifact is the key; any other log
   hit is context, not a re-offense. Its fix goes **one rung above** that artifact (reference,
   "The ladder").

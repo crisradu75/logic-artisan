@@ -78,7 +78,7 @@ stop, since nothing is written yet and the run's promises could not be checked a
   seed file in Part 1 (the rules file of item 7a is the one exception, replaced whole), check existence FIRST; if present, skip it untouched (no truncate, no
   overwrite, no re-seed, no merge) and report `exists (skipped)`.
 - **The guard is load-bearing.** A bare `> "$f"` or `cat > "$f"` truncates an existing file and defeats
-  never-clobber. ALWAYS guard with `if [ -e "$f" ]`. Every pinned idiom echoes its outcome, so the
+  the never-clobber contract. ALWAYS guard with `if [ -e "$f" ]`. Every pinned idiom echoes its outcome, so the
   per-target report below needs no second command:
   - directory → `if [ -e "$dir" ]; then echo "exists (skipped): $dir"; else mkdir -p "$dir"; echo "created: $dir"; fi`
   - 0-byte ledger → `if [ -e "$f" ]; then echo "exists (skipped): $f"; else : > "$f"; echo "created: $f"; fi`

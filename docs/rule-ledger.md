@@ -4,8 +4,9 @@ One line for every absolute rule (a line with `never`, `always` or `must`) in th
 text: what it protects and where it came from. This is principle 6 of
 `cla.io/decisions/cla-foundation-2026-11-17.md`. The lines live here, not in the shipped files, so the
 text that loads in every session does not grow. `plugin-tests/tests/consistency/test_rule_ledger.py`
-fails when a shipped line with one of those words has no entry, or when an entry's fragment no longer
-occurs exactly once in its file.
+fails when a line of shipped prose (its docstring says which files count, and why code is left out)
+with one of those words, or `mustn't`, has no entry, or when an entry's fragment no longer occurs
+exactly once in its file.
 
 **Adding or rewording a rule:** add or update its line under the file's heading in the same change.
 
@@ -21,6 +22,11 @@ Each entry: `- <verdict> | <area> | <origin> | <fragment>`.
   `accessibility`, `user's files` (including the user's git state), `shipped to other repos`,
   `security`, `safe writes` or `honesty`. It is `none` for `guidance` and `remove?`, and `-` for
   `not-a-rule`.
+  Every shipped rule ships to other repos, so `shipped to other repos` is not a catch-all: it is the
+  area only when breaking the rule makes the plugin misbehave in a repo it was not written in (a
+  hardcoded branch, path, token or stack; a write into the read-only plugin cache; an unattended
+  chain that stalls there). A rule that keeps a review, a check or a report true is `honesty`; one
+  that keeps the owner's files or choices intact is `user's files`.
 - **origin:** the incident, decision or measurement the rule came from, or `none found`.
 - **fragment:** an exact substring of the line, found once in the file. A parser splits on the first three
   ` | `, so the fragment may contain `|`.
@@ -64,7 +70,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - guidance | none | none found (predates extraction ee4034ad) | Grep only; read no more of a file than the matched line and enough surroundings to quote it.
 - keep | honesty | #73 2026-08-14, a sweep reported zero hits over a surface it never searched | A supplied path or glob that resolves to ZERO files is never
 - keep | honesty | none found (predates extraction ee4034ad) | Never fall back to a different path shape (e.g. a repo-wide glob) if the caller
-- not-a-rule | - | - | never searched. Never fall back
 - keep | honesty | none found (predates extraction ee4034ad) | every hit you report MUST carry the *actual matched line*
 - keep | honesty | none found (predates extraction ee4034ad) | Never report a hit you did not literally match, and never
 - keep | honesty | #73 2026-08-14, sweep accounting | **Then, ALWAYS, one accounting footer line
@@ -79,7 +84,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - guidance | none | none found (predates extraction ee4034ad) | Grep only; read no more of a file than the matched line and enough surroundings to quote it.
 - keep | honesty | #73 2026-08-14, a sweep reported zero hits over a surface it never searched | A supplied path or glob that resolves to ZERO files is never
 - keep | honesty | none found (predates extraction ee4034ad) | Never fall back to a different path shape (e.g. a repo-wide glob) if the caller
-- not-a-rule | - | - | never searched. Never fall back
 - keep | honesty | none found (predates extraction ee4034ad) | every hit you report MUST carry the *actual matched line*
 - keep | honesty | none found (predates extraction ee4034ad) | Never report a hit you did not literally match, and never
 - keep | honesty | #73 2026-08-14, sweep accounting | **Then, ALWAYS, one accounting footer line
@@ -97,7 +101,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/codify-learnings/SKILL.md
 - not-a-rule | - | - | # always-loaded skill listing. Nothing invokes it programmatically.
 - guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | Grep with the failure's keywords; a whole read of the long log costs tokens:
-- guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | not a made-up slug no file has.
+- guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | not by a label you invent.
 - keep | shipped to other repos | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | **Never propose edits to** a skill's bundled scripts
 - guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | The user has decided: leave a rejected fix off the list.
 - keep | safe writes | d09b63d5 #332 2026-10-12, lessons archive move | the total must match.
@@ -110,7 +114,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/diagnose/SKILL.md
 - guidance | none | #299 2026-10-07 (reworded; skill added #233) | and does not stop to ask. Either way,
 - guidance | none | #233 2026-09-12, diagnose skill added | Do not keep editing on a falsified hypothesis because
-- keep | shipped to other repos | #233 2026-09-12; Ship scan in ship.md §2a must match the tag | a rename must touch both.
+- keep | honesty | #233 2026-09-12; Ship scan in ship.md §2a must match the tag | a rename must touch both.
 - not-a-rule | - | - | never matched. Confirmed by [DEBUG-a3f1] logging both sides of the compare.
 
 ## skills/diagnose/references/strategies.md
@@ -199,10 +203,10 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | the root cause is almost always a shape that breaks matching
 
 ## skills/_shared/references/blocking-findings.md
-- keep | shipped to other repos | dec3edcb 2026-11-17 (#511) principle 5, cla-foundation-2026-11-17.md | is an input to this filter, never the answer
-- keep | shipped to other repos | dec3edcb 2026-11-17 (#511) principle 5 | A finding that names a protected area is never non-blocking.
-- keep | shipped to other repos | bebb4a7e 2026-11-17 (#512) protected areas from each repo's Stakes | It never says "nothing is protected".
-- keep | shipped to other repos | bebb4a7e 2026-11-17, refactor: protected areas come from each repo's Stakes, with one... | pasted at dispatch time and never copied by hand into the brief
+- keep | honesty | dec3edcb 2026-11-17 (#511) principle 5, cla-foundation-2026-11-17.md | is an input to this filter, never the answer
+- keep | honesty | dec3edcb 2026-11-17 (#511) principle 5 | A finding that names a protected area is never non-blocking.
+- keep | honesty | bebb4a7e 2026-11-17 (#512) protected areas from each repo's Stakes | It never says "nothing is protected".
+- keep | honesty | bebb4a7e 2026-11-17, refactor: protected areas come from each repo's Stakes, with one... | pasted at dispatch time and never copied by hand into the brief
 - keep | security | dec3edcb 2026-11-17 (#511); the floor a test holds the copies to | The floor, always protected whatever the Stakes list says
 
 ## skills/_shared/references/chain-merge.md
@@ -251,13 +255,13 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | caller-scoped: they never guess a
 - keep | honesty | 0c8e10ff 2026-10-12 (#344) reviewer-agents; an unsupplied list scans nothing | the dispatching phase always supplies the exact list
 - guidance | none | ee4034ad 2026-07-23 extract; restated at "Escalate-up rule": triage input is already structured | triage stays at session model
-- keep | shipped to other repos | ce29bdb0 2026-10-12 (#334) review-sizing follow-ups | at its final level and never lower; see
+- keep | honesty | ce29bdb0 2026-10-12 (#334) review-sizing follow-ups | at its final level and never lower; see
 - keep | security | bebb4a7e 2026-11-17 (#512) protected areas; review-sizing block copied into other repos, test-pinned | and always security, safe writes to a user's files or honesty claims
-- keep | shipped to other repos | 2ecdbdfd 2026-10-11 (#324) risk-sized-review; review-sizing block | at round 1's final level, never lower (judged
-- keep | shipped to other repos | fde57e55 2026-10-12 (#341) second a verdict on RETHINK or Critical, not self-judged borderline | never the session's own sense that the call was close
+- keep | honesty | 2ecdbdfd 2026-10-11 (#324) risk-sized-review; review-sizing block | at round 1's final level, never lower (judged
+- keep | honesty | fde57e55 2026-10-12 (#341) second a verdict on RETHINK or Critical, not self-judged borderline | never the session's own sense that the call was close
 
 ## skills/_shared/references/orchestration-economy.md
-- keep | shipped to other repos | eaa2bf35 (#450) size the final test run; pinned by test_review_sizing_single_source.py | to that gate but never shrink it.
+- keep | honesty | eaa2bf35 (#450) size the final test run; pinned by test_review_sizing_single_source.py | to that gate but never shrink it.
 - guidance | none | e0ecda34 2026-10-15 (#381) parallel-agent rules; cost only | Avoid making agents queue on a lock: it serialises them.
 - keep | honesty | e0ecda34 2026-10-15 (#381); two suites on one machine or test DB can give false results | Never let two full suites run together.
 
@@ -272,16 +276,19 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved from SKILL.md); sweeping another scope's uncommitted work | never sweeps another scope's uncommitted work
 - keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved from SKILL.md) | beside the in-scope paths — never `-A`
 
+## skills/_shared/references/required-permissions.json
+- keep | user's files | predates extraction (ee4034ad 2026-07-23); the bootstrap merges these patterns into the owner's settings.local.json, where a colon form would sit beside its space form | must be deduplication-compatible with the existing .claude/settings.local.json
+
 ## skills/_shared/references/retiring-specs.md
 - keep | honesty | a0388428 2026-10-15 (#368) retire_capabilities and Removed requirements table | It must state the same outcome the old one did
 - keep | honesty | a0388428 2026-10-15 (#368); a `pending` row left behind drops a requirement | That change's brief must search the earlier tasks
-- keep | shipped to other repos | a0388428 2026-10-15 (#368) archive traps: a mismatch aborts the archive while validate exits 0 | must match it exactly
+- keep | honesty | a0388428 2026-10-15 (#368) archive traps: a mismatch aborts the archive while validate exits 0 | must match it exactly
 - keep | honesty | a0388428 2026-10-15 (#368); the format fix must not drop a requirement | the requirement and scenario counts must not change
 
 ## skills/_shared/references/review-sweeps.md
 - guidance | none | 4aa4acdd 2026-08-29 modified-block-diff-scope; moved by 9cd5f32f 2026-10-08; single-home authoring note | edit it there; copies elsewhere drift.
 - guidance | none | 4a4b347d 2026-10-04 review findings on the P1 fixes; widening adds noise, misses nothing | (one per entry; a repo-wide pattern adds unlisted files)
-- guidance | none | 9cd5f32f 2026-10-08 slim spec-to-pr; the git form fails loudly before Ship | Avoid `git show HEAD:<path>`: Review runs before Ship
+- keep | honesty | #155 (a55f4d98 2026-08-25) fix-brief binding defect; softened by 9cd5f32f, restored to agree with revise.md: a stale HEAD copy judges a remedy against the wrong text | Never `git show HEAD:<path>`: Review runs before Ship
 
 ## skills/_shared/references/run-log-schema.md
 - not-a-rule | - | - | `ts` is a date-time with a zone, never
@@ -303,7 +310,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | d452a82d 2026-07-28 (#11) branch collision preflight and rename-in-place guard; `ship_check.py preflight` holds the checks since add-ship-check-script 2026-11-18 | `origin/<base-branch>..HEAD` must hold 0 commits — no commits to lose
 - keep | user's files | add-ship-check-script review 2026-11-18: a stacked run on the default branch was approved for `git branch -m`; `ship_check.py preflight` refuses it | the default branch or the parent, which is never renamed.
 - keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved); diagnose's debug tag leaking into a commit | must return nothing; remove any tagged line before staging
-- keep | shipped to other repos | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | a rename must touch both, or this grep searches for a string nothing writes
+- keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | a rename must touch both, or this grep searches for a string nothing writes
 - keep | user's files | ee4034ad 2026-07-23 extract; tool-redirect bug wrote a scratch file into the repo root | Never fold it into the commit
 - keep | user's files | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | never skip this because Implement's delegate reported success
 - keep | honesty | eaa579b0 2026-08-24 (#145) a measurement names its command | never `Measured-by: none`
@@ -317,14 +324,14 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 
 ## skills/_shared/references/skill-authoring.md
 - keep | shipped to other repos | ee4034ad 2026-07-23 extract; check_no_project_tokens.py | Never let a repo token land
-- keep | shipped to other repos | ee4034ad 2026-07-23 extract; a skipped read must not lose a gate | Each stub MUST be **self-sufficient for its own invariant**
+- keep | honesty | ee4034ad 2026-07-23 extract; a skipped read must not lose a gate | Each stub MUST be **self-sufficient for its own invariant**
 - not-a-rule | - | - | a skipped read loses the procedure, never the gate
 - guidance | none | a stub that restates its reference only costs words, no protected area; "need not restate" says it. text since 9cd5f32f 2026-10-08 (owner approved softening 2026-11-18) | **Beyond those one-liners a stub need not restate its reference**
-- keep | shipped to other repos | ee4034ad 2026-07-23 extract | **Always stays inline:**
+- keep | honesty | ee4034ad 2026-07-23 extract | **Always stays inline:**
 - keep | user's files | ee4034ad 2026-07-23 extract; git_state check dropped in a restructure, caught by review | this MUST be a hoisted one-liner
 - keep | user's files | ee4034ad 2026-07-23 extract; repeat-offender list | never `git add -A` / path-scoped staging
 - keep | user's files | ee4034ad 2026-07-23 extract; merge authorization differs per skill | never swap in a sibling's
-- keep | shipped to other repos | ee4034ad 2026-07-23 extract; the `wc` proxy is gameable | Never relocate an invariant to shrink the file
+- keep | honesty | ee4034ad 2026-07-23 extract; the `wc` proxy is gameable | Never relocate an invariant to shrink the file
 - keep | shipped to other repos | 573c6bd8 2026-08-23 (#128) ship-only-consumer-usable-assets | check_no_project_tokens.py` MUST **exit 0**
 - keep | honesty | f096f799 2026-08-14 (#74) skill-authoring doctrine; an uncheckable step is reported done while half-done | the reader must be able to answer
 - not-a-rule | - | - | name the artifact the step must produce
@@ -407,7 +414,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - guidance | none | none found (predates extraction ee4034ad, 2026-07-23); Archive already ran the command | Leave out `openspec archive`: Archive already ran it.
 - guidance | none | design-tradeoffs "Handoff and the run record"; text since 9cd5f32f 2026-10-08 | a bookkeeping failure does not `warn` the run.
 - not-a-rule | - | - | prints, verbatim. It never blocks.
-- keep | shipped to other repos | #141 (3bccef73, 2026-08-24), issues #98, #100, #102: three chained changes dropped one inherited obligation | always run the checklist's Step 2b, whatever the probe says
+- keep | honesty | #141 (3bccef73, 2026-08-24), issues #98, #100, #102: three chained changes dropped one inherited obligation | always run the checklist's Step 2b, whatever the probe says
 
 ## skills/spec-to-pr/references/archive.md
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: sweeps a sibling's untracked change dir | **Stage the named path groups, NEVER a broad `git add openspec/`.**
@@ -429,7 +436,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/spec-to-pr/references/concurrent-runs.md
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: edits in one clone cannot be committed from another | so the session itself must live in the worktree
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); reason in line: a stale local base gives an unmergeable PR | never bare `git worktree add ... -b <branch>`
-- keep | shipped to other repos | predates extraction (ee4034ad, 2026-07-23); the worktree would lack the change dir | the change dir must already be committed
+- keep | user's files | predates extraction (ee4034ad, 2026-07-23); the worktree would lack the change dir | the change dir must already be committed
 
 ## skills/spec-to-pr/references/design-tradeoffs.md
 - not-a-rule | - | - | **`<base-branch>` is resolved, never assumed.**
@@ -459,20 +466,20 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 
 ## skills/spec-to-pr/references/revise.md
 - keep | money | #485 (0781b607, 2026-11-10), issue 484: a `Workflow` spends tokens the user never agreed to; one run was rejected for it | never start a `Workflow` without it
-- keep | shipped to other repos | #324 (2ecdbdfd, 2026-10-11) risk-sized review; a lower level weakens the review of a high-risk fix | A later round never uses a lower level than round 1.
+- keep | honesty | #324 (2ecdbdfd, 2026-10-11) risk-sized review; a lower level weakens the review of a high-risk fix | A later round never uses a lower level than round 1.
 - not-a-rule | - | - | record a Handoff Issue, which `handoff.md` always lists
 - guidance | none | e8c8fc7b 2026-10-08, narrower comment-analyzer; cost of a reviewer with nothing to read | not when no comment, docstring or `.md` hunk changed: it would have nothing to read
-- keep | shipped to other repos | #426 (a43f5ca1, 2026-10-26): the toolkit file names `inherit`, so a reviewer would run below its sized model | Pass `model:` on EVERY dispatch, never relying on the toolkit file
+- keep | honesty | #426 (a43f5ca1, 2026-10-26): the toolkit file names `inherit`, so a reviewer would run below its sized model | Pass `model:` on EVERY dispatch, never relying on the toolkit file
 - keep | user's files | #426 (a43f5ca1, 2026-10-26) and #420 (775fa0b9): reviewers hold Bash and Edit in the user's checkout | run no git command (not `git diff`, and never `git checkout`
 - keep | honesty | 775fa0b9 2026-10-25, Reviewer agents: say which line number the line field means (#420) | never a line counted inside the diff file
 - keep | user's files | #344 (0c8e10ff, 2026-10-12); reason in line: a `git add` can sweep the diff file in | **Write the diff to a file; pass its path, never the text.**
 - keep | user's files | 0c8e10ff 2026-10-12, feat: reviewer-agents (#344) | never inside the working tree, where `git status` shows it
-- keep | shipped to other repos | design-tradeoffs "Revise": raw diff text breaks the script's template literal | Each prompt names its diff file's absolute path (never the diff text)
+- keep | honesty | design-tradeoffs "Revise": raw diff text breaks the script's template literal | Each prompt names its diff file's absolute path (never the diff text)
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); a lost Critical would read as reviewed | a Critical is never displaced by a lower-severity
 - keep | honesty | design-tradeoffs "Revise" (a crashed reviewer is a `null`); text since 9cd5f32f 2026-10-08 | A crashed reviewer never vanishes silently.
 - not-a-rule | - | - | the agents the journal confirms never returned
 - keep | honesty | none found (text since 9cd5f32f 2026-10-08); a failed fan-out must not read as reviewed | **Round 1 always happens.**
-- keep | shipped to other repos | #324 (2ecdbdfd, 2026-10-11) risk-sized review; a lower level weakens the review of a high-risk fix | at round 1's final level (never lower)
+- keep | honesty | #324 (2ecdbdfd, 2026-10-11) risk-sized review; a lower level weakens the review of a high-risk fix | at round 1's final level (never lower)
 - keep | user's files | 0c8e10ff 2026-10-12, feat: reviewer-agents (#344) | never in the tree), name that file's absolute path
 - keep | honesty | none found (text since 9cd5f32f 2026-10-08); an empty diff reviewed would read as clean | never review nothing and call it clean
 - keep | honesty | #152 (d6c99eec, 2026-08-25); design-tradeoffs "Round 2 asks its own question" | never a skipped step
@@ -481,13 +488,13 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | design-tradeoffs "The three-status rejection"; text since 9cd5f32f 2026-10-08 | Never record it as Applied.
 - keep | honesty | #136 (a9cb3161, 2026-08-24); design-tradeoffs "Deferred items in three named subsections" | three named subsections, never one bucket
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); the orchestrator's own check of a delegate's fix | that is never delegated.**
-- keep | shipped to other repos | design-tradeoffs "The three-status rejection": the two-status form makes a delegate apply a wrong remedy | never the two-status `done`/`blocked` form
+- keep | honesty | design-tradeoffs "The three-status rejection": the two-status form makes a delegate apply a wrong remedy | never the two-status `done`/`blocked` form
 - keep | honesty | design-tradeoffs "The three-status rejection" (recording it as failure teaches delegates to apply wrong remedies) | Never recorded as a delegate failure.
 - keep | honesty | #155 (a55f4d98 2026-08-25) fix-brief-binding-defect: the field is the only channel for a wrong fact row whose defect survived | **Never read a missing `Fact corrections:` field as `(none)`.**
 - keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | recover inline, but never silently
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); INT-CAP / INT-SYC | a finding never silently evaporates
 - keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | never because an edit was made where the finding pointed
-- keep | shipped to other repos | #155 (a55f4d98 2026-08-25) fix-brief-binding-defect design.md, "Why a round-start snapshot and not `git show HEAD:<path>`": an earlier draft's command fails on an uncommitted change dir | Never `git show HEAD:<path>`
+- keep | honesty | #155 (a55f4d98 2026-08-25) fix-brief-binding-defect design.md, "Why a round-start snapshot and not `git show HEAD:<path>`": an earlier draft's command fails on an uncommitted change dir | Never `git show HEAD:<path>`
 - keep | safe writes | 7ded852d 2026-09-23, mutation-gate backup wording | Never put a backup anywhere else outside the
 - keep | safe writes | #164 (82e90606 2026-08-26), issue #161: a review agent ran `git checkout --` over ~344 uncommitted lines; wording 7ded852d | It mutates a scratchpad copy, never the live file.
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); same rule as SKILL.md's staging rule | stage the explicit changed paths (never `-A`)
@@ -504,7 +511,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/lite-pr/SKILL.md
 - guidance | none | #515 (94280abd, 2026-11-17), principle 8: the owner can override the path | A path the user states wins: the stakes call is theirs.
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); reason in file: a missed lockstep doc is a silent spec violation | The plan MUST explicitly list, alongside the code files to change:
-- keep | shipped to other repos | predates extraction (ee4034ad, 2026-07-23); a delta would leave an unarchived change in the consumer repo | Never create a delta file, never touch `openspec/changes/`.
+- keep | user's files | predates extraction (ee4034ad, 2026-07-23); a delta would leave an unarchived change in the consumer repo | Never create a delta file, never touch `openspec/changes/`.
 - not-a-rule | - | - | a test that never failed against the unfixed code is
 - guidance | none | #329 (b561b82c, 2026-10-12); diagnose-escalation.md: an unattended chain has nobody to answer | invoke it without asking; nobody is there to answer.
 - keep | user's files | predates extraction (ee4034ad, 2026-07-23); same contract as spec-to-pr's git_state rule | never infer "probably fine" on a non-zero exit
@@ -635,7 +642,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 
 ## skills/multi-lite/references/candidate-extraction.md
 - not-a-rule | - | - | other candidate ids in this batch it must run after
-- keep | shipped to other repos | #515 (94280abd 2026-11-17), principle 8: the owner can override the path | a path the doc or the user states always wins.
+- keep | user's files | #515 (94280abd 2026-11-17), principle 8: the owner can override the path | a path the doc or the user states always wins.
 - keep | honesty | 751bed9e 2026-09-16, review findings (a bare negative is an exemption) | the doc section read and what it describes — never a bare "no".
 - not-a-rule | - | - | only a candidate that must merge before a later one does
 - keep | user's files | 1325ac6a 2026-09-16, merge-each-clean policy | never merge a candidate with an unresolved blocking finding
@@ -689,7 +696,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | ee4034ad 2026-07-23 (extraction); durability needs a committed decisions file | Never proceed to Phase 1 from transient conversation state
 - guidance | none | ee4034ad 2026-07-23 (extraction); none found earlier | Its first push sets the upstream (`-u`), as the branch is new; later pushes are bare.
 - not-a-rule | - | - | a crash mid-batch loses at most the change in flight, never the whole batch
-- keep | shipped to other repos | #515 (94280abd 2026-11-17), principle 8: the owner can override the path | A path the owner states always wins.
+- keep | user's files | #515 (94280abd 2026-11-17), principle 8: the owner can override the path | A path the owner states always wins.
 - keep | user's files | ee4034ad 2026-07-23 (extraction); none found earlier; reworded 2026-11-18 (owner approved): the old wording barred the plan file, which the next line loads on resume | Every phase resumes from committed repo state, never from conversation memory or a log
 
 ## skills/multi-spec/references/authoring-brief.md
@@ -719,6 +726,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | the checklist will never issue one.)*
 - keep | honesty | text since ee4034ad 2026-07-23 (extraction) | must be checked against change B's actual `design.md`/`specs/`
 - keep | honesty | #155 (a55f4d98 2026-08-25), fix-brief binding defect | report that, and never record it clean.
+- keep | honesty | #155 (a55f4d98 2026-08-25) fix-brief binding defect; agrees with revise.md and review-sweeps.md | Never `git show HEAD:<path>` — a change authored
 - keep | honesty | 1d36b90d 2026-10-07, review machinery trimmed (no loop catches a withdrawn remedy) | A finding never leaves this gate merely because its first remedy was wrong.
 
 ## skills/cla-setup/SKILL.md
@@ -728,9 +736,9 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | ## Never-clobber contract
 - keep | user's files | 2.0.0 (016203d7), cla-setup never-clobber contract | via a guarded idiom, never a bare redirect
 - keep | user's files | 2.0.0 (016203d7), a bare redirect truncates an existing file | ALWAYS guard with `if [ -e "$f" ]`
-- not-a-rule | - | - | never-clobber. ALWAYS guard with
+- not-a-rule | - | - | the never-clobber contract.
 - keep | user's files | 2.0.0 (016203d7), never-clobber contract | `notes.md` is ALWAYS skipped, even though the seed content differs
-- keep | shipped to other repos | 2.0.0 (016203d7), overlays become optional, nothing seeds one | **Overlays are optional, and this skill never creates one.**
+- keep | user's files | 2.0.0 (016203d7), overlays become optional, nothing seeds one | **Overlays are optional, and this skill never creates one.**
 - keep | honesty | #388 (2.1.1), seed block run as a script; unchecked config must not read as current | say so, never call the rules current
 - keep | user's files | #326 (2.1.0), cla-economy-rules-file; repo instruction files stay the repo's | This skill never touches `CLAUDE.md`
 - keep | user's files | 2.0.0 (016203d7), machine-read lists for guards and branch prefix | machine-read `*.local.md` files are never reshaped here
@@ -745,7 +753,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; the skill never asks to touch these, so a yes cannot cover them | A yes never covers an
 - keep | honesty | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; a protected file changed without a yes is not a clean run | never call the run clean, and leave the files as they are for the user
 - keep | honesty | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; exit 2 means the guard could not look | and never treat that exit as a pass
-- keep | shipped to other repos | 2.0.0 (016203d7), overlays become optional | Does **NOT** create overlays, and never writes a fact into one.
+- keep | user's files | 2.0.0 (016203d7), overlays become optional | Does **NOT** create overlays, and never writes a fact into one.
 
 ## skills/cla-setup/references/economy-rules-block.md
 - not-a-rule | - | - | the item's replace-whole and never-stops rules are repeated there
@@ -762,7 +770,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | any set of files that must be updated together whenever a specific
 - keep | security | pre-extract (ee4034ad), secrets stay out of the facts file | (never the secret VALUES — only paths/names)
 - keep | shipped to other repos | #365 (spec-proof-checker), checker exits 2 on any other form | so never reword or merge it
-- keep | shipped to other repos | #478, Full gate final-commit-only is opt-in only | never proposed by default.
+- keep | honesty | #478, Full gate final-commit-only is opt-in only | never proposed by default.
 - keep | shipped to other repos | #395 (spec-map), checker exits 2 on a heading with no bullet | in another form (`### Spec map`). Never write the
 - keep | honesty | #395 (spec-map) | heading when there is no map, and never invent a path
 - keep | user's files | 2.0.0 review fix (25d0fab2), terminology file is the repo's | this skill never creates it and only reconciles it
@@ -785,7 +793,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | cf91149f 2026-10-16, feat: spec-map (#395) | other path inside the repo, never under the plugin tree
 
 ## skills/review-change/references/checklist.md
-- keep | shipped to other repos | pre-extract (ee4034ad); two callers read these files, so behaviour must not diverge | Any change to review behavior MUST be made in these two files
+- keep | honesty | pre-extract (ee4034ad); two callers read these files, so behaviour must not diverge | Any change to review behavior MUST be made in these two files
 - keep | honesty | pre-extract (ee4034ad), source is ground truth | claim in an artifact must be verified against the actual source before accepting it
 - keep | honesty | pre-extract (ee4034ad) | ### High-yield checks (always do — these catch the vast majority of real issues)
 - keep | honesty | #291 (2.0.0), lighter OpenSpec packages | ### Weight and proof checks (always do, on both size-gate paths)
@@ -814,11 +822,11 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/review-change/references/dispatch.md
 - guidance | none | pre-extract (ee4034ad), token economy | to verify claims; the artifacts' full text is already above.
 - not-a-rule | - | - | say what the artifacts must state instead
-- keep | shipped to other repos | 1d36b90d (2026-10-07); an unfilled placeholder sends a reviewer in blind | <pr-base>' <file>`; it must print 0
-- keep | shipped to other repos | 2.0.0 (016203d7); a dispatched agent never loads the skill | Never leave a bare pointer to a file instead
+- keep | honesty | 1d36b90d (2026-10-07); an unfilled placeholder sends a reviewer in blind | <pr-base>' <file>`; it must print 0
+- keep | honesty | 2.0.0 (016203d7); a dispatched agent never loads the skill | Never leave a bare pointer to a file instead
 - not-a-rule | - | - | a dispatched agent never loads the skill or reads those files
 - keep | user's files | #164, a review agent's "temporary" revert destroyed uncommitted work | > **Read only — never write to the working tree.**
-- keep | shipped to other repos | #511 (principle 5); a brief never says nothing is protected | never `(none recorded)`
+- keep | honesty | #511 (principle 5); a brief never says nothing is protected | never `(none recorded)`
 - guidance | none | scope guidance for a non-protected edge case; "usually a Risks line, not a requirement" says it. dec3edcb 2026-11-17 (#511) (owner approved softening 2026-11-18) | in proposal.md, not as a new requirement.
 - keep | honesty | pre-extract (ee4034ad), lockstep formula docs | and must update the load-bearing spec/doc files for that formula together
 - not-a-rule | - | - | the exact formulas that calculation must preserve
