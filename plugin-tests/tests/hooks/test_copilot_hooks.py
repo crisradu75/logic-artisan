@@ -569,6 +569,7 @@ def test_failure_wording_of_every_dispatcher_matches_the_adapter_markers(tmp_pat
     cases = [
         ("dispatch-bash-pretooluse.py", bash_event, "block-cd-in-bash.py"),
         ("dispatch-edit-write-pretooluse.py", edit_event, "block-worktree-path-escape.py"),
+        ("dispatch-edit-write-pretooluse.py", edit_event, "ask-plugin-cache-edit.py"),
     ]
     for index, (dispatcher, event, guard) in enumerate(cases):
         # An enforcing guard that is missing: the escalation inside main().
@@ -974,6 +975,23 @@ def test_copilot_pretooluse_denies_an_edit_that_escapes_the_linked_worktree(tmp_
 def test_copilot_pretooluse_allows_an_edit_inside_the_linked_worktree(tmp_path):
     _, linked = _linked_worktree(tmp_path)
     _silent(_edit(linked, linked / "README.md"))
+
+
+# requirement: guard-hooks / A write into an installed plugin copy asks first
+def test_copilot_pretooluse_asks_before_an_edit_inside_an_installed_plugin_copy(tmp_path):
+    # A real ask, so Copilot keeps it an ask: its reason carries none of the
+    # adapter's "a guard did not run" phrases, which would turn it into a deny.
+    home = tmp_path / "home"
+    version = home / ".claude" / "plugins" / "cache" / "m" / "p" / "1"
+    version.mkdir(parents=True)
+    env = {"HOME": str(home), "USERPROFILE": str(home), "CLAUDE_CONFIG_DIR": "",
+           "CLAUDE_CODE_PLUGIN_CACHE_DIR": "", "CLAUDE_PLUGIN_ROOT": ""}
+    result = _edit(tmp_path, version / "README.md", extra_env=env)
+    assert result.returncode == 0, result.stderr
+    decision = json.loads(result.stdout)
+    assert decision["permissionDecision"] == "ask", decision
+    assert "ask-plugin-cache-edit.py" in decision["permissionDecisionReason"]
+    _silent(_edit(tmp_path, tmp_path / "README.md", extra_env=env))
 
 
 def test_copilot_pretooluse_allows_a_clean_edit_with_no_dates(tmp_path):

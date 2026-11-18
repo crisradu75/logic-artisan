@@ -94,8 +94,8 @@ per item. Reading another skill's reference file is not calling it: `spec-to-pr`
 ## Always-on guardrails (hooks)
 
 The hooks wire themselves from the plugin's own `hooks/hooks.json` when it loads; there is no
-`settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 9 leaf hooks between
-them in one Python process each, and `warn-wholesale-rewrite` runs on its own after a Write: 10 leaf
+`settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 10 leaf hooks between
+them in one Python process each, and `warn-wholesale-rewrite` runs on its own after a Write: 11 leaf
 hooks, active in every phase.
 
 | Severity | Hook | Fires on |
@@ -104,6 +104,7 @@ hooks, active in every phase.
 | | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a write that escapes the worktree boundary |
 | **Ask**: a permission prompt | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete and PR merges (`ALLOW_PR_MERGE=1` drops only the merge prompt, for the chainers' unattended runs); `git checkout <path>`, `git restore <path>`, a forced `checkout -f`/`switch -f` and `git clean`, but only when they would destroy uncommitted work; a saving `git stash` while a merge, cherry-pick or revert is in progress, because it drops `MERGE_HEAD`; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
+| | `ask-plugin-cache-edit` | an Edit or Write whose target, resolved through symlinks and `..`, lies inside an installed plugin copy: the `cache/` or `marketplaces/` part of the plugins directory (`~/.claude/plugins`, moved by `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_PLUGIN_CACHE_DIR`), or the plugin's own root when that root is in there. The edit would be lost on the next update; a repo's rules go in `cla.io/overlays/<skill>.md` or `cla.io/project-facts.md`. Silent for a plugin run with `--plugin-dir`, for the plugin's `data/` directory and on bad input; if the hook itself fails to load, every Edit and Write asks |
 | | `ask-broad-git-add` | a `git add` of the current directory, the repo root or a bare `openspec/` (`-A`, `--all`, `.`, `:/`, `*`) that would stage untracked files; it names up to ten and suggests staging named paths. Silent for `-u`, for named paths (`-A <path>` included), when only tracked files changed, and whenever it cannot check; skipped, like a warning, when the hook time budget is spent |
 | **Warn**: a caution, and the call runs | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
 | | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
@@ -166,7 +167,8 @@ claude plugin update cla@cris-logic-artisan
 ```
 
 **The installed tree is read-only.** Never edit it: it is a version-keyed cache, so an edit either
-fails or lands somewhere the next update discards. A fix that belongs in the harness goes back via
+fails or lands somewhere the next update discards (the `ask-plugin-cache-edit` guard asks before
+such an edit). A fix that belongs in the harness goes back via
 **`/cla:report-upstream`**, which files it as an issue against the canonical source. A fact that
 belongs to your repo goes in `cla.io/`.
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """PreToolUse dispatcher for the Edit|Write matcher.
 
-Runs warn-comment-dates and block-worktree-path-escape in ONE Python process
-instead of two. See dispatch-bash-pretooluse.py (the sibling on the Bash
-matcher) and the shared `_dispatch_lib` both use.
+Runs warn-comment-dates, ask-plugin-cache-edit and block-worktree-path-escape
+in ONE Python process instead of three. See dispatch-bash-pretooluse.py (the
+sibling on the Bash matcher) and the shared `_dispatch_lib` both use.
 
 One of these hooks (warn-comment-dates) emits a non-blocking JSON warning on
 stdout. Only one process's stdout is read per PreToolUse call, so this
@@ -19,6 +19,11 @@ Order and semantics preserved exactly:
     only carries stderr back to Claude, per the documented hook contract, so
     an earlier hook's stdout-JSON warning is folded into stderr as plain text
     here rather than lost), then this process exits 2.
+  - If none block but one requests an `ask` (ask-plugin-cache-edit.py returns
+    0 and escalates via stdout), the ask is re-emitted as this process's own
+    stdout JSON, with the advisory context beside it. Only one process's stdout
+    is read per call, so a child's ask that is not re-emitted here is silently
+    downgraded to an allow. Precedence is deny > ask > allow.
   - If none block, every collected warning is merged into one
     hookSpecificOutput.additionalContext JSON object on stdout at exit 0. That
     is the only channel Claude reads: stderr from a hook exiting 0 goes to the
@@ -60,13 +65,19 @@ else:
 
 _HOOK_FILES = [
     "warn-comment-dates.py",
+    "ask-plugin-cache-edit.py",
     "block-worktree-path-escape.py",
 ]
 
 # Skippable when the handler budget is spent. Note what is NOT here:
-# `block-worktree-path-escape.py` can return 2. Unlike the Bash dispatcher, the
-# blocking hook sits LAST in `_HOOK_FILES` here, so membership of this set is the
-# only thing protecting it; order is not a backstop.
+# `block-worktree-path-escape.py` can return 2, and `ask-plugin-cache-edit.py`
+# escalates to an ask. Unlike the Bash dispatcher, the blocking hook sits LAST in
+# `_HOOK_FILES` here, so membership of this set is the only thing protecting it;
+# order is not a backstop.
+#
+# `ask-plugin-cache-edit.py` is enforcing rather than best-effort (the Bash
+# dispatcher's `_BEST_EFFORT_HOOKS`): it runs no subprocess, so it costs nothing
+# against the budget, and an install-copy edit it misses is lost with no trace.
 _ADVISORY_HOOKS = frozenset({
     "warn-comment-dates.py",
 })
@@ -87,6 +98,29 @@ def _extract_context(stdout_text: str) -> str | None:
     if isinstance(nested, dict) and nested.get("additionalContext"):
         return str(nested["additionalContext"])
     return None
+
+
+def _extract_ask(stdout_text: str) -> str | None:
+    """Pull an `ask` escalation's reason out of a hook's stdout JSON.
+
+    A hook that wants the user prompted (rather than blocked outright) exits 0
+    and emits `permissionDecision: "ask"`. Only this process's stdout is read
+    per PreToolUse call, so the decision has to be re-emitted here or it is
+    silently downgraded to an allow.
+    """
+    stdout_text = stdout_text.strip()
+    if not stdout_text:
+        return None
+    try:
+        payload = json.loads(stdout_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    nested = payload.get("hookSpecificOutput")
+    if not isinstance(nested, dict) or nested.get("permissionDecision") != "ask":
+        return None
+    return str(nested.get("permissionDecisionReason") or "A guard requested confirmation.")
 
 
 def _ask_json(reason: str, contexts: list[str]) -> str:
@@ -144,6 +178,7 @@ def main() -> int:
     deadline = Deadline()
     warnings: list[str] = []
     contexts: list[str] = []
+    asks: list[str] = []
     skipped: list[str] = []
     errored = False
     errored_enforcing: list[str] = []
@@ -186,6 +221,9 @@ def main() -> int:
         context = _extract_context(result.stdout)
         if context:
             contexts.append(context)
+        ask = _extract_ask(result.stdout)
+        if ask:
+            asks.append(ask)
 
     # Debug log only, not context — see the Bash dispatcher for the reasoning:
     # an advisory hook stepping aside under load is designed degradation, and
@@ -200,7 +238,6 @@ def main() -> int:
             "call, so their checks did not run. Re-run with `claude --debug` "
             "for the traceback."
         )
-    ask_reason = ""
     if errored_enforcing:
         # Escalated to `ask`, not left as a warning. `_dispatch_lib`'s docstring
         # records why exiting non-zero here would be wrong — it USED to ask for
@@ -214,7 +251,7 @@ def main() -> int:
         #
         # Advisory hooks are deliberately excluded: losing a warning is the
         # acceptable half of the trade this dispatcher already makes for budget.
-        ask_reason = (
+        asks.append(
             "an ENFORCING guard could not run on this call — "
             + ", ".join(sorted(errored_enforcing))
             + ". Its check did NOT happen, so this write is unguarded rather "
@@ -234,8 +271,8 @@ def main() -> int:
     # just the FIRST LINE of stderr, so it reports less, not more — the same
     # reasoning as the Bash dispatcher.
     merged = contexts + warnings
-    if ask_reason:
-        print(_ask_json(ask_reason, merged))
+    if asks:
+        print(_ask_json(compose_output(asks), merged))
     elif merged:
         print(_context_json(merged))
     return 0

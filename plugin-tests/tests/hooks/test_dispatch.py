@@ -737,6 +737,112 @@ def test_bash_dispatch_stays_well_inside_the_hook_timeout_on_a_hostile_command(t
     assert json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
 
 
+def _fake_plugins_home(tmp_path, monkeypatch) -> Path:
+    """A fake HOME with one cached plugin version, and no plugin variables set."""
+    home = tmp_path / "home"
+    (home / ".claude" / "plugins" / "cache" / "m" / "p" / "1").mkdir(parents=True)
+    for name in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PLUGIN_CACHE_DIR", "CLAUDE_PLUGIN_ROOT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    return home / ".claude" / "plugins" / "cache" / "m" / "p" / "1"
+
+
+# requirement: guard-hooks / A write into an installed plugin copy asks first
+def test_edit_write_dispatch_still_asks_about_a_plugin_copy_after_the_budget_is_spent(
+    monkeypatch, capsys, tmp_path
+):
+    """The cache guard is enforcing, not best-effort: a spent budget skips only
+    the date warning, and the ask still leaves the dispatcher."""
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    assert "ask-plugin-cache-edit.py" not in mod._ADVISORY_HOOKS
+    version = _fake_plugins_home(tmp_path, monkeypatch)
+    rc = _run_in_process(
+        mod,
+        {"tool_input": {"file_path": str(version / "README.md"), "content": "x\n"},
+         "cwd": str(tmp_path)},
+        monkeypatch,
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    nested = json.loads(captured.out)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert "ask-plugin-cache-edit.py" in nested["permissionDecisionReason"]
+    assert "warn-comment-dates.py" in captured.err  # the advisory hook was the one skipped
+
+
+def test_edit_write_dispatch_block_outranks_the_plugin_copy_ask(monkeypatch, capsys):
+    """deny > ask: a later block wins over an earlier hook's ask."""
+    import _dispatch_lib as lib
+
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    ask = json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse", "permissionDecision": "ask",
+        "permissionDecisionReason": "planted ask"}})
+
+    def fake(filename, stdin_text, argv=None):
+        if filename == "ask-plugin-cache-edit.py":
+            return lib.HookResult(0, ask, "")
+        if filename == "block-worktree-path-escape.py":
+            return lib.HookResult(2, "", "planted block")
+        return lib.HookResult(0, "", "")
+
+    monkeypatch.setattr(mod, "run_hook_file", fake)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+    assert mod.main() == 2
+    captured = capsys.readouterr()
+    assert "planted block" in captured.err
+    assert captured.out == ""
+
+
+def test_edit_write_dispatch_joins_a_hook_ask_with_the_enforcing_escalation(monkeypatch):
+    """Both asks reach the user in one prompt: neither replaces the other."""
+    import _dispatch_lib as lib
+
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    ask = json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse", "permissionDecision": "ask",
+        "permissionDecisionReason": "planted ask"}})
+
+    def fake(filename, stdin_text, argv=None):
+        if filename == "ask-plugin-cache-edit.py":
+            return lib.HookResult(0, ask, "")
+        return lib.HookResult(0, "", "", filename == "block-worktree-path-escape.py")
+
+    monkeypatch.setattr(mod, "run_hook_file", fake)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        assert mod.main() == 0
+    reason = json.loads(buf.getvalue())["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "planted ask" in reason
+    assert "ENFORCING" in reason
+
+
+def test_an_errored_plugin_cache_hook_escalates_as_enforcing(monkeypatch):
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "ask-plugin-cache-edit.py",
+        {"tool_name": "Edit", "tool_input": {"file_path": "x.md", "new_string": "y"}},
+    )
+    assert rc == 0
+    assert nested.get("permissionDecision") == "ask"
+    assert "ask-plugin-cache-edit.py" in nested.get("permissionDecisionReason", "")
+
+
+def test_the_edit_write_dispatcher_ignores_a_non_ask_decision(monkeypatch):
+    """Only `ask` is re-emitted; an `allow` or a malformed payload from a hook is not a prompt."""
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    assert mod._extract_ask("") is None
+    assert mod._extract_ask("not json") is None
+    assert mod._extract_ask("[]") is None
+    assert mod._extract_ask('{"hookSpecificOutput": []}') is None
+    assert mod._extract_ask(json.dumps({"hookSpecificOutput": {"permissionDecision": "allow"}})) is None
+    assert mod._extract_ask(json.dumps({"hookSpecificOutput": {"permissionDecision": "ask"}})) == (
+        "A guard requested confirmation."
+    )
+
+
 def test_the_edit_write_dispatcher_leaves_advisory_errors_as_context(monkeypatch):
     """Non-vacuity partner for the dispatcher that had no coverage at all."""
     mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")

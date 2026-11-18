@@ -614,6 +614,17 @@ def test_the_bash_dispatcher_declares_the_broad_add_hook_best_effort():
     assert _best_effort(_HOOKS_DIR / "dispatch-bash-pretooluse.py") == {"ask-broad-git-add.py"}
 
 
+def test_the_edit_write_dispatcher_runs_the_plugin_cache_hook_as_enforcing():
+    # Enforcing, not best-effort: it costs nothing against the budget (no
+    # subprocess), and a missed install-copy edit leaves no trace to recover.
+    dispatcher_path = _HOOKS_DIR / "dispatch-edit-write-pretooluse.py"
+    assert "ask-plugin-cache-edit.py" in _hook_files_list(dispatcher_path)
+    assert "ask-plugin-cache-edit.py" not in _named_collection(dispatcher_path, "_ADVISORY_HOOKS")
+    assert _best_effort(dispatcher_path) == set()
+    assert _changes_the_outcome((_HOOKS_DIR / "ask-plugin-cache-edit.py").read_text(encoding="utf-8"))
+    assert _load_dispatch_lib().HOOK_WORST_CASE_SECONDS["ask-plugin-cache-edit.py"] == 0.0
+
+
 def test_the_outcome_detector_is_not_vacuous():
     # A structural guard that matches nothing passes forever. Pin that the
     # detector actually recognizes both shapes it claims to cover, so a future

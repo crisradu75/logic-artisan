@@ -161,9 +161,9 @@ def test_the_scan_is_not_vacuous():
     # Re-measured with this file's own `__main__`, which is why it has one::
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 123  .json 3  .md 87  .py 33  placeholder-refs 286 in 61 files
+    #     scanned 124  .json 3  .md 87  .py 34  placeholder-refs 286 in 61 files
     #
-    # The real count is 123. Pinned near it, not
+    # The real count is 124. Pinned near it, not
     # comfortably below it, matching the rule `test_subprocess_encoding.py`
     # states for its own floor: move it to the new real count when something is
     # deliberately added or deleted, never to a number chosen to be safe from
@@ -335,7 +335,7 @@ def test_the_replacement_is_actually_in_use():
     # line would be a second copy that `_PRINTER_LINE` cannot see:
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 123  .json 3  .md 87  .py 33  placeholder-refs 286 in 61 files
+    #     scanned 124  .json 3  .md 87  .py 34  placeholder-refs 286 in 61 files
     #
     # The file-count version sat at 34 under a comment claiming 36 while the real
     # figure was 48 — fourteen of headroom, found by running that printer for the
