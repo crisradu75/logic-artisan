@@ -23,7 +23,8 @@ Order and semantics preserved exactly:
     ask-secret-in-checkpoint.py return 0 and escalate via stdout), the ask is re-emitted as this process's own
     stdout JSON, with the advisory context beside it. Only one process's stdout
     is read per call, so a child's ask that is not re-emitted here is silently
-    downgraded to an allow. Precedence is deny > ask > allow.
+    downgraded to an allow. A deny is a child's exit 2; a
+    `permissionDecision: "deny"` a child prints at exit 0 is not read (no hook does that today).
   - If none block, every collected warning is merged into one
     hookSpecificOutput.additionalContext JSON object on stdout at exit 0. That
     is the only channel Claude reads: stderr from a hook exiting 0 goes to the

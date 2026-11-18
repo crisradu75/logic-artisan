@@ -173,6 +173,10 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # Reads the command text and, at most, a `-F` message file; no subprocess,
     # so it is enforcing in the Bash dispatcher at no cost.
     "block-dishonest-commit.py": 0.0,
+    # Reads the command text in one linear pass; its only I/O is looking for a
+    # `.git` entry above the cwd once a `..` write target is found. No
+    # subprocess, so it blocks and asks as an enforcing hook at no budget cost.
+    "guard-bash-text.py": 0.0,
     # Regex scan of the new text of a write under `cla.io/<briefing dir>/`; no
     # subprocess and no file I/O, so it is enforcing in the Edit/Write dispatcher.
     "ask-secret-in-checkpoint.py": 0.0,

@@ -24,6 +24,14 @@ the skills fall back to the default list of protected areas.
   first refuses a message with a `Measured-by: none` trailer and an `--allow-empty` commit with a
   review-round subject (any other `--allow-empty` warns); the second asks when the commit would add
   a `/cla:diagnose` debug tag (best-effort, from `git diff --cached`) (#PR).
+- **A `guard-bash-text` guard hook** reads a Bash or PowerShell command's text. It blocks a
+  `${CLAUDE_PLUGIN_ROOT}/` or `$CLAUDE_PLUGIN_ROOT/` path the shell would expand: Claude Code does
+  not set that variable in the Bash tool's shell, so a placeholder copied from a `references/` file
+  ran the command against `/skills/...`. It asks before a write redirect, `tee`, `mkdir`, or a
+  `cp`/`mv` destination whose path starts with `..` and lands outside the checkout, where a consuming
+  repo keeps the user's other projects. It warns on a `git commit -m` or `gh pr`/`gh issue` `--body`
+  that holds a real newline or a `$(cat <<...)` heredoc, pointing at `-F` and `--body-file`. Single
+  quotes, escapes, quoted heredocs and comments stay silent; it runs no subprocess (#540).
 - **`ask-destructive-git` asks before three more history changes**, each only when work is at
   stake: a `git rebase`, or a `git pull` that rebases, that would rewrite a commit already on a
   remote-tracking ref (a rebase of local-only commits, one that replays nothing, and a rebase action
@@ -157,6 +165,11 @@ the skills fall back to the default list of protected areas.
 
 ### Fixed
 
+- **`ask-broad-git-add` and `ask-plugin-cache-edit` close their last review gaps.** `git add */`
+  now asks, a `GIT_DIR=` in another command no longer silences an add, a worktree-side rename no
+  longer hides a stray file, a parser failure prints one line on stderr, and file names in the ask
+  are escaped so a name cannot trip the Copilot adapter's deny. The cache guard also covers
+  `synced/` copies and matches case-insensitively on macOS and Windows (#541).
 - **Guards see executed command substitutions in quoted spans.** `echo "$(git reset --hard)"` and a
   backtick form now reach `ask-destructive-git` and `block-worktree-path-escape`, and the dispatch
   library scans the inside of `$(...)` and backticks (#495).

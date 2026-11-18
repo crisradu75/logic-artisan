@@ -232,55 +232,17 @@ def test_a_plugin_dir_working_tree_stays_silent(home, tmp_path, monkeypatch):
         _silent(monkeypatch, _payload("hooks/hooks.json", "Write", cwd=root))
 
 
-# requirement: guard-hooks / A write into an installed plugin copy asks first
-def test_a_plugin_root_in_the_cache_asks(home, monkeypatch):
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(_version(home)))
-    _asks(monkeypatch, _payload(_version(home) / "skills" / "x" / "SKILL.md", "Edit"))
+def test_other_plugins_copies_under_synced_ask(home, monkeypatch):
+    _asks(monkeypatch, _payload(_plugins(home) / "synced" / "abc" / "x.md"))
 
 
-def test_a_plugin_root_elsewhere_under_the_plugins_root_asks(home, monkeypatch):
-    # A copy synced from claude.ai sits in `synced/`, outside the two subtrees;
-    # the plugin's own root still marks it as installed.
-    synced = _plugins(home) / "synced" / "abc"
-    synced.mkdir(parents=True)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(synced))
-    reason = _asks(monkeypatch, _payload(synced / "skills" / "x" / "SKILL.md"))
-    assert str(synced) in reason
-
-
-def test_a_plugin_root_rule_reaches_only_that_root(home, monkeypatch):
-    synced = _plugins(home) / "synced" / "abc"
-    synced.mkdir(parents=True)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(synced))
-    _silent(monkeypatch, _payload(_plugins(home) / "synced" / "other" / "SKILL.md"))
-    _silent(monkeypatch, _payload(_plugins(home) / "data" / "cla-mkt" / "state.json"))
-
-
-def test_a_plugin_root_equal_to_the_plugins_root_does_not_widen_the_rule(home, monkeypatch):
-    # Only a root strictly below a plugins root counts; otherwise `data/` would ask.
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(_plugins(home)))
-    _silent(monkeypatch, _payload(_plugins(home) / "data" / "cla-mkt" / "state.json"))
-
-
-def test_a_symlinked_plugin_root_is_resolved_before_it_is_placed(home, tmp_path, monkeypatch, make_dir_alias):
-    # Aimed at `synced/`, outside the two subtrees, so only the plugin-root rule
-    # can ask, and it has to see where the alias really leads.
-    synced = _plugins(home) / "synced" / "abc"
-    synced.mkdir(parents=True)
-    alias = tmp_path / "root-alias"
-    make_dir_alias(alias, synced)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(alias))
-    _asks(monkeypatch, _payload(alias / "x.md"))
-
-
-def test_a_plugin_root_under_any_one_plugins_root_counts(home, tmp_path, monkeypatch):
-    # Below the CLAUDE_CONFIG_DIR root but not the default one: one is enough.
-    config = tmp_path / "work-config"
-    synced = config / "plugins" / "synced" / "abc"
-    synced.mkdir(parents=True)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(synced))
-    _asks(monkeypatch, _payload(synced / "x.md"))
+def test_a_path_in_another_case_asks_on_macos_and_windows_only(home, monkeypatch):
+    target = _plugins(home).parent / "Plugins" / "Cache" / "mkt" / "x.md"
+    monkeypatch.setattr(sys, "platform", "linux")
+    _silent(monkeypatch, _payload(str(target).replace("/plugins/", "/PLUGINS/")))
+    for platform in ("darwin", "win32"):
+        monkeypatch.setattr(sys, "platform", platform)
+        _asks(monkeypatch, _payload(str(target).replace("/Plugins/", "/PLUGINS/")))
 
 
 # --------------------------------------------------------------------------- #
