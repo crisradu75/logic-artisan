@@ -38,7 +38,7 @@ rule below saves some without dropping quality.
    empty folder not at all, so the files agents write there show as new lines in the after list:
    leave the lines under `scratchpad/` out of rule 7's diff.
 9. **Give each parallel agent its own copy of a shared test environment.** Examples are a database
-   or a port. Never make agents queue on a lock, because it serialises them. Remove the copies when
+   or a port. Avoid making agents queue on a lock: it serialises them. Remove the copies when
    the agents finish.
 10. **Run full test suites one at a time across parallel agents.** Rule 3 sets the scope for each
     agent: its own area while iterating. Never let two full suites run together. After the merges,

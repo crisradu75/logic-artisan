@@ -11,7 +11,7 @@ argument-hint: "[change-name | description | (empty)]"
 
 Drives one OpenSpec change from a description, a change name or an `/opsx:explore` result to an opened, archived PR with its review fixes applied. Order: Precheck → Propose → Review → Implement → Test → Ship → Revise → Archive → Handoff (`references/workflow-diagram.md`).
 
-**Each phase that names a reference reads it first; its stub here carries only the rules that gate correctness.** Why a rule exists is in `references/design-tradeoffs.md`, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md` and this repo's `cla.io/lessons-learned/`. Read those only when revising the skill, never during a run.
+**Each phase that names a reference reads it first; its stub here carries only the rules that gate correctness.** Why a rule exists is in `references/design-tradeoffs.md`, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md` and this repo's `cla.io/lessons-learned/`. Read those only when revising the skill; a run does not need them.
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
@@ -23,7 +23,7 @@ at `.../plugins/cla`. If neither works, say so and stop. Detail:
 
 ## Placeholders
 
-- **`<arg>`** = `$ARGUMENTS`, bound once. Every rule refers to `<arg>` and never re-embeds the raw token.
+- **`<arg>`** = `$ARGUMENTS`, bound once. Every rule refers to `<arg>`, not the raw token, which would be pasted in at each mention.
 - **`<base-branch>`** — THIS repo's default branch, resolved once at the start of the run, never assumed: `git symbolic-ref --quiet refs/remotes/origin/HEAD` (the segment after the last `/`); if that is unset, whichever of `main` / `master` exists. Substitute it before running any command that names it.
 - **`<branch>`** — the feature branch this run creates and looks up, from `scripts/_git_common.branch_name()`: the `CLA_BRANCH_PREFIX` env var, else `cla.io/overlays/branch-prefix.local.md`, else `feature/`. `probe_state._resolve_branch` falls back to the one local branch whose final segment is the change name, says which it adopted, and refuses to guess when several match (`references/branch-and-pr-base.md`). Never spell `feature/<change-name>`.
 - **`<pr-base>`** — the branch this change is cut from and its PR opened against. Default `<base-branch>`, identical to it everywhere when no flag is passed. **`--pr-base <branch>`** (a stacked PR, built on a still-open parent) overrides it; then **read `references/branch-and-pr-base.md` before any phase**. Wherever a phase uses `<base-branch>` as the branch-off point, PR base or diff anchor (Ship preflight, `gh pr create --base`, Test's changed-path range, Revise diff scoping, the worktree recipe), read `<pr-base>`. `gh pr create` passes `--base <pr-base>` explicitly; a stacked-child resume recounts probe results against `<pr-base>`; Handoff never prints a bare `gh pr merge` for a stacked child.
@@ -43,7 +43,7 @@ These rules apply across every phase.
 - **Run thin** (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`): delegate bulk diffs, wide file sets and verbose output to a sub-agent so only conclusions return; read slices, `head`/`tail` long output, batch independent tool calls.
 - **While your own Implement or fix delegate is live, run no repository-state command and no test suite in that checkout** — no `checkout`/`switch`/`commit`/`push`/`branch`/`stash`, no verify run, no killing build processes. A `git checkout` mid-suite manufactures failures that read as a real regression, and a delegate reporting interference is reporting you.
 - **Bash:** no compound commands (`cd && cmd`), no heredoc subshells, no multi-line `--body`, no long `git add` lists; use `--body-file`, single-line `-m`, absolute paths (`bash-discipline.md`).
-- **Continue on everything.** A failed sub-step becomes a `warn` phase and a Handoff Issue; it never halts the run. Apart from the `AskUserQuestion` stops this file names, the only halts are a bootstrap permission decline and a declined push gate.
+- **Continue on everything.** A failed sub-step becomes a `warn` phase and a Handoff Issue, not a halt: the report is the safety net. Apart from the `AskUserQuestion` stops this file names, the only halts are a bootstrap permission decline and a declined push gate.
 - **Development only.** Never `gh pr merge`, `git push origin <base-branch>`, `npm publish`, `pip upload`, `docker push` or `gh release create`. `openspec archive` is in scope: Archive commits it to the same PR, so it merges with the change.
 
 ## Flags
@@ -118,7 +118,7 @@ A single run needs no setup. To run two or more flows at once in one repo, each 
 
 Cap: `--review-rounds N` (default `1`).
 
-**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and execute it inline against `<change-name>`.** It is the single source of truth for review behaviour: change selection, the 12 high-yield verification checks (`0a`–`0l`), the size gate (a large change also reads `dispatch.md` beside it, and checks 0a–0h default to a `fact-gatherer` dispatch whose ✗ rows you still adjudicate), and the report and verdict rubric. Never `Skill(cla:review-change)`; never add review logic here.
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and execute it inline against `<change-name>`.** It is the single source of truth for review behaviour: change selection, the 12 high-yield verification checks (`0a`–`0l`), the size gate (a large change also reads `dispatch.md` beside it, and checks 0a–0h default to a `fact-gatherer` dispatch whose ✗ rows you still adjudicate), and the report and verdict rubric. Not via `Skill(cla:review-change)`, a hop that adds turns; keep review logic there, not here.
 
 **Doc-staleness sweeps — read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/review-sweeps.md` and run them in the same pass** whenever the proposal retires a symbol, concept or mechanism. Re-search every zero-count symbol yourself; every hit is an Important finding.
 
@@ -158,7 +158,7 @@ Cap: `--test-rounds N` (default `3`).
 
 Each round, smoke first: a smoke failure → diagnose and fix, decrement, re-run from smoke next round (a smoke pass never skips `full`, unless the paragraph below applies). Smoke clean → every `full` command, build first (not under **`Full gate: final-commit-only`**, below). All exit 0 → `ok`. A `full` failure → diagnose and fix, decrement. Budget exhausted → `warn` with the failing checks and the first error.
 
-**`Full gate: final-commit-only`.** When `cla.io/project-facts.md` has the line `- Full gate: final-commit-only`, a repo wants its full gate run once, on the final commit (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/orchestration-economy.md`, rule 3). Revise and Archive change code and specs after this phase, so a full run here would be voided. Each round then runs smoke and the touched tests only: the test files the change added or edited, plus those that import or read a changed path (find them with the repo's "Test-file locations" fact), never the whole suite. None found → smoke only. Those green → `ok`. This phase then runs the one full gate itself, after Archive's push post-check and before Handoff. A red result changes Test from `ok` to `warn` with the failing check and the first error: no fix loop, and Handoff says the PR carries a red full gate, so the user decides. Skip that run when the invocation names `/cla:multi-pr` as its caller: the merge's pre-merge gate is the run, when the PR head still equals the recorded `head_sha`. The line absent → everything above is unchanged.
+**`Full gate: final-commit-only`.** When `cla.io/project-facts.md` has the line `- Full gate: final-commit-only`, a repo wants its full gate run once, on the final commit (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/orchestration-economy.md`, rule 3). Revise and Archive change code and specs after this phase, so a full run here would be voided. Each round then runs smoke and the touched tests only: the test files the change added or edited, plus those that import or read a changed path (find them with the repo's "Test-file locations" fact), not the whole suite: the one full run comes later. None found → smoke only. Those green → `ok`. This phase then runs the one full gate itself, after Archive's push post-check and before Handoff. A red result changes Test from `ok` to `warn` with the failing check and the first error: no fix loop, and Handoff says the PR carries a red full gate, so the user decides. Skip that run when the invocation names `/cla:multi-pr` as its caller: the merge's pre-merge gate is the run, when the PR head still equals the recorded `head_sha`. The line absent → everything above is unchanged.
 
 **Diagnose means stating a cause before editing:** one sentence specific enough that the fix follows from it (not the symptom restated), read from the actual failure output, plus what the re-run should show, said before running it.
 
@@ -166,20 +166,20 @@ Each round, smoke first: a smoke failure → diagnose and fix, decrement, re-run
 
 **No symptom fixes.** Loosening an assertion, widening a type or wrapping the failing call turns the gate green without touching the defect, and this phase warns and continues, so a suppression ships. If the only account of a fix is that it makes the check pass, record the round `warn` with the real failure. A test edit forced here follows `test-quality.md`.
 
-**Read `references/test-notes.md` before editing for an infra-dependent gate failure** (the failing file changes between identical runs, or stderr names the infra tool's own error). It also covers the optional browser smoke, never a hard gate.
+**Read `references/test-notes.md` before editing for an infra-dependent gate failure** (the failing file changes between identical runs, or stderr names the infra tool's own error). It also covers the optional browser smoke, which needs a dev server and so is not a hard gate.
 
 **External-API fixtures (a judgment call, not a scripted gate):** a change that adds or extends a call to an external HTTP API, whose tests use only stub mocks with an assumed response shape and no fixture captured against the real response, is an Important finding in Review or Revise. A threshold or optional-field marking set without a captured real input is likewise an Important finding (`_shared/references/economy-rules-file.md`, Quality floor).
 
 ### Autonomy gate
 
-**Default: run Propose → Handoff continuously, without any confirmation, including before push.** Never ask "ready to push?", "shall I continue to Revise?", "merge now?" or any variant; never pause to summarise and wait; never end a turn with a question between phases. No finality headers (`## Done`, `## Summary`) before Handoff: a phase boundary gets at most one brief sentence (`**Revise:** dispatching 3 review agents.`), and Handoff's report is the only finality-shaped block.
+**Default: run Propose → Handoff continuously, without any confirmation, including before push.** Do not ask "ready to push?", "shall I continue to Revise?", "merge now?" or any variant, pause to summarise, or end a turn on a question between phases: no flag authorizes the pause, and each one costs minutes. No finality headers (`## Done`, `## Summary`) before Handoff: a phase boundary gets at most one brief sentence (`**Revise:** dispatching 3 review agents.`), and Handoff's report is the only finality-shaped block.
 
 **Status text and the next tool call go in the SAME message.** If you have no tool call to pair the text with, the phase is not over — start the next phase instead of narrating the last one. Ending a turn is legitimate in exactly two cases: a backgrounded `Agent`/`Workflow` dispatch is genuinely in flight (its completion notification re-invokes the session — that is the harness, not a pause), or the run is complete. Nothing else. The discriminator is whether a **pending event** will re-invoke this session — not whether you asked the user anything, because this failure asks nothing; **announcing the next step is not a mechanism**.
 
 The exceptions:
 - **Bootstrap permission decline** — halts before any phase.
 - **`--gate-on-push` / `--interactive`** — pause immediately before push and PR open. Decline → halt cleanly, Ship and Revise `skip` ("user declined gate", shown ✗ aborted, so no merge line), then the terminal report.
-- **Mid-flow scope-split ask** — Review finds the artifacts materially stale or the scope separable into several PRs: one `AskUserQuestion` with 3–4 paths (tight / medium / full scope / halt) before Implement. Content-based, never size-based. Under `/cla:multi-pr` only its blocker case (f); otherwise a GitHub issue. Detail: `references/scope-asks.md`.
+- **Mid-flow scope-split ask** — Review finds the artifacts materially stale or the scope separable into several PRs: one `AskUserQuestion` with 3–4 paths (tight / medium / full scope / halt) before Implement. Content-based: a large, coherent change needs no ask. Under `/cla:multi-pr` only its blocker case (f); otherwise a GitHub issue. Detail: `references/scope-asks.md`.
 - A user interrupt ("stop", "wait", Ctrl-C) halts.
 
 **Revise is part of the flow.** "Merge and clean" is about cleanup after Archive, not a skip; only `--skip-review`, "no review" or `--pr-rounds 0` skips it. It dispatches every agent row the diff matches — no budget-based reduction.
@@ -200,9 +200,9 @@ Cap: `--pr-rounds N` (default `2`): round 2 runs only after round 1 applied a fi
 
 **Read `references/handoff.md` first** — the report, the PR-body mirror, `TODO.md`, the run record and its commit. Gate rules:
 
-- **Name `gh pr merge` only when every phase is ✓ AND "Rejected remedies, still open" is empty.** Any ⚠ → "**Review warnings before merging.**" first, then the command. Any ✗, or a non-empty rejected-remedies section → "**This PR is NOT ready to merge.**" and no merge command. A stacked child (`--pr-base`) gets "lands with its chain" instead. Never name `openspec archive`.
+- **Name `gh pr merge` only when every phase is ✓ AND "Rejected remedies, still open" is empty.** Any ⚠ → "**Review warnings before merging.**" first, then the command. Any ✗, or a non-empty rejected-remedies section → "**This PR is NOT ready to merge.**" and no merge command. A stacked child (`--pr-base`) gets "lands with its chain" instead. Leave out `openspec archive`: Archive already ran it.
 - With `<inherits>` non-empty, print one verdict line per supplied entry, `HONOURED` ones included, ahead of the phase table — on a resumed run too.
-- Build the run record from the example in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`, with `flags` (every flag invoked), `escalated_to_diagnose`, and Revise's `findings_by_round` as built when each round closed, and pipe it to `${CLAUDE_PLUGIN_ROOT}/lib/log_run.py`. On a refusal, rebuild it from the example, fixing every field named, and retry **once**; a second refusal or any other failure goes in Issues and never `warn`s the run.
+- Build the run record from the example in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`, with `flags` (every flag invoked), `escalated_to_diagnose`, and Revise's `findings_by_round` as built when each round closed, and pipe it to `${CLAUDE_PLUGIN_ROOT}/lib/log_run.py`. On a refusal, rebuild it from the example, fixing every field named, and retry **once**; a second refusal or any other failure goes in Issues; a bookkeeping failure does not `warn` the run.
 - Then print what `python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --nudge` prints, verbatim. It never blocks.
 - Commit the record on `<branch>` only, as the run's last commit; skipped when Ship was `skip` or `CLAUDE_RETRO_DIR` is outside the repo. A record not appended or not committed is said in the report.
 

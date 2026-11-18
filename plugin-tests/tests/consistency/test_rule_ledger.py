@@ -9,12 +9,14 @@ failed in every repo that had one (the same decision's evidence base).
 What it checks:
 - every line of a shipped `.md` file holding the whole word `never`, `always` or `must` contains the
   fragment of one of that file's ledger entries;
-- every fragment occurs exactly once in its file, so a reworded or deleted rule makes its entry fail;
+- every fragment occurs in its file as many times as it has entries (once, unless the file repeats a
+  rule word for word), so a reworded or deleted rule makes its entry fail;
 - verdicts and areas agree: a `keep` names a protected area, `guidance` and `remove?` name `none`.
 """
 from __future__ import annotations
 
 import re
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -91,20 +93,23 @@ def test_every_entry_has_a_valid_verdict_and_a_matching_area(ledger):
     assert not bad, "\n".join(bad)
 
 
-def test_every_fragment_occurs_exactly_once_in_its_file(ledger):
+def test_every_fragment_occurs_once_per_entry_in_its_file(ledger):
+    """A fragment occurs as many times as it has entries: once, unless the file repeats a rule
+    word for word (one copy per agent prompt), in which case each copy has its own entry."""
     bad = []
     for path, entries in ledger.items():
         target = _PLUGIN / path
         if not target.is_file():
             continue
         text = target.read_text(encoding="utf-8")
-        for _, _, _, fragment in entries:
+        wanted = Counter(e[3] for e in entries)
+        for fragment, n in wanted.items():
             if len(fragment) < MIN_FRAGMENT:
                 bad.append(f"{path}: fragment under {MIN_FRAGMENT} characters: {fragment!r}")
             elif "\n" in fragment or fragment != fragment.strip():
                 bad.append(f"{path}: fragment must be one trimmed line: {fragment!r}")
-            elif (count := text.count(fragment)) != 1:
-                bad.append(f"{path}: fragment occurs {count} times (want 1): {fragment!r}")
+            elif (count := text.count(fragment)) != n:
+                bad.append(f"{path}: fragment occurs {count} times, {n} entries: {fragment!r}")
     assert not bad, "\n".join(bad)
 
 

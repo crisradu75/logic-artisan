@@ -20,7 +20,7 @@ When a step needs to process bulk raw material (a large diff, a wide file set, v
 
 ## 3. Batch independent tool calls into one message
 
-Independent reads/greps/checks with no data dependency between them MUST go in a single message with multiple tool calls, not one-at-a-time across turns. This is the same rule the Review checklist's "Maximize parallelism in pre-gathering" already states — it is a general orchestrator discipline, not Review-specific.
+Independent reads/greps/checks with no data dependency between them belong in one message, not one per turn: each turn re-bills the context. This is the same rule the Review checklist's "Maximize parallelism in pre-gathering" already states — it is a general orchestrator discipline, not Review-specific.
 
 ## 4. Prefer terse, schema'd agent output over prose
 
