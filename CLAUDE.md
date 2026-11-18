@@ -102,6 +102,10 @@ openspec validate --specs --strict
 - **Quote a token cost from `plugin-tests/scripts/meter.py`, never from a word count.**
   `plugin-tests/scripts/measure_load.py` counts words; `meter.py` totals the billed tokens a
   transcript records, by model.
+- **A shipped line with `never`, `always` or `must` gets a line in `docs/rule-ledger.md`** in the
+  same change: its verdict, the protected area it guards and where it came from.
+  `test_rule_ledger.py` fails without it. A rule that guards no protected area is written as
+  guidance, not as an absolute.
 - **Do not copy the checkers' lists of file types into any doc.** Read them in the code. A new kind
   of shipped file stays unchecked until someone adds it to a checker.
 

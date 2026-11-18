@@ -693,7 +693,9 @@ behind each rule is kept in full, under a heading naming the rule, in
 **[docs/evidence.md](docs/evidence.md)**. The background to how CLA is released and distributed
 (the catalog pin, the never-moved tag, the retired sync engine and launcher, the Copilot CLI port)
 is in **[docs/history.md](docs/history.md)**. Neither is needed to use CLA; read them before you
-question or change a rule.
+question or change a rule. The absolute rules in the shipped plugin's own text (each `never`,
+`always` and `must`) are listed one per line in **[docs/rule-ledger.md](docs/rule-ledger.md)**, with
+the protected area each guards and its origin; a test keeps that list complete.
 
 ## Cheat sheet: "I want to…" → which skill
 
