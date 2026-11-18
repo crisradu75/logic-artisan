@@ -219,14 +219,14 @@ hooks are the safety layer. Without the launcher the skills and hooks are inert 
 before a merge:
 
 ```bash
-pytest plugin-tests -q -n 2 --dist loadfile
+pytest plugin-tests -q -n 4 --dist loadfile
 ```
 
 ```bash
 openspec validate --specs --strict
 ```
 
-`-n 2 --dist loadfile` needs `pytest-xdist` (`pip install pytest-xdist`); without it, drop both
+`-n 4 --dist loadfile` needs `pytest-xdist` (`pip install pytest-xdist`); without it, drop both
 flags. A `-n` without `--dist loadfile` is a
 trap; CLAUDE.md, "The parallel gate", says why. Run one area with
 `pytest plugin-tests/tests/<area>`: `conformance`, `consistency`, `launcher`, `hooks`, `lib` or

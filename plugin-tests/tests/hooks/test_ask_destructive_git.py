@@ -938,7 +938,7 @@ def _git(repo: Path, *args: str) -> None:
 
 
 @pytest.fixture
-def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cached_git_repo) -> Path:
     """A repository with one committed file, `tracked.txt`, and a clean tree.
 
     Pinned against the developer's own git configuration, which this repo has no
@@ -957,15 +957,17 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
     monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(tmp_path / "gitconfig-system"))
-    root = tmp_path / "repo"
-    root.mkdir()
+    # Built under the pinned config above (the first test builds it), then copied.
+    return cached_git_repo("ask_destructive_git", _build_repo, tmp_path / "repo")
+
+
+def _build_repo(root: Path) -> None:
     _git(root, "init", "-q", "-b", "main", ".")
     _git(root, "config", "user.email", "t@example.invalid")
     _git(root, "config", "user.name", "t")
     (root / "tracked.txt").write_text("original\n", encoding="utf-8")
     _git(root, "add", "tracked.txt")
     _git(root, "commit", "-qm", "seed")
-    return root
 
 
 @pytest.fixture

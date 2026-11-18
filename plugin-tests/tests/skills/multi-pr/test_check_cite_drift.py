@@ -31,20 +31,24 @@ def _write(path: Path, lines: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _build_chain_start(root: Path) -> None:
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "t@example.com")
+    _git(root, "config", "user.name", "t")
+    _write(root / "src" / "app.py", SRC)
+    _write(root / "src" / "other.py", ["alpha", "beta"])
+    _write(root / "src" / "stay.py", ["kept"])
+    _write(root / "setup.py", ["one", "two"])
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "start")
+
+
 @pytest.fixture
-def chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def chain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cached_git_repo):
     """A repo at its chain-start commit, with `src/app.py`, `src/other.py`,
     `src/stay.py`, a root `setup.py` and an empty change directory.
     Returns (repo, start_sha, change_dir)."""
-    _git(tmp_path, "init", "-q", "-b", "main")
-    _git(tmp_path, "config", "user.email", "t@example.com")
-    _git(tmp_path, "config", "user.name", "t")
-    _write(tmp_path / "src" / "app.py", SRC)
-    _write(tmp_path / "src" / "other.py", ["alpha", "beta"])
-    _write(tmp_path / "src" / "stay.py", ["kept"])
-    _write(tmp_path / "setup.py", ["one", "two"])
-    _git(tmp_path, "add", ".")
-    _git(tmp_path, "commit", "-q", "-m", "start")
+    cached_git_repo("check_cite_drift", _build_chain_start, tmp_path)
     change = tmp_path / "openspec" / "changes" / "later"
     change.mkdir(parents=True)
     monkeypatch.chdir(tmp_path)

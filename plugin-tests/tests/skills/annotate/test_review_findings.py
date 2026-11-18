@@ -381,7 +381,9 @@ def _serve(tmp_path, doc, corpus):
     S.Handler.doc_key, S.Handler.root = "docs/a.md", str(tmp_path)
     S.Handler.page_path, S.Handler.is_change = str(tmp_path / "p.html"), False
     srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(S.Handler, directory=str(tmp_path)))
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    # poll_interval: `shutdown()` waits for the serve loop's next poll, and the
+    # 0.5 s default added half a second to every test's teardown.
+    threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
     return srv
 
 

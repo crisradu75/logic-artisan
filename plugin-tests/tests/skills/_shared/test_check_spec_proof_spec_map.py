@@ -50,11 +50,7 @@ def _marker(spec: str, heading: str) -> str:
     return f"# requirement: {spec} / {heading}\ndef test_x():\n    pass\n"
 
 
-@pytest.fixture
-def repo(tmp_path: Path):
-    """A repo on branch main with two proven live specs, alpha and beta, and no spec map."""
-    root = tmp_path / "r"
-    root.mkdir()
+def _build_repo(root: Path) -> None:
     _git(root, "init", "-q", "-b", "main")
     _git(root, "config", "user.email", "t@example.com")
     _git(root, "config", "user.name", "t")
@@ -65,7 +61,12 @@ def repo(tmp_path: Path):
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "base")
     _git(root, "checkout", "-q", "-b", "feat")
-    return root
+
+
+@pytest.fixture
+def repo(tmp_path: Path, cached_git_repo):
+    """A repo on branch main with two proven live specs, alpha and beta, and no spec map."""
+    return cached_git_repo("check_spec_proof_spec_map", _build_repo, tmp_path / "r")
 
 
 def run(root: Path, capsys) -> tuple[int, str, str]:

@@ -18,7 +18,7 @@ def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.fixture
-def tmp_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def tmp_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cached_git_repo) -> Path:
     """Initialize a tmp git repo with a basic openspec/ skeleton and a master branch
     pointed at one initial commit. Sets identity locally so commits work.
 
@@ -27,16 +27,19 @@ def tmp_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     happens to set, so the same test measures a different branch name on two
     machines. The name itself carries no meaning here — it just has to be fixed."""
     monkeypatch.chdir(tmp_path)
-    _git("init", "-q", "-b", "master", cwd=tmp_path)
-    _git("config", "user.email", "test@example.com", cwd=tmp_path)
-    _git("config", "user.name", "Test", cwd=tmp_path)
+    return cached_git_repo("spec-to-pr/tmp_repo", _build_tmp_repo, tmp_path)
 
-    (tmp_path / "openspec" / "changes").mkdir(parents=True)
-    (tmp_path / "openspec" / "specs").mkdir(parents=True)
-    (tmp_path / "README.md").write_text("# tmp repo\n", encoding="utf-8")
-    _git("add", "README.md", cwd=tmp_path)
-    _git("commit", "-q", "-m", "initial", cwd=tmp_path)
-    return tmp_path
+
+def _build_tmp_repo(root: Path) -> None:
+    _git("init", "-q", "-b", "master", cwd=root)
+    _git("config", "user.email", "test@example.com", cwd=root)
+    _git("config", "user.name", "Test", cwd=root)
+
+    (root / "openspec" / "changes").mkdir(parents=True)
+    (root / "openspec" / "specs").mkdir(parents=True)
+    (root / "README.md").write_text("# tmp repo\n", encoding="utf-8")
+    _git("add", "README.md", cwd=root)
+    _git("commit", "-q", "-m", "initial", cwd=root)
 
 
 def make_change(repo: Path, name: str, *, with_proposal: bool = True,

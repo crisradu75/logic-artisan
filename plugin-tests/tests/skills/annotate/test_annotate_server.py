@@ -37,7 +37,9 @@ class Server:
         self.srv = ThreadingHTTPServer(
             ("127.0.0.1", 0), partial(annotate_server.Handler, directory=str(serve_dir)))
         self.port = self.srv.server_address[1]
-        self.thread = threading.Thread(target=self.srv.serve_forever, daemon=True)
+        # poll_interval: `shutdown()` waits for the serve loop's next poll, and the
+        # 0.5 s default added half a second to every test's teardown.
+        self.thread = threading.Thread(target=self.srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
         self.thread.start()
 
     def url(self, path):

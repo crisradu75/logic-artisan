@@ -48,9 +48,9 @@ which never ships.
 ## Running the tests
 
 ```bash
-pytest plugin-tests -q -n 2 --dist loadfile   # the gate
+pytest plugin-tests -q -n 4 --dist loadfile   # the gate
 pytest plugin-tests                              # serial
-pytest plugin-tests/tests/<area> -n 2 --dist loadfile    # one area while iterating
+pytest plugin-tests/tests/<area> -n 4 --dist loadfile    # one area while iterating
 openspec validate --specs --strict
 ```
 
@@ -60,8 +60,9 @@ openspec validate --specs --strict
 
 ### The parallel gate
 
-- **Use `-n 2`, never `-n auto`, and always pass `--dist loadfile`.** Two workers is the cap on
-  this machine; `-n auto` would start one per core. A `-n` without `--dist loadfile` is the trap:
+- **Use `-n 4`, never `-n auto`, and always pass `--dist loadfile`.** Four workers is the cap
+  (owner decision 2026-11-18: on 4 cores, `-n 4` ran the suite in 32s against 52s at `-n 2`);
+  `-n auto` would start one per core, however many there are. A `-n` without `--dist loadfile` is the trap:
   each annotate browser test file starts its own local server port and Chromium, and a plain `-n`
   run can split one file across workers, which then fight over the port. That suite skips without
   Playwright, so a green plain `-n` run can mean it never ran.
@@ -150,10 +151,10 @@ flake.
 
 | | run |
 |---|---|
-| Editing one skill or area | `pytest plugin-tests/tests/<area> -n 2 --dist loadfile`, **once** |
+| Editing one skill or area | `pytest plugin-tests/tests/<area> -n 4 --dist loadfile`, **once** |
 | Fixing a defect a review found | that area, and break each blocking-finding fix (and each guard-hook rewrite) by hand once; a mutation batch only when the owner asks or a guard hook is rewritten, run once after the last fix |
 | Adding a new script, skill, or hook | the five checks above, in full |
-| Before opening a PR | `pytest plugin-tests -q -n 2 --dist loadfile` and `openspec validate --specs --strict`, each once |
+| Before opening a PR | `pytest plugin-tests -q -n 4 --dist loadfile` and `openspec validate --specs --strict`, each once |
 
 ## No CI — verification is local
 

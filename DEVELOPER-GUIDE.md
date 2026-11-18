@@ -453,14 +453,14 @@ script exists.
 - **The gate is local; there is no CI, by design:**
 
   ```bash
-  pytest plugin-tests -q -n 2 --dist loadfile       # the whole suite
+  pytest plugin-tests -q -n 4 --dist loadfile       # the whole suite
   openspec validate --specs --strict                # the live specs
   ```
 
   Both green is the only gate before a PR. Watch the skip count: a skipped guard has not run (one
   pre-push permission-bit test always skips on Windows), and the skip count is how you check a
-  parallel run against a serial one. `-n 2 --dist loadfile` needs `pytest-xdist`; without it,
-  drop both flags. Use `-n 2`, never `-n auto`, always with `--dist loadfile`, and when a mutation batch is run,
+  parallel run against a serial one. `-n 4 --dist loadfile` needs `pytest-xdist`; without it,
+  drop both flags. Use `-n 4`, never `-n auto`, always with `--dist loadfile`, and when a mutation batch is run,
   run `mutate.py` serially. `CLAUDE.md` states the rules; [the evidence](docs/evidence.md#the-parallel-gate-measurements-and-the-cache-incident) has the measurements.
 
 - **The tests live outside the plugin.** `.claude/plugins/cla/` is published whole and carries only
