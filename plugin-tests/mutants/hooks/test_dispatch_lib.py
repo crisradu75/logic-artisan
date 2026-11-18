@@ -21,6 +21,12 @@ TARGETS = [
     DEV / "tests" / "hooks" / "test_dispatch_lib.py",
     DEV / "tests" / "hooks" / "test_dispatch.py",
 ]
+# `GitInvocation` (#526) is read by both git guards, so its mutants also run
+# their tests.
+GIT_TARGETS = TARGETS + [
+    DEV / "tests" / "hooks" / "test_ask_destructive_git.py",
+    DEV / "tests" / "hooks" / "test_warn_stray_scratch_artifact.py",
+]
 
 MUTANTS = [
     (
@@ -281,5 +287,131 @@ MUTANTS = [
         "    return stripped",
         '    return re.sub(r"`[^`]*`", _placeholder, stripped)',
         TARGETS,
+    ),
+    # --- GitInvocation (#526): the git global-option matcher ---------------
+    (
+        # Moved here from the ask-destructive-git batch: `GIT_CMD` is now
+        # composed once, here. Killed by the `GIT.exe` rows of the
+        # differential test and test_branch_delete_fires_on_every_executable_spelling.
+        "the git matcher anchors on a bare lowercase `git`, so git.exe / GIT "
+        "/ Git.Exe stop matching",
+        LIB,
+        "_GIT_HEAD = re.compile(GIT_CMD + GIT_SEP)",
+        '_GIT_HEAD = re.compile(r"git" + GIT_SEP)',
+        GIT_TARGETS,
+    ),
+    (
+        "`-c k=v` / `-C dir` stop taking their value, so the subcommand after "
+        "one is never reached",
+        LIB,
+        "        _GIT_OPT_VALUED,",
+        "",
+        GIT_TARGETS,
+    ),
+    (
+        "`--work-tree <path>` and its siblings stop taking a space-separated value",
+        LIB,
+        '        _GIT_OPT_NAMED + GIT_SEP + r"\\S+",',
+        "",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by the differential test: when both readings reach a
+        # subcommand the regex took the value-first one, and the tail differs.
+        "a named option is read as value-less before it is read with a value",
+        LIB,
+        '        _GIT_OPT_NAMED + GIT_SEP + r"\\S+",',
+        '        _GIT_OPT_NAMED, _GIT_OPT_NAMED + GIT_SEP + r"\\S+",',
+        GIT_TARGETS,
+    ),
+    (
+        "a bare short flag (`-p`) stops being skipped",
+        LIB,
+        "        _GIT_OPT_SHORT,",
+        "",
+        GIT_TARGETS,
+    ),
+    (
+        "the last step (long options such as `--no-pager`) is never tried",
+        LIB,
+        "if step < len(_GIT_OPT_STEPS):",
+        "if step < len(_GIT_OPT_STEPS) - 1:",
+        GIT_TARGETS,
+    ),
+    (
+        "every other step is skipped",
+        LIB,
+        "frame[1] = step + 1",
+        "frame[1] = step + 2",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by the timing tests: every split is tried again (exponential).
+        "a position already ruled out is walked again",
+        LIB,
+        "if m is not None and m.end() not in failed:",
+        "if m is not None:",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by the timing tests (exponential).
+        "a position that leads nowhere is not recorded",
+        LIB,
+        "            failed.add(pos)",
+        "            pass",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by the 28 KB timing tests: each `git` inside an option run
+        # walks the rest of it again (quadratic).
+        "each git start gets a fresh record of failed positions",
+        LIB,
+        "found = self._resolve(text, head.end(), failed)",
+        "found = self._resolve(text, head.end(), set())",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by the differential test (`git git reset ...`).
+        "after a failed start, the search skips the first character of the next token",
+        LIB,
+        "pos = head.start() + 1",
+        "pos = head.end() + 1",
+        GIT_TARGETS,
+    ),
+    (
+        # Killed by the differential test: matches overlap.
+        "after a match, the search resumes inside it",
+        LIB,
+        "            pos = m.end()",
+        "            pos = head.end()",
+        GIT_TARGETS,
+    ),
+    (
+        "the captured options group starts at `git` instead of after it",
+        LIB,
+        "spans.append((head.end(), opts_end))",
+        "spans.append((head.start(), opts_end))",
+        GIT_TARGETS,
+    ),
+    (
+        "the last group of the subcommand pattern is dropped",
+        LIB,
+        "range(1, self.after.groups + 1)",
+        "range(1, self.after.groups)",
+        GIT_TARGETS,
+    ),
+    (
+        "a group that did not take part reads as text instead of None",
+        LIB,
+        "return None if start < 0 else self.string[start:end]",
+        "return self.string[start:end]",
+        GIT_TARGETS,
+    ),
+    (
+        "search finds nothing",
+        LIB,
+        "return next(self.finditer(text), None)",
+        "return None",
+        GIT_TARGETS,
     ),
 ]

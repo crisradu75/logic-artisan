@@ -788,17 +788,17 @@ GIT_GLOBAL_OPTS = (
 )
 
 # One step of `GIT_GLOBAL_OPTS`: one option and its trailing separator, in the
-# order the regex engine tries them — the four alternatives in turn, and the
-# named option's optional value as `=value`, then ` value`, then none. Each
-# step has one useful end: a shorter `\S+` or separator leaves the next item
-# starting on a character no option and no subcommand can start with.
+# order the regex engine tries them. Each step has one useful end: a shorter
+# `\S+` or separator leaves the next item starting on a character no option and
+# no subcommand can start with. The named option's `=value` and value-less
+# forms are left to the long-option step, which reads them to the same end with
+# only failing steps tried in between; the regex reading `--git-dir=x` both
+# ways is what made a run of them exponential.
 _GIT_OPT_STEPS = tuple(
     re.compile(shape + GIT_SEP)
     for shape in (
         _GIT_OPT_VALUED,
-        _GIT_OPT_NAMED + r"=\S+",
         _GIT_OPT_NAMED + GIT_SEP + r"\S+",
-        _GIT_OPT_NAMED,
         _GIT_OPT_SHORT,
         _GIT_OPT_LONG,
     )
