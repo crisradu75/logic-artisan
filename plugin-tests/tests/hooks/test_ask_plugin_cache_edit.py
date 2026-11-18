@@ -262,11 +262,25 @@ def test_a_plugin_root_equal_to_the_plugins_root_does_not_widen_the_rule(home, m
     _silent(monkeypatch, _payload(_plugins(home) / "data" / "cla-mkt" / "state.json"))
 
 
-def test_a_symlinked_plugin_root_into_the_cache_asks(home, tmp_path, monkeypatch, make_dir_alias):
+def test_a_symlinked_plugin_root_is_resolved_before_it_is_placed(home, tmp_path, monkeypatch, make_dir_alias):
+    # Aimed at `synced/`, outside the two subtrees, so only the plugin-root rule
+    # can ask, and it has to see where the alias really leads.
+    synced = _plugins(home) / "synced" / "abc"
+    synced.mkdir(parents=True)
     alias = tmp_path / "root-alias"
-    make_dir_alias(alias, _version(home))
+    make_dir_alias(alias, synced)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(alias))
     _asks(monkeypatch, _payload(alias / "x.md"))
+
+
+def test_a_plugin_root_under_any_one_plugins_root_counts(home, tmp_path, monkeypatch):
+    # Below the CLAUDE_CONFIG_DIR root but not the default one: one is enough.
+    config = tmp_path / "work-config"
+    synced = config / "plugins" / "synced" / "abc"
+    synced.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(synced))
+    _asks(monkeypatch, _payload(synced / "x.md"))
 
 
 # --------------------------------------------------------------------------- #
@@ -325,6 +339,11 @@ def test_a_tilde_in_the_config_dir_is_expanded(home, monkeypatch):
 )
 def test_malformed_input_fails_open_silently(home, monkeypatch, raw):
     _silent(monkeypatch, raw)
+
+
+def test_an_empty_file_path_is_not_read_as_the_cwd(home, monkeypatch):
+    # Joined to a cwd inside the cache, "" would otherwise name the cache itself.
+    _silent(monkeypatch, {"tool_input": {"file_path": ""}, "cwd": str(_version(home))})
 
 
 def test_a_cache_path_with_a_bad_cwd_still_asks(home, monkeypatch):
