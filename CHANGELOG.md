@@ -20,6 +20,12 @@ the skills fall back to the default list of protected areas.
 
 ### Added
 
+- **A `ship_check.py` script** replaces the git command lists that Ship, Revise, Archive, `lite-pr`,
+  `multi-spec` and `multi-lite` compared by eye: `preflight` before a branch is made (no local,
+  remote-tracking or remote branch of that name, no commits to lose on a rename, never a rename of the
+  default branch, a stacked parent on the remote), `pushed` after a push (the branch, `HEAD` against the remote, the configured upstream; `push
+  not verified` otherwise) and `trailers` before a push (`Measured-by:` lines against git's parsed
+  trailers). Exit 0 passes, 1 is a problem, 2 means it could not check and is never a pass (#530).
 - **An `ask-plugin-cache-edit` guard hook:** an Edit or Write inside an installed plugin copy (the
   `cache/` or `marketplaces/` part of `~/.claude/plugins`, wherever `CLAUDE_CONFIG_DIR` or
   `CLAUDE_CODE_PLUGIN_CACHE_DIR` puts it, resolved through symlinks and `..`) asks first: the edit

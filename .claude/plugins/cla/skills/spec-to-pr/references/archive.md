@@ -60,14 +60,12 @@ git push
 
 A path you missed is added alone (never `openspec/`, never `-A`), then the two-sided check runs again: a bare `openspec/` after the check re-sweeps the siblings it exists to catch.
 
-**Push post-check (required).** A 0-exit push is not enough: a `pre-push` hook can skip the commit and exit 0, the run can drift onto another branch, a detached HEAD can push to a non-PR ref. Each as a separate Bash call (no pipes or `$(...)`):
+**Push post-check (required).** A 0-exit push is not enough: a `pre-push` hook can skip the commit and exit 0, the run can drift onto another branch, a detached HEAD can push to a non-PR ref. Each as a separate Bash call:
 ```
-git rev-parse --abbrev-ref HEAD       # must equal <branch>
-git rev-parse HEAD                    # capture this sha
-git rev-parse @{u}                    # must equal the captured HEAD sha
-gh pr view <#> --json commits         # the captured HEAD sha must appear in the returned commits[]
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" pushed --branch <branch>
+gh pr view <#> --json commits
 ```
-Compare the values in your own context. Any failing → Archive `⚠ proceeded with issues`, captured for Handoff, and a prominent warning in the report: "archive commit DID NOT REACH the PR — merging the PR will not include the archive". Never mark Archive `✓` on the local file moves or a 0-exit push alone.
+The script must exit 0: it checks that the current branch is `<branch>`, that `HEAD` equals the remote's `refs/heads/<branch>`, and that the branch's configured upstream is that branch on `origin`, and its first line names that sha. The sha must appear in the returned `commits[]`, compared in your own context: a commit on the remote branch is not yet proof it is in this PR. Any failing → Archive `⚠ proceeded with issues`, captured for Handoff, and a prominent warning in the report: "archive commit DID NOT REACH the PR — merging the PR will not include the archive". Never mark Archive `✓` on the local file moves or a 0-exit push alone.
 
 ## 4. No re-review
 

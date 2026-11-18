@@ -4,26 +4,19 @@ The Ship phase's procedure. **Run inline**: stage, commit, push and open the PR 
 
 ## 1. Branch preflight
 
-**With `--pr-base <branch>` passed** (a stacked chain), read every `<base-branch>` in this preflight as `<pr-base>`. The parent must exist on the remote: `git rev-parse --abbrev-ref <pr-base>@{u}` succeeding confirms it. No upstream → STOP and surface it; a child branched off an unpushed parent opens a PR whose base does not resolve. Step 4 then passes `--base <pr-base>`.
+**With `--pr-base <branch>` passed** (a stacked chain), add `--pr-base <pr-base>` to the call below and keep `--base <base-branch>` as the repo's default branch: the script needs both, and passing `<pr-base>` as `--base` would let it approve renaming the default branch. Everywhere else in this preflight, read `<base-branch>` as `<pr-base>`. The parent must exist on the remote: a child branched off an unpushed parent opens a PR whose base does not resolve. Step 4 then passes `--base <pr-base>`.
 
-Determine the current branch — `git rev-parse --abbrev-ref HEAD` — and dispatch on it:
+One call checks the branch before it is made:
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" preflight --branch <branch> --base <base-branch>
+```
+It reads the current branch and names the mode on its first line. `create` (on the branch the change is cut from: `<pr-base>` when stacked, else `<base-branch>`) and `rename` (any other branch) require `<branch>` to be absent locally, as a remote-tracking ref, and on the remote by exact name. `rename` also fetches the cut-from branch: `origin/<base-branch>..HEAD` must hold 0 commits — no commits to lose — and it refuses to rename the repo's default branch or `<pr-base>` themselves. With `--pr-base`, every mode also requires `<pr-base>` to have an upstream on a remote that has that branch. Exit 0 passes, 1 is a `PROBLEM` line per failure, 2 means a check could not run. Act on it, first match wins:
 
-- **Already on `<branch>`** (typically a worktree made for a concurrent run) → **skip the collision check and the checkout; stage directly.** The collision check would false-positive on the branch you are on and wrongly `skip` Ship, Revise and Archive.
-- **On `<base-branch>`** → collision preflight, then create the branch:
-  ```
-  git rev-parse --verify --quiet refs/heads/<branch>          # must be EMPTY
-  git ls-remote --exit-code --heads origin <branch>           # exit 2 = absent, which is what you want
-  ```
-  Either finds the branch → it exists and you are not on it: `warn`, name `<branch>-<today's date>` as the name to rerun with, and **Ship, Revise and Archive all become `skip`** (no PR will open). `ls-remote` exiting anything other than 0 or 2 → the remote could not answer (network, auth, no `origin`): never create the branch on an unanswered question — `warn` and skip Ship, Revise and Archive the same way.
-  Both clean → `git pull` (so the branch is not cut from a `<base-branch>` gone stale since this session's last fetch), then `git checkout -b <branch>`.
-- **Any other branch** → fail loudly. **One exception — a fresh `/cla:new-worktree` branch with nothing on it yet:** rename it in place once all of these pass:
-  ```
-  git fetch origin <base-branch>
-  git rev-list --count origin/<base-branch>..HEAD        # must be 0 — no commits to lose
-  git rev-parse --verify --quiet refs/remotes/origin/<branch>   # must be EMPTY — no remote branch to collide with
-  git rev-parse --verify --quiet refs/heads/<branch>            # must be EMPTY — no local branch either
-  ```
-  All clean → `git branch -m <branch>` and continue as "already on `<branch>`". Any failing → fail loudly; a non-zero count would carry unrelated commits into this PR.
+- **Exit 2, any mode** → the remote could not answer (network, auth, no `origin`) or git could not run: never create the branch on an unanswered question — `warn`, and **Ship, Revise and Archive all become `skip`** (no PR will open).
+- **Exit 1 with a `no-upstream`, `upstream-missing` or `upstream-not-remote` line** (`--pr-base` only), whatever else it lists → STOP and surface it: the parent is not on the remote.
+- **`OK preflight on-branch`** (typically a worktree made for a concurrent run) → skip the checkout; stage directly. The collision check is skipped here: it would false-positive on the branch you are on and wrongly `skip` Ship, Revise and Archive.
+- **`preflight create`**: exit 0 → `git pull` (so the branch is not cut from a `<base-branch>` gone stale since this session's last fetch), then `git checkout -b <branch>`. Exit 1 → the branch exists and you are not on it: `warn`, name `<branch>-<today's date>` as the name to rerun with, and Ship, Revise and Archive become `skip` the same way. If the only line is `remote-tracking`, the branch may be gone from the remote and its ref stale: say so, and name `git fetch --prune origin` as the fix before a rerun.
+- **`preflight rename`**: only a fresh `/cla:new-worktree` branch with nothing on it yet may go on. Exit 0 → `git branch -m <branch>` and continue as on-branch. Exit 1 → fail loudly; a non-zero count would carry unrelated commits into this PR, and an `on-base` line means the run sits on the default branch or the parent, which is never renamed.
 
 **Branch name.** Use `<branch>`. A change name long enough to read awkwardly in `git log --oneline` (somewhere past 50 characters; judgment, not a rule) may be shortened to a form that keeps a recognizable hint of the change. Do not pause to confirm a branch name.
 
@@ -75,25 +68,23 @@ Claude-Session: <session URL>"
 
 One `-m` per trailer would split them into separate paragraphs. Omit the second `-m` when the change asserts no measurement. **Git parses trailers from the last paragraph only, and every line in it must be `key: value`.** One line without that shape, or a blank line, drops every trailer — the usual offender is a bare `Closes #199`: write `Closes: #199`, or put it (and any body) in its own paragraph above the trailers.
 
-**Check that it parsed, before you push.** These must agree:
+**Check that it parsed, before you push.** The `Measured-by:` lines you wrote and the trailers git's parser sees must agree:
 
 ```
-git log -1 --format=%B | grep -c '^Measured-by:'
-git log -1 --format='%(trailers:key=Measured-by,valueonly=true,unfold=true)' | grep -c .
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" trailers
 ```
 
-The first counts what you wrote, the second what git's parser sees. Equal passes, `0` and `0` included. Different means the block is split: `git commit --amend` before pushing. Nothing else reports it — `git log --grep` still finds a broken block.
+Exit 0 passes, `0` and `0` included. Exit 1 means the block is split: `git commit --amend` before pushing. Exit 2 means it could not read the commit: fix that before pushing. Nothing else reports a split block — `git log --grep` still finds it.
 
 **Run the push with `run_in_background`, once the trailer check above agrees.** The `git push` line in the block at the top of this step is that push. A pre-push hook can run for minutes. The harness moves a foreground Bash call past 120 s to the background, and that call returns no exit code. Wait for the completion notice, then read the exit code.
 
-**Then check the remote head.** Compare, each value read in context (not piped through `grep`/`awk`):
+**Then check the remote head**, once the push has exited 0:
 
 ```
-git rev-parse HEAD
-git ls-remote origin <branch>
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" pushed --branch <branch>
 ```
 
-They must be equal. Different, non-zero, or no exit code: report `push not verified` and STOP before step 4. Do not retry the push blindly; a rejected or half-run hook needs a look first.
+It requires the current branch to be `<branch>`, `HEAD` to equal the remote's `refs/heads/<branch>`, and the branch's configured upstream to be that branch on `origin`. The push exiting non-zero or with no exit code, or this check exiting anything but 0: report `push not verified` and STOP before step 4. Do not retry the push blindly; a rejected or half-run hook needs a look first.
 
 ## 4. Open the PR
 

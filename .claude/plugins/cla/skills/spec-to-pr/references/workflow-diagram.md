@@ -56,7 +56,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
                        │
             ┌──────────┴──────────┐
             │  SHIP               │   collision preflight (collision → skip phase)
-            │  rev-parse+ls-remote│
+            │  ship_check.py      │
             │       ↓             │
             │  inline git +       │   subject-only commit, single-line PR body
             │  gh pr create       │   post-check: gh pr view --json url state
