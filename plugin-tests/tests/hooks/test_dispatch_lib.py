@@ -415,9 +415,15 @@ def test_git_hooks_import_the_shared_pattern_instead_of_re_inlining_it(filename)
     # one copy no longer has to be fixed in four. A behavioral test can't catch
     # someone pasting a CORRECT duplicate back in — which silently re-creates
     # the drift this consolidation removed — so assert the structure directly.
+    # Since #526 the shared matcher is `GitInvocation`, which walks the same
+    # grammar in linear time; a hook composing `GIT_GLOBAL_OPTS` into its own
+    # regex brings back the quadratic (and exponential) search it replaced.
     source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
-    assert "from _dispatch_lib import GIT_GLOBAL_OPTS" in source, (
-        f"{filename} must import the shared pattern, not define its own"
+    assert "from _dispatch_lib import GitInvocation" in source, (
+        f"{filename} must import the shared matcher, not define its own"
+    )
+    assert not re.search(r"^from _dispatch_lib import GIT_GLOBAL_OPTS", source, re.MULTILINE), (
+        f"{filename} composes GIT_GLOBAL_OPTS into a regex again; use GitInvocation"
     )
     assert not re.search(r"^_G\s*=\s*r?['\"]\(\?:", source, re.MULTILINE), (
         f"{filename} appears to re-inline a local _G pattern literal"
@@ -888,7 +894,7 @@ def test_every_git_guard_uses_the_shared_constant():
         )
         if re.search(r"""r['"]\\bgit""", body):
             reanchored.append(f.name)
-        elif f.name in _GIT_HOOK_FILES and "GIT_CMD" not in body:
+        elif f.name in _GIT_HOOK_FILES and not re.search(r"\b(?:GIT_CMD|GitInvocation)\b", body):
             unimported.append(f.name)
     assert not reanchored, (
         f"re-anchor on the bare pattern instead of GIT_CMD: {reanchored}"
@@ -931,8 +937,8 @@ def test_every_git_global_opts_consumer_strips_quoted_spans(filename):
     restating a count in prose; a count was already wrong once.)
     """
     source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
-    if "GIT_GLOBAL_OPTS" not in source:
-        pytest.skip(f"{filename} does not consume GIT_GLOBAL_OPTS")
+    if "GitInvocation" not in source and "GIT_GLOBAL_OPTS" not in source:
+        pytest.skip(f"{filename} does not match git global options")
     assert re.search(
         r"^from _dispatch_lib import [^\n]*\bstrip_quoted_spans\b", source, re.MULTILINE
     ), (
