@@ -21,8 +21,7 @@ Many of the 146 hook and script rules restate one mechanism, so they reduce to t
 
 ## Status (2026-11-18)
 
-- Built: checks 1 (#527), 2 (#531), 3 (#530), 4 (#529), 5 (#534), 10 (#535), 11 (#537), plus the rebase/switch gap (#539).
-- In progress: checks 7 and 8.
+- Built: checks 1 (#527), 2 (#531), 3 (#530), 4 (#529), 5 (#534), 7 (#542), 8 (#540), 10 (#535), 11 (#537), plus the rebase/switch gap (#539).
 - Check 9 closed by the owner: largest remaining check, lowest value per hour; its rules stay in prose.
 - Checks 6 and 12 skipped: high false-positive risk, and low value.
 
@@ -47,7 +46,7 @@ The rule counts are rough: the three lists overlap and were merged by hand.
 
 ## Gaps in what is enforced today
 
-- `ask-destructive-git` does not cover a plain `git rebase`, or a `git switch <branch>` that would carry uncommitted work.
+- ~~`ask-destructive-git` does not cover a plain `git rebase`, or a `git switch <branch>` that would carry uncommitted work.~~ Closed by #539.
 - `warn-stray-scratch-artifact` only warns.
 - The 17 `repo-test` rules (for example the annotate server never writing the document, and the temp-dir isolation) hold in this repo's tests and nowhere in a consumer repo. That is fine where the rule is about the plugin's own code, which the tests do exercise.
 
