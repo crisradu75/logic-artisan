@@ -20,6 +20,13 @@ the skills fall back to the default list of protected areas.
 
 ### Added
 
+- **An `ask-secret-in-checkpoint` guard hook:** an Edit or Write under `cla.io/checkpoints/`,
+  `cla.io/decisions/`, `cla.io/feedback/` or `cla.io/lessons-learned/` asks first when its new text
+  holds a secret-shaped string: an AWS, GitHub, Anthropic, OpenAI, Slack, Google or Stripe live key,
+  a `PRIVATE KEY` header, a JWT, or a `scheme://user:password@host` URL whose password is not a
+  placeholder. The ask names the kind and the line, never the value, and points at the checkpoint
+  rule: name the file, not its value. Bad input fails open; if the hook itself fails to load, every
+  Edit and Write asks (#PR).
 - **A `setup_guard.py` script** checks that `/cla:cla-setup` left alone the files it promises to:
   `snapshot` records them before the run writes anything, and `verify` at the end reports each
   instruction file, settings file, rules file of the repo's own, existing `notes.md`, `*.local.md`
