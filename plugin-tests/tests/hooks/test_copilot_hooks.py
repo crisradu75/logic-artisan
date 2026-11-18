@@ -917,15 +917,30 @@ def test_copilot_pretooluse_stays_quiet_when_the_branch_is_kept(tmp_path):
 
 
 def test_copilot_pretooluse_warns_about_a_stray_scratch_file_before_git_add(tmp_path):
+    # A named path, so only the stray-file warning speaks: a broad `git add .`
+    # over the same untracked file also draws ask-broad-git-add's prompt.
     repo = _make_repo(tmp_path / "repo")
     (repo / "AppData_dump.txt").write_text("junk\n", encoding="utf-8")
-    _warned(_bash(tmp_path, "git add .", cwd=repo), "AppData_dump.txt")
+    _warned(_bash(tmp_path, "git add README.md", cwd=repo), "AppData_dump.txt")
 
 
 def test_copilot_pretooluse_allows_git_add_without_a_stray_file(tmp_path):
     repo = _make_repo(tmp_path / "repo")
     (repo / "notes.md").write_text("real work\n", encoding="utf-8")
-    _silent(_bash(tmp_path, "git add .", cwd=repo))
+    _silent(_bash(tmp_path, "git add notes.md", cwd=repo))
+
+
+def test_copilot_pretooluse_asks_before_a_broad_add_sweeps_an_untracked_file(tmp_path):
+    # The best-effort ask reaches Copilot as an ask, not a deny: its reason
+    # carries none of the adapter's "a guard did not run" phrases.
+    repo = _make_repo(tmp_path / "repo")
+    (repo / "notes.md").write_text("real work\n", encoding="utf-8")
+    result = _bash(tmp_path, "git add -A", cwd=repo)
+    assert result.returncode == 0, result.stderr
+    decision = json.loads(result.stdout)
+    assert decision["permissionDecision"] == "ask", decision
+    assert "notes.md" in decision["permissionDecisionReason"]
+    assert "ask-broad-git-add.py" in decision["permissionDecisionReason"]
 
 
 def test_copilot_pretooluse_warns_when_a_heredoc_would_eat_an_escape(tmp_path):

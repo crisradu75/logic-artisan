@@ -9,10 +9,10 @@ hooks, so a force-push, a push straight to main, or a wrong-identity commit
 issued through it bypassed every git guard in the tree.
 
 Runs block-cd-in-bash, ask-destructive-git, block-unsafe-recursive-delete,
-warn-stacked-pr-merge, warn-stray-scratch-artifact, and
-warn-heredoc-escape-mangling in ONE Python process instead of six, reading the
+ask-broad-git-add, warn-stacked-pr-merge, warn-stray-scratch-artifact, and
+warn-heredoc-escape-mangling in ONE Python process instead of seven, reading the
 tool-call JSON from stdin once and handing it to each in turn via
-`_dispatch_lib`. Cuts per-Bash-call hook overhead from 6 interpreter spawns to
+`_dispatch_lib`. Cuts per-Bash-call hook overhead from 7 interpreter spawns to
 1 — commonly cited as ~100-200ms of process-start cost each on Windows, though
 not independently benchmarked for this repo.
 
@@ -51,8 +51,8 @@ asks before any guard runs.
   - If a hook failed to load or crashed, that's isolated to just that hook
     (the rest still run — see `_dispatch_lib.run_hook_file`) and the failure is
     reported as additionalContext, where it arrives whole.
-  - If too little handler budget remains for an ADVISORY hook's own worst case,
-    it is skipped and named in the DEBUG LOG — not in context. That skip is the
+  - If too little handler budget remains for an ADVISORY or BEST-EFFORT hook's
+    own worst case, it is skipped and named in the DEBUG LOG — not in context. That skip is the
     mechanism working as designed (advisory means the loss is acceptable), and
     routine notices on the session's hottest path train the channel to be
     ignored. Enforcing hooks are never skipped at all: a late block still
@@ -100,6 +100,7 @@ _HOOK_FILES = [
     "block-cd-in-bash.py",
     "ask-destructive-git.py",
     "block-unsafe-recursive-delete.py",
+    "ask-broad-git-add.py",
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",
     "warn-heredoc-escape-mangling.py",
@@ -112,12 +113,31 @@ _HOOK_FILES = [
 # ordered ahead of these three in `_HOOK_FILES`, so budget pressure costs warnings
 # before it can cost enforcement. Note the ask hook is why the wiring test cannot
 # key on `return 2` alone: skipping it would silently downgrade an ask to an
-# allow, an enforcement loss no exit code would reveal.
+# allow, an enforcement loss no exit code would reveal. The one named exception
+# is `_BEST_EFFORT_HOOKS` below.
 _ADVISORY_HOOKS = frozenset({
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",
     "warn-heredoc-escape-mangling.py",
 })
+
+# Hooks that CAN escalate to an ask but are best-effort by their own design: each
+# allows the call silently whenever its check cannot run (no git, a git timeout,
+# an error). Skipping one under budget pressure is therefore the same outcome as
+# its own probe timing out, so the dispatcher treats it like an advisory hook for
+# the budget and for a load failure (reported as context, not escalated), while
+# re-emitting its ask like any other. Kept apart from `_ADVISORY_HOOKS` so the
+# wiring test's "no outcome-changing hook is advisory" rule still holds for every
+# hook not named here, and ordered ahead of the advisory hooks so warnings are
+# what budget pressure costs first.
+#
+# `ask-broad-git-add.py` is here because the enforcing hooks above already spend
+# the whole budget (`HOOK_WORST_CASE_SECONDS`), so it cannot be enforcing without
+# raising the handler timeout for every consuming repo.
+_BEST_EFFORT_HOOKS = frozenset({
+    "ask-broad-git-add.py",
+})
+_SKIPPABLE_HOOKS = _ADVISORY_HOOKS | _BEST_EFFORT_HOOKS
 
 
 def _extract_ask(stdout_text: str) -> str | None:
@@ -186,7 +206,7 @@ def main() -> int:
 
     for filename in _HOOK_FILES:
         cost = HOOK_WORST_CASE_SECONDS.get(filename, 0.0)
-        if filename in _ADVISORY_HOOKS and not deadline.has_room(cost):
+        if filename in _SKIPPABLE_HOOKS and not deadline.has_room(cost):
             skipped.append(filename)
             continue
 
@@ -196,7 +216,7 @@ def main() -> int:
         # the outside that is indistinguishable from one that ran and allowed.
         # Tracked separately from `errored` so the escalation below fires only
         # for guards whose absence actually matters.
-        if result.errored and filename not in _ADVISORY_HOOKS:
+        if result.errored and filename not in _SKIPPABLE_HOOKS:
             errored_enforcing.append(filename)
 
         # Precedence is deny > ask > allow, matching the documented permission
@@ -233,8 +253,9 @@ def main() -> int:
     if skipped:
         print(
             "[dispatch] too little handler budget remained for these advisory "
-            f"hooks, so they were skipped: {', '.join(skipped)}. Every blocking "
-            "guard still ran — only warnings were lost.",
+            f"or best-effort hooks, so they were skipped: {', '.join(skipped)}. "
+            "Every enforcing guard still ran — only warnings and best-effort "
+            "checks were lost.",
             file=sys.stderr,
         )
     if errored:
