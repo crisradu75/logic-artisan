@@ -114,7 +114,7 @@ In a repo with `openspec/` and no `Test proof granularity` line in `cla.io/proje
 
 ### Requirement: Setup checks that its protected files were left alone
 
-`/cla:cla-setup` SHALL record the repo's instruction files, an existing feedback notes file, the machine-read local files, the terminology file and the overlays before it writes anything, and at the end SHALL report the run as not clean, naming each file, when one of them was changed, created or deleted without the user's yes, or SHALL say the check could not run.
+`/cla:cla-setup` SHALL record the repo's instruction files, Claude Code settings and own rules files, an existing feedback notes file, the machine-read local files, the terminology file and the overlays before it writes anything, and at the end SHALL report the run as not clean, naming each file, when one of them was changed, created or deleted without the user's yes, or SHALL say the check could not run.
 
 #### Scenario: An instruction file changed during the run
 
@@ -129,7 +129,7 @@ In a repo with `openspec/` and no `Test proof granularity` line in `cla.io/proje
 #### Scenario: A file already edited before the run
 
 - **WHEN** the owner had uncommitted edits in `CLAUDE.md` before the run and the run left it as it found it
-- **THEN** `verify` exits 0, and a missing or corrupt snapshot makes it exit 2, never 0
+- **THEN** `verify` exits 0, and a missing, corrupt or stale snapshot makes it exit 2, never 0
 
 ### Requirement: Setup creates no overlay and no terminology file
 

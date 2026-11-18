@@ -53,10 +53,14 @@ If this errors (not inside a git working tree), stop and tell the user to run fr
 ## Snapshot the protected files, before any write
 
 The first step of every run, before item 1. `setup_guard.py` records the files this skill promises to
-leave alone: the instruction files (`CLAUDE.md`, `AGENTS.md`), an existing `notes.md`, the machine-read
-`*.local.md` files, the terminology file and the overlays. Write the snapshot to a file in the
-session scratchpad; with none, in a folder the repo gitignores (run `git check-ignore -q` on it
-first), never elsewhere in the repo. The script refuses a path in the repo that git does not ignore.
+leave alone: the instruction files (`CLAUDE.md`, `AGENTS.md`, `CLAUDE.local.md`), the settings files
+(`.claude/settings*.json`), the repo's own `.claude/rules/*.md`, an existing `notes.md`, the
+machine-read `*.local.md` files, the terminology file and the overlays. Write the snapshot to a new
+file in the session scratchpad. With no scratchpad, use a folder the repo gitignores (run
+`git check-ignore -q` on it first); with neither, a `mktemp` file in the system temp folder
+(`mktemp "${TMPDIR:-/tmp}/cla-setup-snapshot.XXXXXX"`, passed as a native path with `cygpath -w` in
+Git Bash on Windows). Write it nowhere else: the script refuses a path in the repo that git does
+not ignore, a path inside `.git/`, and an existing file that is neither empty nor an earlier snapshot.
 
 ```bash
 : "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
@@ -277,21 +281,25 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/setup_guard.py" verify -
 Pass one `--approved <path>` for each protected file the user said yes to changing in this run, and
 for no other: a `*.local.md` file an accepted item 12 addition wrote, `cla.io/terminology.md` after
 an accepted item 11 reconcile, and each overlay edited or deleted at item 13. A yes never covers an
-instruction file, an existing `notes.md`, a new overlay or a new terminology file: the script
-reports those whatever `--approved` says.
+instruction file, a settings file, a rules file of the repo's own, an existing `notes.md`, a new
+overlay or a new terminology file: the script reports those whatever `--approved` says.
 
 - Exit 0: report its first line, which names each approved change.
-- Exit 1: the run is not clean. Report the first line and every `PROBLEM` line (each names the file
-  and whether it was changed, created or deleted), never call the run clean, and stop there: leave
-  the files as they are for the user to judge.
-- Exit 2: say the check could not run, with its first line, and never treat that exit as a pass.
+- Exit 1: the run is not clean. Report the first line and every line after it: each `PROBLEM` line
+  (it names the file and whether it was changed, created or deleted) and each `UNCHECKED` line (a
+  file it could not read); never call the run clean, and stop there: leave the files as they are
+  for the user to judge.
+- Exit 2: say the check could not run, with its first line and every line after it,
+  and never treat that exit as a pass.
+
+Then delete the snapshot file, whatever the exit: `rm -f -- "<snapshot file>"`.
 
 ## Report
 
 One summary at the end, item by item: each target's outcome in the words its item uses, each
 overlay's lines and where they went (kept, facts file, lessons log, dropped), every declined
 proposal, the checker's exit code with every stale path it named, every legacy-location
-recommendation, and the post-run check's first line with every `PROBLEM` line it printed.
+recommendation, and the post-run check's first line with every line after it.
 
 ## Non-goals
 

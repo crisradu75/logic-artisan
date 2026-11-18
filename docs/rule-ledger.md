@@ -725,7 +725,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | out of the always-loaded skill listing
 - keep | shipped to other repos | 2.0.0 (016203d7), cla-setup replaces cla-init; plugin is a read-only cache | arrives with the install and is never touched
 - keep | user's files | never-clobber from cla-init (pre-extract); restated in #498 | The never-clobber contract below applies to every step
-- keep | user's files | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; the snapshot is scratch, never repo content | first), never elsewhere in the repo. The script refuses
 - not-a-rule | - | - | ## Never-clobber contract
 - keep | user's files | 2.0.0 (016203d7), cla-setup never-clobber contract | via a guarded idiom, never a bare redirect
 - keep | user's files | 2.0.0 (016203d7), a bare redirect truncates an existing file | ALWAYS guard with `if [ -e "$f" ]`

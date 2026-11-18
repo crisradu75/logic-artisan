@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Check that /cla:cla-setup left alone the files it promises to leave alone.
 
-cla-setup promises, in prose, that a run leaves the repo's instruction files byte-identical, always
-skips an existing feedback ``notes.md``, never reshapes a machine-read ``*.local.md`` file, never
-creates the terminology file or an overlay, and changes an existing terminology file, local file or
-overlay only on the owner's yes. Nothing checked those promises. This script records the files at
-the start of a run and compares them at the end::
+cla-setup promises, in prose, that a run leaves the repo's instruction files byte-identical, never
+touches the Claude Code settings or the repo's own rules files, always skips an existing feedback
+``notes.md``, never reshapes a machine-read ``*.local.md`` file, never creates the terminology file
+or an overlay, and changes an existing terminology file, local file or overlay only on the owner's
+yes. Nothing checked those promises. This script records the files at the start of a run and
+compares them at the end::
 
     python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/setup_guard.py" snapshot --out <file> [--root <dir>]
     python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/setup_guard.py" verify --snapshot <file> [--approved <path> ...] [--root <dir>]
@@ -16,16 +17,24 @@ on its top level.
 WHY A SNAPSHOT AND NOT GIT. ``git diff`` and ``git status`` compare with the last commit, not with
 the start of the run, so they cannot tell three cases apart: a protected file the owner had already
 edited before the run (git shows it changed whether or not the run touched it), a gitignored file
-(``cla.io/fleet.local.md`` is usually ignored, so git shows nothing whatever the run did) and an
-untracked overlay that existed before the run (``??`` either way). The snapshot hashes the files on
-disk, so it sees each of those. Git is used only to find the checkout's top level, nested
-instruction files git can see, and whether ``--out`` is ignored.
+(``cla.io/fleet.local.md`` and ``CLAUDE.local.md`` are usually ignored, so git shows nothing
+whatever the run did) and an untracked overlay that existed before the run (``??`` either way). The
+snapshot hashes the files on disk, so it sees each of those. Git is used only to find the
+checkout's top level and git directories, ``HEAD``, nested instruction files git can see, and
+whether ``--out`` is ignored.
 
 PROTECTED PATHS (repo-relative) and what may happen to each during a run:
-  instruction files  ``CLAUDE.md``, ``AGENTS.md``, ``CLAUDE.local.md`` and ``.claude/CLAUDE.md`` at
-                     the root, plus any file of the first three names deeper in the tree that git
-                     tracks or sees as untracked. No change, creation or deletion; ``--approved``
-                     does not cover them, since the skill never asks to touch them.
+  instruction files  ``CLAUDE.md``, ``AGENTS.md`` and ``CLAUDE.local.md`` at the root and in
+                     ``.claude/``, recorded even when absent or gitignored, plus any root or
+                     ``.claude/`` file whose name matches one of them in another letter case (a
+                     lowercase ``claude.md`` on Linux), plus any file of exactly those names deeper
+                     in the tree that git tracks or sees as untracked. No change, creation or
+                     deletion; ``--approved`` does not cover them, since the skill never touches them.
+  settings           ``.claude/settings*.json`` and ``.claude-plugin/plugin.json`` (a non-goal of
+                     the skill). Same as instruction files.
+  rules files        every ``*.md`` under ``.claude/rules/`` except ``cla-economy.md``, which the
+                     skill owns and replaces. Same as instruction files: the skill writes repo
+                     content only under ``cla.io/`` and the spec map path.
   feedback notes     ``cla.io/feedback/notes.md``. Created when absent (item 3's seed); an existing
                      one is never changed or deleted, approved or not.
   local files        every ``*.local.md`` under ``cla.io/``. Any change, creation or deletion needs
@@ -35,22 +44,35 @@ PROTECTED PATHS (repo-relative) and what may happen to each during a run:
   overlays           ``cla.io/overlays/*.md`` other than ``*.local.md``. Never created, approved or
                      not; a change or deletion needs ``--approved`` (item 13 edits or deletes one on
                      a yes).
+A gitignored instruction file deeper than ``.claude/`` is not found, so not checked.
 
-SNAPSHOT FILE. JSON: ``{"version": 1, "root": <absolute top level>, "files": {<path>: <sha256 hex>
-or null}, "overlays": [<path>, ...]}``. ``null`` means absent. ``--out`` must not be inside the
-checkout unless git ignores it, and must not be a protected path.
+SNAPSHOT FILE. JSON: ``{"version": 1, "root": <absolute top level>, "created": <unix seconds>,
+"head": <HEAD commit or null when the branch has none>, "files": {<path>: <sha256 hex, a
+"not-a-file:..." marker, or null>}}``. ``null`` means absent. The overlays present at the start are
+the overlay keys whose value is not ``null``. ``snapshot`` refuses (exit 2) an ``--out`` inside a
+git directory, inside the checkout unless git ignores it, at a protected path, at a directory, or at
+an existing file that is neither empty nor a setup snapshot; it writes through a new temporary file
+in the same folder and moves it into place, so it never overwrites any other file.
+
+STALE SNAPSHOT. ``verify`` exits 2, never 0 or 1, when the snapshot was taken more than
+``MAX_AGE_HOURS`` ago or more than ``FUTURE_SKEW_SECONDS`` in the future, or when ``HEAD`` has
+moved since to a commit that does not descend from the recorded one (a branch switch or a reset
+changes files the run never touched), or when the branch had a commit and now has none. A commit
+that descends from the recorded one passes: the comparison is of the files on disk, not of commits.
 
 OUTPUT. The first line is the verdict, and its first word is ``OK``, ``FAIL`` or ``UNCHECKED``.
 Each later line is one finding: ``PROBLEM <kind>: <path> (<why>)``, where the kind is ``changed``,
 ``created`` or ``deleted``, or ``UNCHECKED <kind>: <detail>``. Callers read the exit code and the
-first line; keep both stable. A passing ``verify`` names each approved change on its first line.
+first line, and report every later line; keep all three stable. A passing ``verify`` names each
+approved change on its first line.
 
 EXIT CODES (both subcommands):
   0 = every check ran and passed
   1 = a protected file changed without the owner's yes, or an overlay or the terminology file was
-      created (``PROBLEM`` lines say which); a found problem wins over a check that could not run
-  2 = no problem found, but a check could not run (not a repository, a missing or corrupt snapshot,
-      a snapshot of another checkout, an unreadable file, a bad argument). Never a pass.
+      created (``PROBLEM`` lines say which); a found problem wins over a check that could not run,
+      whose ``UNCHECKED`` lines follow the ``PROBLEM`` lines
+  2 = no problem found, but a check could not run (not a repository, a missing, corrupt or stale
+      snapshot, a snapshot of another checkout, an unreadable file, a bad argument). Never a pass.
 """
 
 from __future__ import annotations
@@ -61,16 +83,30 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+import time
 import traceback
 from pathlib import Path
 
 VERSION = 1
+MAX_AGE_HOURS = 24
+FUTURE_SKEW_SECONDS = 300
 INSTRUCTION_NAMES = ("CLAUDE.md", "AGENTS.md", "CLAUDE.local.md")
-ROOT_INSTRUCTION_FILES = ("CLAUDE.md", "AGENTS.md", "CLAUDE.local.md", ".claude/CLAUDE.md")
+INSTRUCTION_DIRS = ("", ".claude/")  # where a name in another letter case is still protected
+SETTINGS_FILES = (".claude/settings.json", ".claude/settings.local.json", ".claude-plugin/plugin.json")
+RULES_DIR = ".claude/rules"
+ECONOMY_RULES = ".claude/rules/cla-economy.md"
 NOTES = "cla.io/feedback/notes.md"
 TERMINOLOGY = "cla.io/terminology.md"
 OVERLAY_DIR = "cla.io/overlays"
 LOCAL_SUFFIX = ".local.md"
+FIXED = (
+    *(d + n for d in INSTRUCTION_DIRS for n in INSTRUCTION_NAMES),
+    *SETTINGS_FILES,
+    NOTES,
+    TERMINOLOGY,
+)
+_FOLDED = {n.casefold() for n in INSTRUCTION_NAMES}
 
 
 class Unchecked(Exception):
@@ -108,13 +144,40 @@ def _toplevel(start: Path) -> Path:
     return Path(r.stdout.strip()).resolve()
 
 
+def _head(root: Path) -> str | None:
+    """The HEAD commit, or None on a branch with no commit yet."""
+    r = _git(root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+    if r.returncode == 0 and r.stdout.strip():
+        return r.stdout.strip()
+    if r.returncode == 1:
+        return None
+    raise Unchecked("git", f"git rev-parse HEAD failed: {_first_err(r)}")
+
+
+def _git_dirs(root: Path) -> list[Path]:
+    dirs = []
+    for flag in ("--absolute-git-dir", "--git-common-dir"):
+        r = _git(root, "rev-parse", flag)
+        if r.returncode != 0 or not r.stdout.strip():
+            raise Unchecked("git", f"git rev-parse {flag} failed: {_first_err(r)}")
+        p = Path(r.stdout.strip())
+        dirs.append((p if p.is_absolute() else root / p).resolve())
+    return dirs
+
+
 # ---------------------------------------------------------------- what is protected
 
 
 def kind_of(rel: str) -> str:
-    """The class of a protected repo-relative path: instruction, notes, local, terminology, overlay."""
-    if rel in ROOT_INSTRUCTION_FILES or rel.rsplit("/", 1)[-1] in INSTRUCTION_NAMES:
+    """The class of a protected repo-relative path. Raises ValueError for any other path."""
+    folder, _, name = rel.rpartition("/")
+    folder = folder + "/" if folder else ""
+    if name in INSTRUCTION_NAMES or (folder in INSTRUCTION_DIRS and name.casefold() in _FOLDED):
         return "instruction"
+    if rel in SETTINGS_FILES or (folder == ".claude/" and name.startswith("settings") and name.endswith(".json")):
+        return "settings"
+    if rel.startswith(RULES_DIR + "/") and rel.endswith(".md") and rel != ECONOMY_RULES:
+        return "rules"
     if rel == NOTES:
         return "notes"
     if rel.startswith("cla.io/") and rel.endswith(LOCAL_SUFFIX):
@@ -134,27 +197,45 @@ def _is_protected(rel: str) -> bool:
         return False
 
 
-def _overlays_on_disk(root: Path) -> list[str]:
-    d = root / OVERLAY_DIR
-    if not d.is_dir():
-        return []
-    return sorted(
-        f"{OVERLAY_DIR}/{p.name}" for p in d.iterdir()
-        if p.name.endswith(".md") and not p.name.endswith(LOCAL_SUFFIX) and not p.is_dir()
-    )
+def _listdir(root: Path, folder: str) -> list[str]:
+    d = root / folder
+    try:
+        return sorted(os.listdir(d)) if d.is_dir() else []
+    except OSError as exc:
+        raise Unchecked("read", f"cannot list {folder or '.'}: {exc}") from None
 
 
-def _local_files_on_disk(root: Path) -> list[str]:
-    base = root / "cla.io"
+def _walk_md(root: Path, folder: str, suffix: str) -> list[str]:
+    base = root / folder
     found: list[str] = []
     if not base.is_dir():
         return found
     for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
         dirnames.sort()
-        for name in filenames:
-            if name.endswith(LOCAL_SUFFIX):
-                found.append((Path(dirpath) / name).relative_to(root).as_posix())
-    return sorted(found)
+        found.extend((Path(dirpath) / n).relative_to(root).as_posix() for n in filenames if n.endswith(suffix))
+    return found
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def _case_variants(root: Path) -> list[str]:
+    """Root and ``.claude/`` files named like an instruction file in another letter case.
+
+    On a case-insensitive file system the variant is the same file as the fixed name, which is
+    already recorded, so it is skipped rather than reported twice."""
+    found = []
+    for folder in INSTRUCTION_DIRS:
+        for name in _listdir(root, folder.rstrip("/")):
+            if name.casefold() in _FOLDED and name not in INSTRUCTION_NAMES:
+                canonical = next(n for n in INSTRUCTION_NAMES if n.casefold() == name.casefold())
+                if not _same_file(root / folder / name, root / folder / canonical):
+                    found.append(folder + name)
+    return found
 
 
 def _nested_instruction_files(root: Path) -> list[str]:
@@ -162,14 +243,17 @@ def _nested_instruction_files(root: Path) -> list[str]:
     r = _git(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
     if r.returncode != 0:
         raise Unchecked("git", f"git ls-files failed: {_first_err(r)}")
-    return sorted({p for p in r.stdout.split("\0") if p and p.rsplit("/", 1)[-1] in INSTRUCTION_NAMES})
+    return [p for p in r.stdout.split("\0") if p and p.rsplit("/", 1)[-1] in INSTRUCTION_NAMES]
 
 
 def protected_paths(root: Path) -> set[str]:
-    paths = set(ROOT_INSTRUCTION_FILES) | {NOTES, TERMINOLOGY}
+    paths = set(FIXED)
+    paths.update(_case_variants(root))
     paths.update(_nested_instruction_files(root))
-    paths.update(_local_files_on_disk(root))
-    paths.update(_overlays_on_disk(root))
+    paths.update(".claude/" + n for n in _listdir(root, ".claude") if _is_protected(".claude/" + n))
+    paths.update(p for p in _walk_md(root, RULES_DIR, ".md") if p != ECONOMY_RULES)
+    paths.update(_walk_md(root, "cla.io", LOCAL_SUFFIX))
+    paths.update(OVERLAY_DIR + "/" + n for n in _listdir(root, OVERLAY_DIR) if _is_protected(OVERLAY_DIR + "/" + n))
     return paths
 
 
@@ -193,50 +277,7 @@ def _digest(root: Path, rel: str) -> str | None:
     return h.hexdigest()
 
 
-# ---------------------------------------------------------------- snapshot
-
-
-def _inside(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-
-def snapshot(root: Path, out: Path) -> tuple[int, int, int]:
-    """Write the snapshot. Returns (paths recorded, present, overlays)."""
-    out = out.resolve()
-    if _inside(out, root):
-        rel = out.relative_to(root).as_posix()
-        if _is_protected(rel):
-            raise Unchecked("out", f"{rel} is a protected path; write the snapshot to the session scratchpad")
-        r = _git(root, "check-ignore", "-q", "--", rel)
-        if r.returncode == 1:
-            raise Unchecked("out", f"{rel} is inside the repo and git does not ignore it; "
-                                   "write the snapshot to the session scratchpad or a gitignored folder")
-        if r.returncode != 0:
-            raise Unchecked("out", f"git check-ignore failed on {rel}: {_first_err(r)}")
-    if out.is_dir():
-        raise Unchecked("out", f"{out} is a directory")
-    files = {rel: _digest(root, rel) for rel in sorted(protected_paths(root))}
-    data = {"version": VERSION, "root": str(root), "files": files, "overlays": _overlays_on_disk(root)}
-    tmp = out.with_name(out.name + ".tmp")
-    try:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(tmp, out)
-    except OSError as exc:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        raise Unchecked("out", f"cannot write {out}: {exc}") from None
-    present = sum(1 for v in files.values() if v is not None)
-    return len(files), present, len(data["overlays"])
-
-
-# ---------------------------------------------------------------- verify
+# ---------------------------------------------------------------- the snapshot file
 
 
 def _is_digest(v: object) -> bool:
@@ -249,7 +290,99 @@ def _is_digest(v: object) -> bool:
     return len(v) == 64 and all(c in "0123456789abcdef" for c in v)
 
 
-def load_snapshot(path: Path, root: Path) -> dict:
+def _shape_problem(data: object) -> str | None:
+    """Why ``data`` is not a version-1 setup snapshot, or None when it is one."""
+    if not isinstance(data, dict) or data.get("version") != VERSION:
+        return f"is not a version-{VERSION} setup snapshot"
+    files, created, head = data.get("files"), data.get("created"), data.get("head")
+    if not isinstance(files, dict) or not files or not all(
+        isinstance(k, str) and _is_digest(v) for k, v in files.items()
+    ):
+        return "has no valid 'files' map"
+    for rel in files:
+        if not _is_protected(rel):
+            return f"records {rel!r}, which is not a protected path"
+    if not all(rel in files for rel in FIXED):
+        return "does not record every fixed protected path"
+    if not isinstance(data.get("root"), str):
+        return "has no 'root'"
+    if isinstance(created, bool) or not isinstance(created, (int, float)):
+        return "has no 'created' time"
+    if head is not None and not (
+        isinstance(head, str) and len(head) in (40, 64) and all(c in "0123456789abcdef" for c in head)
+    ):
+        return "has no valid 'head'"
+    return None
+
+
+def _inside(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _check_out(root: Path, out: Path) -> None:
+    """Refuse an --out that would overwrite or add anything the user owns."""
+    for gd in _git_dirs(root):
+        if _inside(out, gd):
+            raise Unchecked("out", f"{out} is inside the git directory {gd}")
+    if _inside(out, root):
+        rel = out.relative_to(root).as_posix()
+        if _is_protected(rel):
+            raise Unchecked("out", f"{rel} is a protected path; write the snapshot to the session scratchpad")
+        r = _git(root, "check-ignore", "-q", "--", rel)
+        if r.returncode == 1:
+            raise Unchecked("out", f"{rel} is inside the repo and git does not ignore it; "
+                                   "write the snapshot to the session scratchpad or a gitignored folder")
+        if r.returncode != 0:
+            raise Unchecked("out", f"git check-ignore failed on {rel}: {_first_err(r)}")
+    if out.is_dir():
+        raise Unchecked("out", f"{out} is a directory")
+    if os.path.lexists(out):
+        try:
+            existing = out.read_bytes()
+        except OSError as exc:
+            raise Unchecked("out", f"{out} exists and cannot be read: {exc}") from None
+        if existing:
+            try:
+                why = _shape_problem(json.loads(existing.decode("utf-8")))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                why = "is not JSON"
+            if why is not None:
+                raise Unchecked("out", f"{out} exists and {why}; it is not overwritten, so choose a new path")
+
+
+def snapshot(root: Path, out: Path) -> tuple[int, int, int]:
+    """Write the snapshot. Returns (paths recorded, present, overlays present)."""
+    out = out.resolve()
+    _check_out(root, out)
+    files = {rel: _digest(root, rel) for rel in sorted(protected_paths(root))}
+    data = {"version": VERSION, "root": str(root), "created": time.time(), "head": _head(root), "files": files}
+    tmp: str | None = None
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        # A new file of its own (O_EXCL), so no file of any name is overwritten on the way.
+        fd, tmp = tempfile.mkstemp(dir=out.parent, prefix=f".{out.name}.", suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(data, indent=1, sort_keys=True) + "\n")
+        os.replace(tmp, out)
+        tmp = None
+    except OSError as exc:
+        raise Unchecked("out", f"cannot write {out}: {exc}") from None
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+    present = sum(1 for v in files.values() if v is not None)
+    overlays = sum(1 for k, v in files.items() if v is not None and kind_of(k) == "overlay")
+    return len(files), present, overlays
+
+
+def load_snapshot(path: Path, root: Path, now: float | None = None) -> dict:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
@@ -260,25 +393,33 @@ def load_snapshot(path: Path, root: Path) -> dict:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise Unchecked("snapshot", f"{path} is not valid JSON: {exc}") from None
-    if not isinstance(data, dict) or data.get("version") != VERSION:
-        raise Unchecked("snapshot", f"{path} is not a version-{VERSION} setup snapshot")
-    files, overlays, snap_root = data.get("files"), data.get("overlays"), data.get("root")
-    if not isinstance(files, dict) or not files or not all(
-        isinstance(k, str) and _is_digest(v) for k, v in files.items()
-    ):
-        raise Unchecked("snapshot", f"{path} has no valid 'files' map")
-    if not isinstance(overlays, list) or not all(isinstance(o, str) for o in overlays):
-        raise Unchecked("snapshot", f"{path} has no valid 'overlays' list")
-    for rel in files:
-        try:
-            kind_of(rel)
-        except ValueError:
-            raise Unchecked("snapshot", f"{path} records {rel!r}, which is not a protected path") from None
-    if not all(rel in files for rel in (*ROOT_INSTRUCTION_FILES, NOTES, TERMINOLOGY)):
-        raise Unchecked("snapshot", f"{path} does not record every fixed protected path")
-    if not isinstance(snap_root, str) or os.path.normcase(str(Path(snap_root).resolve())) != os.path.normcase(str(root)):
+    why = _shape_problem(data)
+    if why is not None:
+        raise Unchecked("snapshot", f"{path} {why}")
+    snap_root = data["root"]
+    if os.path.normcase(str(Path(snap_root).resolve())) != os.path.normcase(str(root)):
         raise Unchecked("snapshot", f"{path} was taken in {snap_root!r}, not in {root}")
+    age = (time.time() if now is None else now) - data["created"]
+    if age > MAX_AGE_HOURS * 3600:
+        raise Unchecked("snapshot", f"{path} was taken {age / 3600:.1f} h ago, more than {MAX_AGE_HOURS} h; "
+                                    "it is not this run's snapshot")
+    if age < -FUTURE_SKEW_SECONDS:
+        raise Unchecked("snapshot", f"{path} is dated {-age:.0f} s in the future; it is not this run's snapshot")
+    then, now_head = data["head"], _head(root)
+    if then is not None and then != now_head:
+        if now_head is None:
+            raise Unchecked("snapshot", f"HEAD was {then[:12]} at the snapshot and the branch now has no commit")
+        r = _git(root, "merge-base", "--is-ancestor", then, now_head)
+        if r.returncode == 1:
+            raise Unchecked("snapshot", f"HEAD moved from {then[:12]} to {now_head[:12]}, which does not descend "
+                                        "from it; files changed by the checkout are not the run's")
+        if r.returncode != 0:
+            raise Unchecked("snapshot", f"cannot relate the snapshot's HEAD {then[:12]} to {now_head[:12]}: "
+                                        f"{_first_err(r)}")
     return data
+
+
+# ---------------------------------------------------------------- verify
 
 
 def _normalise_approved(root: Path, raw: list[str]) -> set[str]:
@@ -298,8 +439,11 @@ def _normalise_approved(root: Path, raw: list[str]) -> set[str]:
     return out
 
 
+APPROVABLE = ("local", "terminology", "overlay")
 _WHY = {
     "instruction": "an instruction file; cla-setup never touches it, so a yes does not cover it",
+    "settings": "a Claude Code settings or plugin manifest file; cla-setup never touches it, so a yes does not cover it",
+    "rules": "a rules file of the repo's own; cla-setup writes only cla-economy.md there, so a yes does not cover it",
     "notes": "the feedback notes file; an existing one is always skipped, so a yes does not cover it",
     "local": "a machine-read local file; changed without the owner's yes",
     "terminology": "the terminology file; changed without the owner's yes",
@@ -310,7 +454,6 @@ _WHY = {
 def verify(root: Path, snap: dict, approved: set[str]) -> tuple[int, list[str], list[str], list[str]]:
     """Returns (paths compared, problems, unchecked, approved changes)."""
     before: dict[str, str | None] = snap["files"]
-    overlays_before = set(snap["overlays"])
     problems: list[str] = []
     unchecked: list[str] = []
     taken: list[str] = []
@@ -326,7 +469,7 @@ def verify(root: Path, snap: dict, approved: set[str]) -> tuple[int, list[str], 
         if old == new:
             continue
         action = "created" if old is None else "deleted" if new is None else "changed"
-        if kind == "overlay" and action == "created" and rel not in overlays_before:
+        if kind == "overlay" and action == "created":
             problems.append(f"PROBLEM created: {rel} (an overlay; cla-setup never creates one, "
                             "so a yes does not cover it)")
             continue
@@ -336,7 +479,7 @@ def verify(root: Path, snap: dict, approved: set[str]) -> tuple[int, list[str], 
             continue
         if kind == "notes" and action == "created":
             continue  # item 3 seeds it when absent
-        if kind in ("local", "terminology", "overlay") and rel in approved:
+        if kind in APPROVABLE and rel in approved:
             taken.append(f"{rel} {action}")
             continue
         problems.append(f"PROBLEM {action}: {rel} ({_WHY[kind]})")
@@ -359,7 +502,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Check that cla-setup left its protected files alone. Exit 0 pass, 1 problem, 2 could not check.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("snapshot", parents=[common], help="at the start of a run: record the protected files")
-    p.add_argument("--out", required=True, help="the snapshot file, outside the repo or in a gitignored folder")
+    p.add_argument("--out", required=True, help="a new snapshot file, outside the repo or in a gitignored folder")
     p = sub.add_parser("verify", parents=[common], help="at the end of a run: compare with the snapshot")
     p.add_argument("--snapshot", required=True, help="the file the snapshot step wrote")
     p.add_argument("--approved", action="append", default=[], metavar="PATH",

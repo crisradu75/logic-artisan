@@ -6,6 +6,7 @@
 - [x] 1.2 Add `verify`: each protected file changed, created or deleted, an approved change passing, an approval that does not cover a never-touched file, a file dirty before the run, a gitignored local file, and a missing or corrupt snapshot exiting 2. Same marker.
 - [x] 1.3 Report an overlay or terminology file created as a problem whatever `--approved` says. Tests marked `requirement: cla-setup / Setup creates no overlay and no terminology file`.
 - [x] 1.4 Break each comparison by hand once and confirm a test fails, then restore it.
+- [x] 1.5 Review fixes: `--out` never overwrites a file that is not empty and not a snapshot, and writes through an exclusive temp file; an unreadable file exits 2 and loses to a found problem; settings, own rules files and local instruction files protected; a stale snapshot exits 2. Each fix broken by hand once.
 
 ## 2. Skill
 
