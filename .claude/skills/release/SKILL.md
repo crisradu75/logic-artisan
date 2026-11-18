@@ -72,12 +72,14 @@ version, propose that. Otherwise propose the bump the changes call for:
 **This is the release's only question.** Call `AskUserQuestion` one time, before any file is
 edited, any branch is made or anything is pushed. It shows:
 
-- the proposed version, with the patch, minor and major alternatives as the other options;
+- the proposed version, with the patch, minor and major alternatives as the other options, and a
+  last option "Don't release";
 - the output of `git log --oneline <last-tag>..HEAD`;
 - the `CHANGELOG.md` section that will move under the new version heading (the `[Unreleased]`
   entries, or the entry Step 3 will write from that log when `[Unreleased]` is empty).
 
-Choosing a version approves the release at that version. Choosing no stops: nothing is edited,
+Choosing a version approves the release at that version. "Don't release", or any other answer,
+stops: nothing is edited,
 branched, pushed, merged or tagged. Once a version is chosen, Step 3 and Step 4 run with no second
 question, including the merge and the tag push.
 
