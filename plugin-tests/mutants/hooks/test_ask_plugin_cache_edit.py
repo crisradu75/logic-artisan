@@ -14,9 +14,9 @@ re-break the ask channel this change added (the hook's place in the list, ask
 extraction, the joined reason) and the hook's enforcing tier and budget entry.
 
 Deliberately absent, because no correct input can tell them from the real code:
-- `except ValueError: return False` in `_is_inside`. `commonpath` raises it for
-  paths on different Windows drives or mixed absolute and relative paths; both
-  sides are `realpath` results, so on POSIX neither case can arise.
+- `_is_inside`'s `except ValueError` branch and its `normcase` calls: both only
+  change a result on Windows (different drives, case folding), so no test run on
+  Linux could catch a planted bug there.
 - dropping `or not cwd` from the cwd fallback. An empty cwd joins to the bare
   path, which `realpath` resolves against the process cwd: the same directory
   the fallback picks.
@@ -259,6 +259,13 @@ MUTANTS = [
         HOOK,
         '        "permissionDecision": "ask",',
         '        "permissionDecision": "deny",',
+        TARGETS,
+    ),
+    (
+        "the ask is labelled for the wrong hook event",
+        HOOK,
+        '        "hookEventName": "PreToolUse",',
+        '        "hookEventName": "PostToolUse",',
         TARGETS,
     ),
     (

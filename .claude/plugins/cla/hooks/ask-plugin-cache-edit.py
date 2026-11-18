@@ -37,8 +37,11 @@ that develops it can edit it freely.
 
 Decision: `ask`, never a block, so a person who means it can say yes.
 
-Fail-open: any parse error or unexpected input exits 0 with no output. It runs
-no subprocess; its only I/O is resolving paths.
+Failure: bad input (a parse error, a missing or mistyped field, a path that
+cannot be resolved) fails open, exiting 0 with no output. If this file itself
+fails to load or crashes, the Edit/Write dispatcher counts it as an enforcing
+guard that did not run and asks on every Edit and Write until it is fixed. It
+runs no subprocess; its only I/O is resolving paths.
 """
 
 from __future__ import annotations
