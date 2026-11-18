@@ -27,7 +27,7 @@ the skills fall back to the default list of protected areas.
   placeholder. The ask names the kind and the line, never the value, and points at the checkpoint
   rule: name the file, not its value. Bad input fails open; if the hook itself fails to load or its
   scan crashes, the call asks. Under Copilot CLI, an Edit or Write whose payload carries no
-  `new_string` or `content` is now denied, as one with no `file_path` already was (#PR).
+  `new_string` or `content` is now denied, as one with no `file_path` already was (#537).
 - **Two warn hooks check subagent dispatches.** `warn-agent-dispatch` warns before an Agent call
   that passes no `model` (it would run on an unplanned model), whose prompt holds a line starting
   `diff --git ` (pass the diff file's path instead), or whose review brief fills the protected-areas
