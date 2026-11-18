@@ -83,7 +83,8 @@ Detection scope
   `git checkout --force <branch>`, `git switch -f` and
   `git switch --discard-changes` are matched and probe the whole tree instead;
   `-f` exists precisely to override the refusal being relied on. See
-  `_FORCE_DISCARD`.
+  `_FORCE_DISCARD`. A merging (`-m`) or resetting (`-C`/`-B`) branch change has
+  its own condition, below.
 
   Known misses in this rule, named rather than implied. A path quoted at
   something other than a token boundary (`git checkout -- dir/"f.txt"`) — the
@@ -108,6 +109,31 @@ Detection scope
   whose repository cannot be named (`--git-dir`, `GIT_DIR=`, `-C ~/x`, `-C $V`, a `-C` path that does not exist)
   asks as unchecked. Any tail that is not a non-saving subcommand counts as
   saving, so `git stash 2>&1` and `(git stash)` are covered.
+- `git rebase` when the commits it rewrites (`<upstream>..<branch>`, all of
+  `<branch>` under `--root`) include one already on a remote-tracking branch,
+  ANY remote's, not only the upstream: a branch pushed without `-u` is
+  published all the same. Rewriting it takes a force-push, and the guarded
+  `--force-with-lease` form does not ask, so this is the checkpoint. A rebase
+  of local-only commits onto a fresh base is routine and silent: nobody else
+  has them and `ORIG_HEAD` undoes it. So is one on a dirty tree, because git
+  refuses that itself and `--autostash` keeps the changes in the stash when the
+  re-apply conflicts (measured, git 2.43). `--continue`, `--abort`, `--skip`,
+  `--quit`, `--edit-todo` and `--show-current-patch` rewrite nothing new and
+  are never probed. `git pull --rebase` (and `pull.rebase=true`) is out of
+  scope: it rebases onto refs its own fetch has not updated yet, and in the
+  ordinary flow moves only the unpushed commits.
+- `git switch -C <name>` / `--force-create`, and `git checkout -B <name>`, when
+  `<name>` already exists and holds commits on no other branch, tag or
+  remote-tracking branch, nor in the start point. git resets it without a word,
+  orphaning them: the same loss as a force-delete. Creating a new branch, or a
+  reset that keeps every commit reachable, is silent.
+- A merging branch change, `checkout`/`switch` with `-m`, `--merge` or
+  `--conflict`, while changes are STAGED. git-checkout(1) says staged changes
+  may be lost this way; git 2.43 refuses instead (measured), so on recent git
+  this prompt is one extra keystroke on a rare command. Unstaged changes are
+  silent: a conflicted merge keeps them in the markers and as index stage 3.
+  These three fail OPEN when their probe cannot run, unlike the discards above:
+  what they protect is still in the reflog or the object store.
 - A push that skips the `pre-push` guard on the default branch: `--no-verify`
   (down to `--no-veri`), `-c core.hooksPath=...`, or the hook's own
   `ALLOW_PUSH_TO_MAIN=1` override typed into the command. That guard is the only
@@ -134,7 +160,10 @@ the same outcome as a force-delete. They are excluded because ref-moving is
 frequent in ordinary flow and prompting on it would make the prompt routine,
 which is how a checkpoint stops being read. An earlier revision of this hook
 excluded them on the false ground that they "move a ref, they do not destroy a
-commit"; the exclusion survives, its stated reason does not.
+commit"; the exclusion survives, its stated reason does not. `git switch -C`
+and `git checkout -B` reset a branch the same way and ARE checked, because a
+condition (commits nothing else reaches) keeps that prompt rare; carrying the
+same condition to `git branch -f/-M/-C` is open.
 
 Likewise out of scope: `git push origin --delete <branch>` and
 `git push origin :<branch>`, which delete a REMOTE branch. Named here so the
@@ -175,6 +204,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 # Why this bootstrap is needed: neither the
@@ -187,6 +217,8 @@ if _HOOKS_DIR not in sys.path:
 
 from _dispatch_lib import GitInvocation  # noqa: E402
 from _dispatch_lib import GIT_SEP as _GIT_SEP  # noqa: E402
+from _dispatch_lib import GIT_TIMEOUT_SECONDS  # noqa: E402
+from _dispatch_lib import HOOK_WORST_CASE_SECONDS  # noqa: E402
 from _dispatch_lib import run_git as _run_git  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
@@ -858,17 +890,26 @@ def _stash_dirs(scanned: str, command: str, cwd: str) -> list[str | None]:
     for m in _STASH.finditer(scanned):
         if _STASH_NON_SAVING.match(m.group(2)):
             continue
-        opts = command[m.start(1):m.end(1)]
-        d: str | None = cwd
-        if re.search(r"--(?:git-dir|work-tree)\b", opts) or _GIT_ENV_REPO.search(scanned):
-            d = None
-        else:
-            for c in _DASH_C.finditer(opts):
-                value = c.group(1).strip("'\"")
-                d = os.path.normpath(os.path.join(d, value))
+        d = _invocation_dir(command[m.start(1):m.end(1)], scanned, cwd)
         if d not in dirs:
             dirs.append(d)
     return dirs
+
+
+def _invocation_dir(opts: str, scanned: str, cwd: str) -> str | None:
+    """The directory one git invocation runs in, from its raw global options.
+
+    Each `-C <dir>` moves it, relative to the one before, the way git applies
+    repeated `-C`. `None` when this hook cannot name the repository:
+    `--git-dir`/`--work-tree` or a `GIT_DIR=`/`GIT_WORK_TREE=` anywhere in the
+    command.
+    """
+    if re.search(r"--(?:git-dir|work-tree)\b", opts) or _GIT_ENV_REPO.search(scanned):
+        return None
+    d = cwd
+    for c in _DASH_C.finditer(opts):
+        d = os.path.normpath(os.path.join(d, c.group(1).strip("'\"")))
+    return d
 
 
 def _operation_in_progress(directory: str) -> bool | None:
@@ -889,6 +930,280 @@ def _operation_in_progress(directory: str) -> bool | None:
     return any(os.path.exists(os.path.join(git_dir, n)) for n in _OPERATION_MARKERS)
 
 
+# --- History rewrites and branch changes git does not refuse -------------------
+# A rebase of commits already pushed, a `switch -C`/`checkout -B` over a branch
+# whose commits are nowhere else, and a merging switch (`-m`, `--merge`,
+# `--conflict`) over staged work. Each is CONDITIONAL, like the discards above:
+# the same commands are routine when nothing is at stake, so each probes first.
+#
+# What these protect is recoverable with effort (the reflog keeps the old tips,
+# the object store keeps a staged blob until `gc`), unlike the uncommitted work
+# above, which nothing keeps. So they fail OPEN: a probe that cannot run, a
+# refusal, a repository this hook cannot name and an exception are all silence.
+# Asking on every rebase whenever git is slow would make the prompt routine.
+#
+# Budget: these probes run after the four above and spend only what those left
+# of `HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"]`, so that entry stays
+# true however many there are. `_reasons()` must keep them last for that.
+_PROBE_BUDGET_SECONDS = HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"]
+_REBASE = GitInvocation(r"rebase\b" + _TAIL, capture_opts=True)
+# Group 1 the global options, 2 the subcommand word, 3 the tail.
+_BRANCH_CHANGE = GitInvocation(r"(checkout|switch)\b" + _TAIL, capture_opts=True)
+
+# `--continue`, `--abort`, `--skip`, `--quit`, `--edit-todo` and
+# `--show-current-patch` act on a rebase already under way and rewrite nothing
+# new. Floors read off `git rebase -h` (2.43) and checked against real git:
+# `--co` is ambiguous with `--committer-date-is-author-date`, `--qui` with
+# `--quiet`; `--ab`, `--sk`, `--ed` and `--sh` resolve.
+_REBASE_ACTION = re.compile(r"(?:^|\s)--(?:" + "|".join((
+    _abbrev("continue", 3), _abbrev("abort", 2), _abbrev("skip", 2), "quit",
+    _abbrev("edit-todo", 2), _abbrev("show-current-patch", 2),
+)) + ")" + _END)
+_REBASE_ROOT = re.compile("--" + _abbrev("root", 2))
+# Long options whose value is the NEXT word, so that word is not an operand.
+# `--strategy` has no abbreviation: every prefix is shared with
+# `--strategy-option`, whose own floor is `--strategy-`.
+_REBASE_VALUE_LONG = re.compile("--(?:" + "|".join((
+    _abbrev("onto", 1), _abbrev("exec", 2), "strategy",
+    _abbrev("strategy-option", 9), _abbrev("whitespace", 1), _abbrev("empty", 2),
+)) + ")")
+# Short options: these take a required value (attached, or the next word) ...
+_REBASE_VALUE_SHORT = "CxsX"
+# ... and these an optional one, attached only (`-Skey`, `-rcousins`).
+_REBASE_OPTIONAL_SHORT = "Sr"
+
+# `-C <name>`/`--force-create <name>` (switch) and `-B <name>` (checkout) reset
+# an existing branch to the start point. `--force-` is the floor: `--forc` is
+# ambiguous with `--force`, measured.
+_FORCE_CREATE_LONG = re.compile("--" + _abbrev("force-create", 6))
+_BRANCH_VALUE_LONG = frozenset({"--create", "--orphan", "--conflict", "--pathspec-from-file"})
+# `--conflict=<style>` implies `--merge`. Floors: `--m` resolves for both
+# commands; `--c` resolves for checkout and is ambiguous for switch (git refuses
+# it there, so matching it costs nothing).
+_MERGE_SWITCH_LONG = re.compile(
+    r"(?:^|\s)--(?:" + _abbrev("merge", 1) + "|" + _abbrev("conflict", 1) + ")" + _END
+)
+_REDIRECT = re.compile(r"\d*(?:>>?|<<?|>&|<&|>\|)")
+
+REBASE_REASON = (
+    "a `git rebase` that rewrites commits already on a remote-tracking branch — "
+    "publishing the result takes a force-push, and anyone who based work on the "
+    "old commits is left holding duplicates (a rebase of local-only commits does "
+    "not ask)"
+)
+BRANCH_RESET_REASON = (
+    "`git switch -C` / `git checkout -B` over an existing branch holding commits "
+    "that are on no other branch, tag, remote-tracking branch or the start point — "
+    "the reset orphans them, recoverable only from the reflog and only within its "
+    "expiry window"
+)
+MERGE_SWITCH_REASON = (
+    "a merging branch change (`-m`, `--merge` or `--conflict`) while changes are "
+    "staged — git documents that staged changes may be lost this way (recent git "
+    "refuses instead); commit or stash them first"
+)
+
+
+def _words(scanned_tail: str, raw_tail: str) -> list[tuple[str, str]]:
+    """A tail's shell words as `(scanned, real)` pairs, the way `_operands`
+    pairs them, minus what is not an argument: a `#` comment ends the list, and
+    a redirection drops out with its target (`2> log`, `>out`)."""
+    words: list[tuple[str, str]] = []
+    target = False
+    for m in re.finditer(r"\S+", scanned_tail):
+        flag = scanned_tail[m.start():m.end()].rstrip("\\)`")
+        real = raw_tail[m.start():m.end()].rstrip("\\)`").strip("'\"`")
+        if not flag:
+            continue
+        if target:
+            target = False
+        elif flag.startswith("#"):
+            break
+        elif (redirect := _REDIRECT.match(flag)) is not None:
+            target = redirect.end() == len(flag)
+        else:
+            words.append((flag, real))
+    return words
+
+
+def _takes_next_word(letters: str) -> bool:
+    """True when a rebase short-option cluster ends in an option whose value is
+    the next word (`-ix`), not attached (`-xmake`) or optional (`-ri`)."""
+    for i, ch in enumerate(letters):
+        if ch in _REBASE_OPTIONAL_SHORT:
+            return False
+        if ch in _REBASE_VALUE_SHORT:
+            return i == len(letters) - 1
+    return False
+
+
+def _rebase_range(scanned_tail: str, raw_tail: str) -> tuple[str, str | None] | None:
+    """`(branch, upstream)` for the commits a rebase rewrites, `upstream..branch`;
+    `upstream` is None under `--root`, where it is all of `branch`. None for an
+    action on a rebase already under way.
+
+    `git rebase [<upstream> [<branch>]]`: the upstream defaults to the current
+    branch's `@{upstream}` and the branch to HEAD; `--onto` moves where the
+    commits land, not which ones are rewritten. `-` is git's `@{-1}`.
+    """
+    if _REBASE_ACTION.search(scanned_tail):
+        return None
+    operands: list[str] = []
+    root = skip = False
+    for flag, real in _words(scanned_tail, raw_tail):
+        if skip:
+            skip = False
+        elif flag.startswith("--"):
+            root = root or _REBASE_ROOT.fullmatch(flag) is not None
+            skip = _REBASE_VALUE_LONG.fullmatch(flag) is not None
+        elif flag.startswith("-") and flag != "-":
+            skip = _takes_next_word(flag[1:])
+        else:
+            operands.append("@{-1}" if real == "-" else real)
+    if root:
+        return (operands[0] if operands else "HEAD"), None
+    return (
+        operands[1] if len(operands) > 1 else "HEAD",
+        operands[0] if operands else "@{upstream}",
+    )
+
+
+def _rewrites_published(directory: str, branch: str, upstream: str | None, git) -> bool:
+    """True when the commits the rebase rewrites include one already reachable
+    from a remote-tracking branch: two counts over the same range, the second
+    leaving out everything `--remotes` reaches. Any remote counts, not only the
+    upstream, because a branch pushed without `-u` is published all the same."""
+    span = [branch] if upstream is None else [branch, "^" + upstream]
+    every = git(directory, ["rev-list", "--count", *span, "--"])
+    if every is None or every.returncode != 0:
+        return False
+    local = git(directory, ["rev-list", "--count", *span, "--not", "--remotes", "--"])
+    if local is None or local.returncode != 0:
+        return False
+    return int(every.stdout) > int(local.stdout)
+
+
+def _reset_target(scanned_tail: str, raw_tail: str, subcommand: str) -> tuple[str, str] | None:
+    """`(name, start point)` of a `switch -C`/`checkout -B`, else None.
+
+    A short cluster is read letter by letter: the first value-taking letter owns
+    the rest of the cluster or the next word, so `-cC` creates a branch named
+    `C` rather than resetting one. The start point is the first operand, HEAD
+    when there is none. A name or start point git would reject (`--`, `-x`, a
+    typo) is passed on as it is: the probe's `rev-list` rejects it the same way,
+    which is silence.
+    """
+    values = "cC" if subcommand == "switch" else "bB"
+    reset = values[1]
+    words = _words(scanned_tail, raw_tail)
+    name: str | None = None
+    operands: list[str] = []
+    i = 0
+    while i < len(words):
+        flag, real = words[i]
+        nxt = words[i + 1][1] if i + 1 < len(words) else ""
+        if flag.startswith("--"):
+            _, eq, value = real.partition("=")
+            if _FORCE_CREATE_LONG.fullmatch(flag.partition("=")[0]):
+                name, i = (value, i) if eq else (nxt, i + 1)
+            elif flag in _BRANCH_VALUE_LONG:
+                i += 1
+        elif flag.startswith("-"):
+            for j, ch in enumerate(flag[1:]):
+                if ch in values:
+                    value = real[j + 2:]
+                    if not value:
+                        value, i = nxt, i + 1
+                    if ch == reset:
+                        name = value
+                    break
+        else:
+            operands.append(real)
+        i += 1
+    if not name:
+        return None
+    return name, (operands[0] if operands else "HEAD")
+
+
+def _orphans_commits(directory: str, name: str, start: str, git) -> bool:
+    """True when branch `name` exists and holds commits on no other branch, tag
+    or remote-tracking branch, nor in `start` — what the reset would orphan.
+    A branch that does not exist yet makes git refuse the count: silence, since
+    creating it loses nothing."""
+    out = git(directory, [
+        "rev-list", "--count", "refs/heads/" + name, "--not",
+        "--exclude=" + name, "--branches", "--tags", "--remotes", start, "--",
+    ])
+    return out is not None and out.returncode == 0 and int(out.stdout) > 0
+
+
+def _merges_on_switch(scanned_tail: str, subcommand: str) -> bool:
+    """True for a branch change with `-m`, `--merge` or `--conflict`. A
+    `checkout -m -- <path>` re-creates a conflict in a path instead, which the
+    discard check above already covers, so the `--` form is left to it."""
+    if "--" in scanned_tail.split():
+        return False
+    if _MERGE_SWITCH_LONG.search(scanned_tail):
+        return True
+    values = "cC" if subcommand == "switch" else "bB"
+    for cluster in _SHORT_CLUSTER.findall(scanned_tail):
+        for ch in cluster:
+            if ch == "m":
+                return True
+            if ch in values:
+                break
+    return False
+
+
+def _holds_staged_work(directory: str, git) -> bool:
+    """True when the index differs from HEAD anywhere: porcelain column X is not
+    blank. `--untracked-files=no` keeps `??` lines, whose X is `?`, out."""
+    out = git(directory, ["status", "--porcelain", "--untracked-files=no"])
+    if out is None or out.returncode != 0:
+        return False
+    return any(line[:1].strip() for line in out.stdout.splitlines())
+
+
+def _history_reasons(command: str, scanned: str, cwd: str, started: float) -> list[str]:
+    """The rebase, branch-reset and merging-switch reasons in `command`.
+
+    Every probe shares one deadline, `started + _PROBE_BUDGET_SECONDS`, and an
+    identical probe runs once.
+    """
+    asked: dict = {}
+
+    def git(directory: str, args: list[str]):
+        key = (directory, tuple(args))
+        if key not in asked:
+            left = started + _PROBE_BUDGET_SECONDS - time.monotonic()
+            asked[key] = (
+                _run_git(directory, args, timeout=min(GIT_TIMEOUT_SECONDS, left))
+                if left > 0 else None
+            )
+        return asked[key]
+
+    found: list[str] = []
+    for m in _REBASE.finditer(scanned):
+        directory = _invocation_dir(command[m.start(1):m.end(1)], scanned, cwd)
+        target = _rebase_range(m.group(2), command[m.start(2):m.end(2)])
+        if directory and target and REBASE_REASON not in found:
+            if _rewrites_published(directory, *target, git):
+                found.append(REBASE_REASON)
+    for m in _BRANCH_CHANGE.finditer(scanned):
+        directory = _invocation_dir(command[m.start(1):m.end(1)], scanned, cwd)
+        if directory is None:
+            continue
+        tail, raw = m.group(3), command[m.start(3):m.end(3)]
+        target = _reset_target(tail, raw, m.group(2))
+        if target and BRANCH_RESET_REASON not in found:
+            if _orphans_commits(directory, *target, git):
+                found.append(BRANCH_RESET_REASON)
+        if _merges_on_switch(tail, m.group(2)) and MERGE_SWITCH_REASON not in found:
+            if _holds_staged_work(directory, git):
+                found.append(MERGE_SWITCH_REASON)
+    return found
+
+
 def _reasons(command: str, cwd: str) -> list[str]:
     """Every destructive shape present in `command`, as human-readable causes.
 
@@ -897,6 +1212,7 @@ def _reasons(command: str, cwd: str) -> list[str]:
     pure text inspection; those two are the only reason this function needs a
     directory at all.
     """
+    started = time.monotonic()
     scanned = _strip_quoted_spans(command)
     found: list[str] = []
     if any(
@@ -1085,6 +1401,19 @@ def _reasons(command: str, cwd: str) -> list[str]:
             file=sys.stderr,
         )
 
+    # After every probe above, never before: these spend only the time those
+    # left (`_PROBE_BUDGET_SECONDS`). Fail open, unlike the two handlers above;
+    # the section comment says why.
+    try:
+        found += _history_reasons(command, scanned, cwd, started)
+    except Exception as exc:  # noqa: BLE001 — see the comment above the `try`
+        print(
+            f"[ask-destructive-git] the rebase and branch-change check raised "
+            f"{type(exc).__name__}: {exc} — not asking about them. "
+            "(hook: ask-destructive-git.py)",
+            file=sys.stderr,
+        )
+
     if _GH_PR_MERGE.search(scanned):
         found.append(MERGE_REASON)
     return found
@@ -1193,7 +1522,8 @@ def main() -> int:
     #
     # `found == [MERGE_REASON]` depends on `_reasons()` always appending in
     # the fixed order force-push, reset --hard, branch force-delete, stash, working-tree
-    # discard (or the forced whole-tree one), clean, unchecked, merge — never in
+    # discard (or the forced whole-tree one), clean, unchecked, rebase, branch
+    # reset, merging switch, merge — never in
     # the order the command text names them. Only one property is load-bearing:
     # MERGE STAYS LAST, and it does so structurally, because its check is the
     # only one outside the `try` above and sits after it. That is what makes list

@@ -176,6 +176,11 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # so a `&&` chain of six `git checkout`s is still one process. Plus one
     # `git rev-parse --absolute-git-dir` for a saving `git stash` (4 x 3s): a
     # command whose stashes span several directories is asked about, not probed.
+    # The history checks (a rebase of pushed commits, `switch -C`/`checkout -B`
+    # over unique commits, a merging switch over staged work) run AFTER those
+    # four and only spend what they left of this same 12s: each of their calls
+    # gets `min(3s, time left)` and none starts once it is gone
+    # (`_PROBE_BUDGET_SECONDS` in that hook). They add calls, never time.
     "ask-destructive-git.py": 12.0,
     # 2 x _run_git(3s): combined `rev-parse` + `--show-toplevel`.
     "block-worktree-path-escape.py": 6.0,
@@ -395,12 +400,18 @@ def compose_output(
 GIT_TIMEOUT_SECONDS = 3
 
 
-def run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess | None:
-    """Run `git -C cwd <args>`, bounded by `GIT_TIMEOUT_SECONDS`, fail-open."""
+def run_git(
+    cwd: str, args: list[str], timeout: float | None = None
+) -> subprocess.CompletedProcess | None:
+    """Run `git -C cwd <args>`, bounded by `GIT_TIMEOUT_SECONDS`, fail-open.
+
+    `timeout` is for a caller spending what is left of a shared deadline; it
+    should never exceed `GIT_TIMEOUT_SECONDS`, which the budget table assumes."""
     try:
         return subprocess.run(
             ["git", "-C", cwd, *args],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=GIT_TIMEOUT_SECONDS,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=GIT_TIMEOUT_SECONDS if timeout is None else timeout,
         )
     except (OSError, subprocess.SubprocessError):
         return None
