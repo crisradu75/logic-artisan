@@ -157,8 +157,10 @@ the cheaper tier — but it shows up on every run.
 routing Agent-1-class dispatches to `opus` changes nothing, and the real economy is routing the
 rubric-application agents *down* to `sonnet`. When the session is at or
 below Sonnet, route the Agent-1-class dispatches *up* to `opus` (the same escalate-up logic as the
-inline-verdict rule below) and leave the rubric agents at the session model. Apply the routing
-whenever the session model differs from the target tier for a dimension.
+inline-verdict rule below) and leave the rubric agents at the session model, naming it in their
+`model:` (`sonnet` on a Sonnet session): the Agent tool has no value meaning "the session model",
+and a dispatch with no `model:` draws a warning. Apply the routing whenever the session model
+differs from the target tier for a dimension.
 
 ## Escalate-up rule (session below Opus)
 

@@ -72,7 +72,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | none found (predates extraction ee4034ad) | Never fall back to a different path shape (e.g. a repo-wide glob) if the caller
 - keep | honesty | none found (predates extraction ee4034ad) | every hit you report MUST carry the *actual matched line*
 - keep | honesty | none found (predates extraction ee4034ad) | Never report a hit you did not literally match, and never
-- keep | honesty | #73 2026-08-14, sweep accounting | **Then, ALWAYS, one accounting footer line
+- keep | honesty | #73 2026-08-14, sweep accounting; warn-agent-reply-format warns when the line is missing | **Then, ALWAYS, one accounting footer line
 - keep | honesty | 082c4678 2026-10-04, "Close the four P1 gaps in multi-pr and spec-to-pr" | report the count your Grep actually returned, never an estimate.
 
 ## agents/fact-gatherer.md
@@ -346,7 +346,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | there is no reflog for content that was never
 - keep | security | 33c55751 2026-11-02 (#452) review brief constraints | The list never suppresses a Critical security, money or data-loss finding.
 - keep | security | 33c55751 2026-11-02, docs: name target in merge prompts, rename tier for lite-pr, review... | Report those always, flagged as overriding the stated constraints
-- keep | honesty | d6c99eec 2026-08-25 (#152) open-issues-lane2 | Never omit the field.
+- keep | honesty | d6c99eec 2026-08-25 (#152) open-issues-lane2; warn-agent-reply-format warns when the field is missing | Never omit the field.
 - not-a-rule | - | - | so the orchestrator must re-decide the remedy
 - keep | honesty | a55f4d98 2026-08-25 (#155); an unrun check lets `done` pass with the defect intact | the orchestrator must have RUN it and seen it exhibit the defect
 - not-a-rule | - | - | a grep whose pattern never matched
@@ -469,12 +469,12 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | #324 (2ecdbdfd, 2026-10-11) risk-sized review; a lower level weakens the review of a high-risk fix | A later round never uses a lower level than round 1.
 - not-a-rule | - | - | record a Handoff Issue, which `handoff.md` always lists
 - guidance | none | e8c8fc7b 2026-10-08, narrower comment-analyzer; cost of a reviewer with nothing to read | not when no comment, docstring or `.md` hunk changed: it would have nothing to read
-- keep | honesty | #426 (a43f5ca1, 2026-10-26): the toolkit file names `inherit`, so a reviewer would run below its sized model | Pass `model:` on EVERY dispatch, never relying on the toolkit file
+- keep | honesty | #426 (a43f5ca1, 2026-10-26): the toolkit file names `inherit`, so a reviewer would run below its sized model; warn-agent-dispatch warns on a dispatch with no model | Pass `model:` on EVERY dispatch, never relying on the toolkit file
 - keep | user's files | #426 (a43f5ca1, 2026-10-26) and #420 (775fa0b9): reviewers hold Bash and Edit in the user's checkout | run no git command (not `git diff`, and never `git checkout`
 - keep | honesty | 775fa0b9 2026-10-25, Reviewer agents: say which line number the line field means (#420) | never a line counted inside the diff file
-- keep | user's files | #344 (0c8e10ff, 2026-10-12); reason in line: a `git add` can sweep the diff file in | **Write the diff to a file; pass its path, never the text.**
+- keep | user's files | #344 (0c8e10ff, 2026-10-12); reason in line: a `git add` can sweep the diff file in; warn-agent-dispatch warns on a `diff --git ` line in a prompt | **Write the diff to a file; pass its path, never the text.**
 - keep | user's files | 0c8e10ff 2026-10-12, feat: reviewer-agents (#344) | never inside the working tree, where `git status` shows it
-- keep | honesty | design-tradeoffs "Revise": raw diff text breaks the script's template literal | Each prompt names its diff file's absolute path (never the diff text)
+- keep | honesty | design-tradeoffs "Revise": raw diff text breaks the script's template literal; warn-agent-dispatch warns on an Agent prompt (not a Workflow script) | Each prompt names its diff file's absolute path (never the diff text)
 - keep | honesty | predates extraction (ee4034ad, 2026-07-23); a lost Critical would read as reviewed | a Critical is never displaced by a lower-severity
 - keep | honesty | design-tradeoffs "Revise" (a crashed reviewer is a `null`); text since 9cd5f32f 2026-10-08 | A crashed reviewer never vanishes silently.
 - not-a-rule | - | - | the agents the journal confirms never returned
@@ -826,7 +826,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | 2.0.0 (016203d7); a dispatched agent never loads the skill | Never leave a bare pointer to a file instead
 - not-a-rule | - | - | a dispatched agent never loads the skill or reads those files
 - keep | user's files | #164, a review agent's "temporary" revert destroyed uncommitted work | > **Read only — never write to the working tree.**
-- keep | honesty | #511 (principle 5); a brief never says nothing is protected | never `(none recorded)`
+- keep | honesty | #511 (principle 5); a brief never says nothing is protected; warn-agent-dispatch warns on the filled slot | never `(none recorded)`
 - guidance | none | scope guidance for a non-protected edge case; "usually a Risks line, not a requirement" says it. dec3edcb 2026-11-17 (#511) (owner approved softening 2026-11-18) | in proposal.md, not as a new requirement.
 - keep | honesty | pre-extract (ee4034ad), lockstep formula docs | and must update the load-bearing spec/doc files for that formula together
 - not-a-rule | - | - | the exact formulas that calculation must preserve
