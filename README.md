@@ -48,7 +48,7 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 
 ## Engineering highlights
 
-**19 skills · 17 guard hooks · 5,455 tests · 72 mutation batches · 23 live OpenSpec specs ·
+**19 skills · 17 guard hooks · 5,718 tests · 72 mutation batches · 25 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
@@ -81,7 +81,7 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
 
 <details>
-<summary>Where the numbers come from (counted 2026-11-19 on <code>main</code> at <code>d27a0ea</code> with #546, #548, #549, #550, #552 and #554 merged)</summary>
+<summary>Where the numbers come from (counted 2026-11-19 on <code>main</code> at <code>d27a0ea</code> with #546, #548, #549, #550, #552, #554, #555, #556, #557 and #560 merged)</summary>
 
 ```bash
 git ls-files .claude/plugins/cla/skills | cut -d/ -f5 | grep -v '^_' | sort -u | wc -l   # skills (tracked only)
