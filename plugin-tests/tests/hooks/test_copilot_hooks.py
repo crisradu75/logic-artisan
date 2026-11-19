@@ -579,7 +579,7 @@ def test_copilot_pretooluse_passes_an_ask_with_context_and_a_dispatcher_deny(tmp
 # sets its `GUARD_NOT_RUN` flag. These tests drive each dispatcher into each way
 # it reports "a guard did not run" and require the flag to be set, in process
 # (the adapter's own path) and through `_fail_closed` (the script's path).
-def _flag_after_main(root: Path, name: str, payload: dict) -> object:
+def _flag_after_main(root: Path, name: str, payload: dict, preset: bool = False) -> object:
     spec = importlib.util.spec_from_file_location("copilot_flag_dispatcher", root / "hooks" / name)
     module = importlib.util.module_from_spec(spec)
     sys.path.insert(0, str(root / "hooks"))
@@ -588,6 +588,7 @@ def _flag_after_main(root: Path, name: str, payload: dict) -> object:
     saved_stdin, saved_out = sys.stdin, sys.stdout
     try:
         spec.loader.exec_module(module)
+        module.GUARD_NOT_RUN = preset  # a value left over from an earlier call
         sys.stdin, sys.stdout = io.StringIO(json.dumps(payload)), io.StringIO()
         module.main()
     finally:
@@ -611,9 +612,10 @@ def test_every_dispatcher_flags_each_way_a_guard_did_not_run(tmp_path):
         root, _ = _copy_adapter_tree(tmp_path / f"guard{index}")
         (root / "hooks" / guard).unlink()
         assert _flag_after_main(root, dispatcher, event) is True, (dispatcher, guard)
-        # Every guard present: the flag stays down.
+        # Every guard present: the flag is down, even when a reused module
+        # still held it up from an earlier call.
         root, _ = _copy_adapter_tree(tmp_path / f"ok{index}")
-        assert _flag_after_main(root, dispatcher, event) is False, dispatcher
+        assert _flag_after_main(root, dispatcher, event, preset=True) is False, dispatcher
         # `_fail_closed` (a missing library, a crash in main) sets the flag
         # before it asks. Called directly: which `_dispatch_lib` an in-process
         # import finds depends on what earlier tests put on `sys.path`.

@@ -1703,7 +1703,8 @@ def _command_words(text: str, i: int) -> list[tuple[int, int]]:
 def _has_expansion(word: str) -> bool:
     """True when the shell substitutes part of `word`: a `$` that starts a
     parameter or command substitution, or a backtick, outside single quotes.
-    `$'...'` is a literal."""
+    `$'...'` is a literal: the `'` after its `$` starts no expansion, and the
+    single-quote rule then skips its text."""
     i, n, double = 0, len(word), False
     while i < n:
         ch = word[i]
@@ -1718,14 +1719,8 @@ def _has_expansion(word: str) -> bool:
             double = not double
         elif ch == "`":
             return True
-        elif ch == "$" and i + 1 < n:
-            nxt = word[i + 1]
-            if nxt == "'" and not double:
-                j = word.find("'", i + 2)
-                i = n if j < 0 else j + 1
-                continue
-            if nxt.isalnum() or nxt in "_{(@*#?!$-":
-                return True
+        elif ch == "$" and i + 1 < n and (word[i + 1].isalnum() or word[i + 1] in "_{(@*#?!$-"):
+            return True
         i += 1
     return False
 
@@ -1789,7 +1784,7 @@ def _wrapper_bodies(part: str) -> list[str]:
         for flag, value in zip(words, words[1:]):
             if _PS_ENCODED.fullmatch(flag):
                 try:
-                    bodies.append(base64.b64decode(value, validate=True).decode("utf-16-le"))
+                    bodies.append(base64.b64decode(value).decode("utf-16-le"))
                 except (ValueError, UnicodeDecodeError):
                     pass
     return [b for b in bodies if _HAS_GIT.search(b)]

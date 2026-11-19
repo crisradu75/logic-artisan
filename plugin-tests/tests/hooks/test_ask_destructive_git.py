@@ -3618,6 +3618,7 @@ def _wrapped_ps(command: str) -> str:
         ("/bin/bash -c 'git push -f origin x'", _FORCE),
         ("bash.exe -c 'git push -f origin x'", _FORCE),
         ("bash \\\n  -c 'git push -f origin x'", _FORCE),
+        ("bash -c git\\ push\\ -f\\ origin\\ x", _FORCE),
         ("bash -c \"sh -c 'git push -f origin x'\"", _FORCE),
         ("bash -c \"eval 'git push -f origin x'\"", _FORCE),
         ("bash -c 'cd sub && git reset --hard'", _HARD),
@@ -3662,6 +3663,11 @@ def test_a_wrapped_destructive_command_asks_like_the_bare_one(command, expected,
         'sh -c "$CMD"',
         "bash script.sh",
         "cd /opt/cmd && git status",
+        # a word that only ends in `sh` is not a shell
+        "refresh -c 'git reset --hard'",
+        # the wrapper's words end with its own command
+        "bash -c 'git status' ; echo 'git push -f origin x'",
+        "eval 'git status' && echo 'git reset --hard'",
         # the wrapper is inside quoted text, which the shell never runs
         'echo "bash -c \'git push -f\'"',
         "git commit -m \"fix: bash -c 'git push -f' was allowed\"",
@@ -3763,6 +3769,12 @@ def test_a_resolved_expansion_asks_like_the_literal(command, expected, monkeypat
         "git branch $FLAGS topic",
         "bash -c 'git $SUB -f origin x'",
         "$X = Get-Verb; git $X -f origin x",
+        "$X = @('push'); git $X -f origin x",
+        "X='push;x'; git $X -f origin x",
+        "[[ $X == push ]] && git $X -f origin x",
+        "env -i git $SUB",
+        "GIT_TRACE=1 git $SUB",
+        "git `echo push` -f origin x",
     ],
 )
 def test_an_unresolved_expansion_asks(command, monkeypatch, capsys):
@@ -3791,6 +3803,7 @@ def test_an_unresolved_expansion_asks(command, monkeypatch, capsys):
         'ls repo.git "$X"',
         'echo git "$X"',
         'git commit -m "$MSG"',
+        "git push '$remote' $BRANCH",
     ],
 )
 def test_an_expansion_that_cannot_change_the_decision_stays_silent(command, monkeypatch, capsys):
@@ -3853,3 +3866,45 @@ def test_the_history_probes_stop_at_a_measured_handler_deadline(history, monkeyp
     monkeypatch.setenv("CLA_HOOK_T0", f"{time.time() - 0.5:.6f}")
     _run("git rebase main", monkeypatch, capsys, cwd=str(history))
     assert calls, "a fresh stamp leaves the probes their budget"
+
+
+def test_a_wrapper_body_without_git_is_not_read_further(monkeypatch, capsys):
+    """Only a body that holds `git` or `gh` is read: nesting past the depth cap
+    with nothing a guard reads is no reason to ask."""
+    inner = "echo hi"
+    for _ in range(hook._WRAP_DEPTH + 2):
+        inner = "eval " + json.dumps(inner)
+    assert _run(inner, monkeypatch, capsys) is None
+
+
+def test_wrapped_text_past_its_cap_asks(monkeypatch, capsys):
+    """Appended text is capped at the command's length plus `_EXPAND_SLACK`; a
+    command whose bodies outgrow that asks rather than being read in part."""
+    small = "git status; " * 10
+    assert _run("bash -c \"sh -c '" + small + "'\"", monkeypatch, capsys) is None
+    big = "git status; " * (hook._EXPAND_SLACK // 8)
+    payload = _run("bash -c \"sh -c '" + big + "'\"", monkeypatch, capsys)
+    assert payload is not None
+    assert hook.UNRESOLVED_REASON in _reason(payload)
+
+
+def test_expansions_past_the_round_cap_ask(monkeypatch, capsys):
+    """Each round fills in one expansion per git line, and a round that still
+    produced a new line leaves the next unread: `_EXPAND_ROUNDS` names in one
+    line ask, one fewer is read to the end."""
+    names = "ABCDEFGHIJ"[: hook._EXPAND_ROUNDS]
+    assigns = "; ".join(f"{n}=v" for n in names)
+    refs = " ".join(f"${n}" for n in names)
+    payload = _run(f"{assigns}; git push {refs}", monkeypatch, capsys)
+    assert payload is not None
+    assert hook.UNRESOLVED_REASON in _reason(payload)
+    fewer = "; ".join(f"{n}=v" for n in names[:-1])
+    refs = " ".join(f"${n}" for n in names[:-1])
+    assert _run(f"{fewer}; git push {refs}", monkeypatch, capsys) is None
+
+
+def test_appended_text_never_joins_a_continued_last_line(monkeypatch, capsys):
+    """A command ending in `\\` must not continue into the body appended after
+    it: the push here is not forced."""
+    command = "bash -c 'git log -f' ; git push origin x \\"
+    assert _run(command, monkeypatch, capsys) is None
