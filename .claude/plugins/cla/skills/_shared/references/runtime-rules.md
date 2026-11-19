@@ -9,7 +9,7 @@ The total cost of a run ≈ Σ over turns of the orchestrator's context size, so
 When a step needs to process bulk raw material (a large diff, a wide file set, verbose command output, a big claim-verification sweep), hand the raw-material handling to a sub-agent and let ONLY its conclusion return to the parent context. The parent never needs the raw bytes — it needs the verdict/finding/fact.
 
 - **Review large-change mechanical verification →** `fact-gatherer` (see the Review section's default).
-- **A large fix-set of mechanical edits →** the existing generic coding `Agent(model: sonnet)` (see the Revise fix-delegate default). Delegation covers edit APPLICATION only; the orchestrator keeps its own post-fix re-verification (INT-CAP/INT-SYC/SIR-TEST).
+- **A large fix-set of mechanical edits →** the existing generic coding `Agent`, on the model "The implementer's model" in `model-routing.md` gives (see the Revise fix-delegate default). Delegation covers edit APPLICATION only; the orchestrator keeps its own post-fix re-verification (INT-CAP/INT-SYC/SIR-TEST).
 - **Doc-staleness sweeps →** `doc-sweeper`, which returns a hit list, not the files.
 
 ## 2. I/O hygiene (standing — applies throughout, not only at a trigger)

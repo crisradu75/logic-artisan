@@ -147,7 +147,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    The first two are legitimate holds; `Skipped` is a policy breach under the full-severity default, and Handoff fails on it.
 
-   **Fix-delegate default (thin orchestrator, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`).** A fix-set past the sized trigger (> ~15 subtasks-equivalent OR > ~8 files) delegates the EDIT APPLICATION to the generic coding `Agent(model: sonnet)` Implement uses — there is no separate fix-applier agent. **The orchestrator keeps its own post-fix re-verification (INT-CAP / INT-SYC / SIR-TEST below); that is never delegated.** Below the trigger, apply inline.
+   **Fix-delegate default (thin orchestrator, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`).** A fix-set past the sized trigger (> ~15 subtasks-equivalent OR > ~8 files) delegates the EDIT APPLICATION to the generic coding `Agent` Implement uses, on the model "The implementer's model" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` gives round 1's final level — there is no separate fix-applier agent. **The orchestrator keeps its own post-fix re-verification (INT-CAP / INT-SYC / SIR-TEST below); that is never delegated.** Below the trigger, apply inline.
 
    **Brief it in the fix-brief form:** `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md` §2's `Defect (binding)` / `Facts this defect rests on (checkable)` / `Candidate remedy (rejectable)` fields and §5's three-status terminal contract — never the two-status `done`/`blocked` form, which lets a compliant delegate implement a wrong remedy. The brief enumerates every finding; the return carries a **per-finding outcome list** beside the overall status.
 
