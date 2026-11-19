@@ -29,6 +29,9 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 SCRIPT = PLUGIN / "skills" / "_shared" / "scripts" / "check_spec_proof.py"
+SCRIPT_NOTES = SCRIPT.with_name("spec_proof_notes.py")
+SCRIPT_PARSE = SCRIPT.with_name("spec_proof_parse.py")
+SCRIPT_BUDGET = SCRIPT.with_name("spec_proof_budget.py")
 TARGETS = [DEV / "tests" / "skills" / "_shared" / "test_check_spec_proof.py"]
 
 MUTANTS = [
@@ -55,21 +58,21 @@ MUTANTS = [
     ),
     (
         "a delta's MODIFIED section is no longer read",
-        SCRIPT,
+        SCRIPT_PARSE,
         'title.startswith(("ADDED", "MODIFIED"))',
         'title.startswith(("ADDED",))',
         TARGETS,
     ),
     (
         "a delta's REMOVED section is read as if it were requirements",
-        SCRIPT,
+        SCRIPT_PARSE,
         'title.startswith(("ADDED", "MODIFIED"))',
         'title.startswith(("ADDED", "MODIFIED", "REMOVED"))',
         TARGETS,
     ),
     (
         "a requirement's body leaves out its scenarios, so editing a scenario is not a change",
-        SCRIPT,
+        SCRIPT_PARSE,
         "        if cur_req is not None:\n            cur_req[1].append(line)\n            if cur_scn is not None:",
         "        if cur_req is not None:\n            if cur_scn is None:\n                cur_req[1].append(line)\n            if cur_scn is not None:",
         TARGETS,
@@ -160,14 +163,14 @@ MUTANTS = [
     ),
     (
         "the shortest matching heading wins, so a heading containing a colon is mis-split",
-        SCRIPT,
+        SCRIPT_NOTES,
         "max((h for h in known if body.startswith(h + \": \")), key=len, default=None)",
         "min((h for h in known if body.startswith(h + \": \")), key=len, default=None)",
         TARGETS,
     ),
     (
         "a template line 'manual: <heading>: <reason>' is read as a note",
-        SCRIPT,
+        SCRIPT_NOTES,
         '            if body.startswith("<"):',
         "            if False:",
         TARGETS,
@@ -188,7 +191,7 @@ MUTANTS = [
     ),
     (
         "a checkbox before 'manual:' hides the note",
-        SCRIPT,
+        SCRIPT_NOTES,
         r"(?:\[[ xX]\]\s+)?(?:\d+(?:\.\d+)*\.?\s+)?(manual|waiting)",
         r"(?:\d+(?:\.\d+)*\.?\s+)?(manual|waiting)",
         TARGETS,
@@ -251,7 +254,7 @@ MUTANTS = [
     ),
     (
         "the section title must equal REQUIREMENTS exactly, so '## Requirements (v2)' hides a spec",
-        SCRIPT,
+        SCRIPT_PARSE,
         'else title.startswith("REQUIREMENTS")',
         'else title == "REQUIREMENTS"',
         TARGETS,
@@ -391,42 +394,42 @@ MUTANTS = [
     ),
     (
         "limits are read case-sensitively",
-        SCRIPT,
+        SCRIPT_BUDGET,
         "        hit = re.search(pat, block, re.I)",
         "        hit = re.search(pat, block)",
         TARGETS,
     ),
     (
         "a list at the key's own indent ends the specs block",
-        SCRIPT,
+        SCRIPT_BUDGET,
         '                    if n_indent < indent or (n_indent == indent and not s.startswith("- ")):',
         "                    if n_indent <= indent:",
         TARGETS,
     ),
     (
         "a number in unknown wording is silently not enforced",
-        SCRIPT,
+        SCRIPT_BUDGET,
         '            if re.search(rf"(?i)\\b(?:{_NUMBER_WORDS})\\s+(?:\\w+\\s+)?{word}\\b", block):',
         "            if False:",
         TARGETS,
     ),
     (
         "a specs group that states no limit passes",
-        SCRIPT,
+        SCRIPT_BUDGET,
         '    if not found:\n        raise CheckerError(f"rules.specs',
         '    if False:\n        raise CheckerError(f"rules.specs',
         TARGETS,
     ),
     (
         "config.yml is not read",
-        SCRIPT,
+        SCRIPT_BUDGET,
         '(root / "openspec" / "config.yaml", root / "openspec" / "config.yml")',
         '(root / "openspec" / "config.yaml",)',
         TARGETS,
     ),
     (
         "the limits are read from the whole config, not only rules.specs",
-        SCRIPT,
+        SCRIPT_BUDGET,
         "    block = _specs_rules_block(text)\n    if block is None:",
         "    block = text\n    if block is None:",
         TARGETS,
@@ -447,42 +450,42 @@ MUTANTS = [
     ),
     (
         "a delta is counted by its own blocks only",
-        SCRIPT,
+        SCRIPT_PARSE,
         "                total = len(base | {h for h, _, _ in reqs}) - len(base & _removed_headings(f.text))",
         "                total = len(reqs)",
         TARGETS,
     ),
     (
         "a delta's removals are not subtracted",
-        SCRIPT,
+        SCRIPT_PARSE,
         " - len(base & _removed_headings(f.text))",
         "",
         TARGETS,
     ),
     (
         "an active delta is not combined with its live spec",
-        SCRIPT,
+        SCRIPT_PARSE,
         '            if f.kind == "active":\n                base',
         "            if False:\n                base",
         TARGETS,
     ),
     (
         "a requirement exactly at the scenario limit is reported",
-        SCRIPT,
+        SCRIPT_PARSE,
         '            if "scenarios" in limits and len(scns) > limits["scenarios"]:',
         '            if "scenarios" in limits and len(scns) >= limits["scenarios"]:',
         TARGETS,
     ),
     (
         "a statement exactly at the character limit is reported",
-        SCRIPT,
+        SCRIPT_PARSE,
         '                if n > limits["chars"]:',
         '                if n >= limits["chars"]:',
         TARGETS,
     ),
     (
         "a spec exactly at the requirement limit is reported",
-        SCRIPT,
+        SCRIPT_PARSE,
         '            if total > limits["requirements"]:',
         '            if total >= limits["requirements"]:',
         TARGETS,
