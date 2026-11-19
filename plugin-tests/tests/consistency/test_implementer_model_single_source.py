@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parents[3]
 _PLUGIN = _ROOT / ".claude" / "plugins" / "cla"
 _SKILLS = _PLUGIN / "skills"
@@ -27,7 +29,16 @@ _HEADING = "**The implementer's model.**"
 _POINTER = "The implementer's model"
 _ROWS = ("| Low risk | Sonnet |", "| High risk | Opus |")
 
-_IMPLEMENTS = re.compile(r"\bimplement(?:s|er|ers|ing)?\b|coding `Agent`|fix-delegate", re.I)
+# Words that name implementing work or the agent that does it. Measured on this branch's head: no
+# hit outside the one implementer table (`test_no_other_shipped_file_states_an_implementer_model`).
+_IMPLEMENTS = re.compile(
+    r"\bimplement\w*|\bcoding\b|\bdelegate\b|fix-?(?:delegate|applier)|apply(?:ing)? (?:the |review )?fix",
+    re.I,
+)
+# Inside a fenced diagram a box (or a step inside one, after a `↓` line) is one unit, so a box label
+# on one line and a model annotation on the next are read together.
+_BOX_EDGE = re.compile(r"[┌└]|^[\s│]*[↓▼][\s│]*$")
+_MIN_FILES = 80
 _MODEL = re.compile(r"\b(?:opus|sonnet|haiku)\b", re.I)
 
 
@@ -43,11 +54,29 @@ def _implementer_block(text: str) -> str:
     return text[start:end]
 
 
+def _fence_units(lines: list[str]) -> list[str]:
+    """A fenced block is one unit, except that a box diagram splits at each box edge and `↓` step,
+    so one box's label and its annotations are read together and apart from the next box's."""
+    found: list[str] = []
+    part: list[str] = []
+    for line in lines:
+        if _BOX_EDGE.search(line):
+            if part:
+                found.append("\n".join(part))
+            part = []
+        else:
+            part.append(line)
+    if part:
+        found.append("\n".join(part))
+    return found
+
+
 def units(text: str) -> list[str]:
     """Sentences of prose (whitespace collapsed, so a wrapped line is one sentence), each table
-    row, and each line inside a code fence, which is a diagram or a command, not a sentence."""
+    row, and each fenced block (split per box when it is a diagram; see `_fence_units`)."""
     found: list[str] = []
     prose: list[str] = []
+    fence: list[str] = []
     fenced = False
 
     def flush() -> None:
@@ -58,8 +87,13 @@ def units(text: str) -> list[str]:
     for line in text.splitlines():
         if line.lstrip().startswith("```"):
             flush()
+            if fenced:
+                found.extend(_fence_units(fence))
+                fence.clear()
             fenced = not fenced
-        elif fenced or line.lstrip().startswith("|"):
+        elif fenced:
+            fence.append(line)
+        elif line.lstrip().startswith("|"):
             flush()
             found.append(line)
         elif not line.strip():
@@ -67,6 +101,8 @@ def units(text: str) -> list[str]:
         else:
             prose.append(line)
     flush()
+    if fence:  # an unclosed fence still gets read
+        found.extend(_fence_units(fence))
     return found
 
 
@@ -96,7 +132,9 @@ def test_the_routing_table_points_its_implementer_row_at_the_implementer_table()
 
 def test_no_other_shipped_file_states_an_implementer_model() -> None:
     hits: list[str] = []
-    for path in sorted(_PLUGIN.rglob("*.md")):
+    files = sorted(_PLUGIN.rglob("*.md"))
+    assert len(files) > _MIN_FILES, f"the scan read {len(files)} files; a moved plugin tree would pass on nothing"
+    for path in files:
         text = _read(path)
         if path == _ROUTING:
             text = text.replace(_implementer_block(text), "")
@@ -124,10 +162,39 @@ def test_multi_spec_points_its_authoring_dispatch_at_the_routing_row() -> None:
         assert "`multi-spec` authoring row" in flat, f"{rel} does not point at the routing table's authoring row"
 
 
-def test_the_scanner_is_not_vacuous() -> None:
-    assert second_statements("s", "Dispatch ONE coding `Agent` at `model: sonnet` to do the edits.")
-    assert second_statements("s", "6. **Put high-risk implementers\n   on Opus.** Others use Sonnet.")
-    assert second_statements("s", "| Implement delegate | sonnet | inherited |")
-    assert second_statements("s", "```\n│ IMPLEMENT │ big change → sonnet\n```")
-    assert not second_statements("s", "Implement the task. Then the reviewer runs on Opus.")
-    assert not second_statements("s", 'Pass the `model:` that "The implementer\'s model" gives.')
+# The restatement this change removed from `workflow-diagram.md`: the box label is one line above
+# the model annotation.
+_OLD_DIAGRAM_BOX = """```
+            ┌──────────────────────┐
+            │  IMPLEMENT           │   post-check: openspec status --change <name> --json
+            │  apply-change skill  │   ✓ artifacts ready + all ticked / ⚠ gaps (big change → sonnet delegate)
+            └──────────┬───────────┘
+```"""
+
+
+@pytest.mark.parametrize("text", [
+    "Dispatch ONE coding `Agent` at `model: sonnet` to do the edits.",
+    "6. **Put high-risk implementers\n   on Opus.** Others use Sonnet.",
+    "| Implement delegate | sonnet | inherited |",
+    _OLD_DIAGRAM_BOX,
+    "For a big change, hand it to a coding agent on sonnet.",
+    "Dispatch an implementation agent at `model: sonnet`.",
+    "The change is implemented by a Sonnet delegate.",
+    "The fix-applier runs on sonnet.",
+    "Apply review fixes with `Agent(model: sonnet)`.",
+])
+def test_the_scanner_catches_a_restatement(text: str) -> None:
+    assert second_statements("s", text), text
+
+
+@pytest.mark.parametrize("text", [
+    "Implement the task. Then the reviewer runs on Opus.",
+    'Pass the `model:` that "The implementer\'s model" gives.',
+    "The tier is `code-reviewer` `sonnet` at low risk and `opus` at high, `silent-failure-hunter` `opus`.",
+    '"it will probably get this wrong on Sonnet" justifies escalating; "it would do a bit better on Opus" does not.',
+    "```\n---\nname: fact-gatherer\nmodel: haiku\ntools: [\"Read\"]\n---\n```",
+    # A REVIEW box and the APPLY REVIEW FIXES step below its arrow are two units.
+    "```\n│  REVIEW   │  sub-Opus + RETHINK → opus 2nd\n│     ↓     │\n│  APPLY REVIEW FIXES  │  ✓ all-applied\n```",
+])
+def test_the_scanner_passes_other_model_talk(text: str) -> None:
+    assert not second_statements("s", text), text

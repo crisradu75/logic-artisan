@@ -10,9 +10,9 @@ Pass an explicit `model:` on every dispatch, and pick it by the task.
 
 - **A cheap model (Haiku):** sweeps and mechanical work. That means doc sweeps, renames, version
   bumps, greps and inventories, and issue comments drafted from text already in hand.
-- **Sonnet:** the default for authoring, and for writing and strengthening tests.
-- **An agent that implements** (a task, a decided fix, review findings or a small fix PR) takes
-  its model from the implementer table below, by the same risk call as the reviews.
+- **Sonnet:** the default for authoring.
+- **An agent that implements** (a task, its tests, a decided fix, review findings or a small fix
+  PR) takes its model from the implementer table below, by the same risk call as the reviews.
 - **Opus:** only where judgement carries real risk. That means the independent review of a
   high-risk batch (the review-sizing table below sets each review's model), money logic, writes
   to files a user owns, and score or gate changes, plus one focused re-check when a fix round adds

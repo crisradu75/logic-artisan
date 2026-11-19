@@ -15,7 +15,9 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
   Sonnet at low risk, Opus at high risk, judged by the review-sizing signals. spec-to-pr's
   Implement delegate and Revise fix-delegate, which had said sonnet whatever the risk, now point
   at it, as do the economy rules and the routing table. multi-spec's per-change authoring dispatch
-  has its own routing-table row. A new test fails on any second statement of an implementer model.
+  has its own routing-table row. spec-to-pr delegates a high-risk change whatever its size when the
+  session runs below the table's model for it, instead of building it inline. A new test fails on
+  any second statement of an implementer model, in prose, a table row or a diagram box.
 - **The push guard's docs say it is client-side.** The root and plugin READMEs and DEVELOPER-GUIDE
   §8 say `pre-push` guards only the clones that installed it, and give the GitHub tag ruleset
   (restrict updates and deletions of the release-tag pattern) as the server-side guard;
