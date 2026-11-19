@@ -36,6 +36,17 @@ TARGETS = [GUARD]
 DISPATCHER = PLUGIN / "hooks" / "dispatch-bash-pretooluse.py"
 DISPATCH_TARGETS = [DEV / "tests" / "hooks" / "test_dispatch.py", DEV / "tests" / "hooks" / "test_hooks_wiring.py"]
 
+# The run-order mutant moves a line, so its anchor spans several lines. Join them
+# with the dispatcher's own line ending, so the anchor matches on a CRLF checkout too.
+_NL = "\r\n" if b"\r\n" in DISPATCHER.read_bytes() else "\n"
+_ENFORCING_THEN_BROAD = [
+    '    "ask-destructive-git.py",',
+    '    "block-unsafe-recursive-delete.py",',
+    '    "block-dishonest-commit.py",',
+    '    "guard-bash-text.py",',
+    '    "ask-broad-git-add.py",',
+]
+
 MUTANTS = [
     (
         "the hook never asks, whatever a broad add would sweep in",
@@ -257,8 +268,8 @@ MUTANTS = [
     (
         "the best-effort hook runs ahead of the 12 s enforcing hook",
         DISPATCHER,
-        '    "ask-destructive-git.py",\n    "block-unsafe-recursive-delete.py",\n    "ask-broad-git-add.py",\n',
-        '    "ask-broad-git-add.py",\n    "ask-destructive-git.py",\n    "block-unsafe-recursive-delete.py",\n',
+        _NL.join(_ENFORCING_THEN_BROAD),
+        _NL.join(_ENFORCING_THEN_BROAD[-1:] + _ENFORCING_THEN_BROAD[:-1]),
         DISPATCH_TARGETS,
     ),
 ]
