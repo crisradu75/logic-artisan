@@ -678,7 +678,10 @@ def test_notes_take_one_file_and_no_glob(chain: Chain):
     _, mine = _two_chains(chain)
     r = chain.run("resume", "--notes", "cla.io/retro/multi-pr-run-notes-*.md", "--id", "add-x", "--base", "main")
     assert r.returncode == 2
-    assert _first(r).startswith("UNCHECKED notes:") and "does not exist" in _first(r)
+    # Windows refuses `*` in a file name with OSError (Invalid argument), not "not found", so
+    # the script reports "could not be read" there; it is UNCHECKED, exit 2, either way.
+    reason = "could not be read" if os.name == "nt" else "does not exist"
+    assert _first(r).startswith("UNCHECKED notes:") and reason in _first(r)
     # Two paths (an unquoted glob the shell expanded) are refused by the parser: exit 2 as well.
     r = chain.run("resume", "--notes", mine, mine, "--id", "add-x", "--base", "main")
     assert r.returncode == 2
