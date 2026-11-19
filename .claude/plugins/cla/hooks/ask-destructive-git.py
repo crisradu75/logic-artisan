@@ -1808,25 +1808,33 @@ def _expansions(word: str) -> tuple[int, list[tuple[int, int, str]] | None]:
 
 
 @functools.lru_cache(maxsize=16)
-def _live_ticks(scanned: str) -> list[int]:
+def _live_ticks(scanned: str) -> tuple[list[int], list[int]]:
     """The offsets of the backticks in quote-stripped `scanned` that open or
-    close a span: every one not escaped (quoted ones are blanked there). One
-    pass per text."""
-    return [m.start() for m in re.finditer(r"(?<!\\)`", scanned)]
+    close a span, and the offset each line starts at. A backtick is escaped
+    only by an odd run of backslashes right before it (`\\\\`` is an escaped
+    backslash, then a live backtick); quoted ones are blanked there already.
+    One pass per text."""
+    ticks = [m.end() - 1 for m in re.finditer(r"(\\*)`", scanned) if len(m.group(1)) % 2 == 0]
+    starts = [0] + [m.end() for m in re.finditer(r"\n", scanned)]
+    return ticks, starts
 
 
 def _span_close(scanned: str, at: int) -> int | None:
     """When `at` is inside a backtick span, the offset of the backtick that
     closes it (the end of the text when none does); None when it is not.
-    Pairing, not position: an odd number of live backticks before `at` opened
-    a span that `at` sits in, as `git` does in prose quoting `` `git status` ``,
-    while a backtick after an even number opens a substitution, as in
-    `git push -`echo f``. A backtick right before `at` opens a span too: the
-    count goes wrong in prose, where an apostrophe (`user's`) pairs with a later
-    one and blanks the backticks between them."""
-    ticks = _live_ticks(scanned)
+    Pairing, not position: an odd number of live backticks before `at` on its
+    own line opened a span that `at` sits in, as `git` does in prose quoting
+    `` `git status` ``, while a backtick after an even number opens a
+    substitution, as in `git push -`echo f``. Only `at`'s line counts: a
+    backtick in a comment or a heredoc body on an earlier line is no shell
+    syntax, and one would flip the count. A backtick right before `at` opens a
+    span too: the count goes wrong in prose, where an apostrophe (`user's`)
+    pairs with a later one and blanks the backticks between them."""
+    ticks, starts = _live_ticks(scanned)
+    line = starts[bisect.bisect_right(starts, at) - 1]
     k = bisect.bisect_left(ticks, at)
-    if k % 2 == 0 and not (k and ticks[k - 1] == at - 1):
+    count = k - bisect.bisect_left(ticks, line)
+    if count % 2 == 0 and not (count and ticks[k - 1] == at - 1):
         return None
     return ticks[k] if k < len(ticks) else len(scanned)
 

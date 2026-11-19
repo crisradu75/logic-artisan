@@ -3599,7 +3599,7 @@ def test_a_quoted_reset_name_or_searched_start_still_asks(
 # allowed before `_expand` existed: the quoted body was blanked, and `$X` matched
 # no subcommand. Each wrapped form must reach the decision its bare form reaches.
 
-_FORCE = "force-push"
+_FORCE = "a force-push,"  # the unread reasons say "force-pushes" too
 _HARD = "reset --hard"
 _DELETE = "force-delete of a branch"
 
@@ -3626,6 +3626,10 @@ def _wrapped_ps(command: str) -> str:
         ("bash -c git\\ push\\ -f\\ origin\\ x", _FORCE),
         ("bash -c \"sh -c 'git push -f origin x'\"", _FORCE),
         ("bash -c \"eval 'git push -f origin x'\"", _FORCE),
+        # three levels are read in full, with no depth ask
+        ("bash -c \"sh -c \\\"eval 'git push -f origin x'\\\"\"", _FORCE),
+        # a line continuation right after the wrapper word
+        ("bash\\\n  -c 'git push -f origin x'", _FORCE),
         ("bash -c 'cd sub && git reset --hard'", _HARD),
         ("echo ok && bash -c 'git push -f origin x' && echo done", _FORCE),
         ('xargs -I{} sh -c "git branch -D {}"', _DELETE),
@@ -3648,7 +3652,10 @@ def test_a_wrapped_destructive_command_asks_like_the_bare_one(command, expected,
     assert payload is not None, f"expected an ask for: {command!r}"
     reason = _reason(payload)
     assert expected in reason, reason
+    # Both of these name a force-push in their own text, so `expected` alone
+    # would pass on either: the body must have been read, not given up on.
     assert "cannot resolve" not in reason, reason
+    assert hook.WRAP_DEPTH_REASON not in reason, reason
 
 
 # requirement: git-guards / A destructive git command run through a shell wrapper asks first
@@ -3827,6 +3834,11 @@ def test_rewrites_past_their_cap_ask_rather_than_pass(monkeypatch, capsys):
     assert payload is not None
     assert hook.UNRESOLVED_REASON in _reason(payload)
     assert _run("X=v1; X=v2; git $X", monkeypatch, capsys) is None
+    # The cap is 64 lines, stated here as a number: the lines above follow the
+    # constant, so they would pass on any cap.
+    values = "; ".join(f"X=v{i}" for i in range(65))
+    payload = _run(values + "; git $X", monkeypatch, capsys)
+    assert payload is not None and hook.UNRESOLVED_REASON in _reason(payload)
 
 
 def test_a_merge_through_a_wrapper_still_honours_the_merge_override(monkeypatch, capsys):
@@ -4118,6 +4130,13 @@ def test_a_backtick_after_a_quoted_git_command_stays_silent(command, monkeypatch
         ("X=f; git push -`echo $X` origin x", hook.UNRESOLVED_REASON),
         # inside a span, an escaped backtick still opens one a level down
         ("echo `git push -\\`echo f\\` origin x`", hook.UNRESOLVED_REASON),
+        # a backtick on an earlier line, in a comment or a heredoc body, or
+        # after an escaped backslash, opens no span around this git
+        ("true # `\ngit push -`echo f` origin x", hook.UNRESOLVED_REASON),
+        ("cat <<'EOF'\nsee `\nEOF\ngit reset --`echo hard`", hook.UNRESOLVED_REASON),
+        ("echo \\\\`echo x`; git push -`echo f` origin x", hook.UNRESOLVED_REASON),
+        ("cat <<'EOF'\nsee `\nEOF\ngit pu`echo sh` -f origin x", hook.UNRESOLVED_REASON),
+        ("# it's a `test\ngit branch -`echo D` foo", hook.UNRESOLVED_REASON),
         # a span closed before the next command leaves that command whole
         ('echo "`git status`" && git push -f origin x', _FORCE),
         ("echo `git status` && git push -f origin x", _FORCE),
