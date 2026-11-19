@@ -5,30 +5,32 @@ WHY THIS EXISTS. Both catalogs (`.claude-plugin/marketplace.json` for Claude Cod
 `.github/plugin/marketplace.json` for the Copilot CLI) are read by consumers from
 the default branch, and each pins the plugin to a `cla--v<version>` tag. The
 release commit that moves those refs reaches the default branch by a merge, and
-the tag is a separate, later push. Between the two, every consuming repo's
-`marketplace update` fetches a ref that does not exist. That window is not
-hypothetical: 2.0.0 sat merged and untagged until the owner pushed the tag by
-hand, and 2.4.0 did the same.
+the tag is a separate push. When the merge came first, every consuming repo's
+`marketplace update` fetched a ref that did not exist until the tag push: 2.0.0
+sat merged and untagged until the owner pushed the tag by hand, and 2.4.0 did the
+same.
 
-The window cannot be closed by reordering: `claude plugin tag` refuses unless the
-plugin manifest and the catalog entry already agree, and a tag cut on the release
-branch before the merge would not be on the default branch after a squash merge.
-So this check closes it from both ends instead:
+`/release` now closes that window by order: it tags the release PR's head commit,
+where the manifest and the catalog already agree, pushes the tag, and only then
+merges the PR with a merge commit, so the tagged commit itself lands on the
+default branch. This check is what proves each step held:
 
     precondition   `/release` refuses to start while an EARLIER release's ref is
                    still dangling, so one missed tag push cannot be buried under
                    the next version;
-    postcondition  `/release` reports nothing as done until the ref it just
-                   published resolves on the remote. Run it there with
+    postcondition  `/release` merges nothing until, on the release branch, the
+                   new ref resolves on the remote, and reports nothing as done
+                   until it still does on the default branch. Run it there with
                    `--expect cla--v<new>`: without it, a working tree that still
                    holds the OLD ref passes on the old tag while the new one
                    never left the local clone.
 
 WHAT IT READS. The catalogs in the working tree at `--root` (default: the repo
-this script sits in, whatever the cwd). `/release` runs it on
-the default branch, up to date with `origin`, so the working tree is what
-consumers read. The remote is asked once, with `git ls-remote --tags`; a tag that
-exists only in the local clone is MISSING, because a consumer cannot fetch it.
+this script sits in, whatever the cwd). `/release` runs it on the default
+branch, up to date with `origin`, where the working tree is what consumers read,
+and on the release branch, where it is what they will read once it merges. The
+remote is asked once, with `git ls-remote --tags`; a tag that exists only in the
+local clone is MISSING, because a consumer cannot fetch it.
 
 EXIT CONTRACT, three-valued on purpose:
 
