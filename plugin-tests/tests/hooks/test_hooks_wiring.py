@@ -1701,7 +1701,8 @@ def test_the_probe_exports_a_fresh_start_stamp_or_an_empty_one(shell):
     value, now = r.stdout.rsplit(" ", 1)
     value = ast.literal_eval(value)
     assert value != "12345.5", f"{shell} kept the inherited stamp"
-    probe = _sp.run([shell, "-c", 'printf %s "${EPOCHREALTIME:-}"'], capture_output=True, text=True)
+    probe = _sp.run([shell, "-c", 'printf %s "${EPOCHREALTIME:-}"'], capture_output=True, text=True,
+                   encoding="utf-8", errors="replace")
     if probe.stdout:
         stamp = float(value.replace(",", "."))
         assert 0.0 <= float(now) - stamp < 10.0, (value, now)
