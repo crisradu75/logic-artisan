@@ -172,8 +172,8 @@ listed paths only on the user's explicit yes. Nothing is committed. **Read the s
 The plugin owns this file whole: it is rendered from `_shared/references` sources and replaced with no
 prompt whenever it differs (report `created`, `replaced` or `unchanged`). A failure prints `NOT written`
 with the reason and stops only this block; carry on with item 8. This skill never touches `CLAUDE.md`
-or `AGENTS.md`. **Read `references/economy-rules-block.md` first** for the sources, the checks before
-writing and the block.
+or `AGENTS.md`. **Read `references/economy-rules-block.md` first** for the block; the sources and the
+checks before writing are in the header of `scripts/render_economy_rules.py`, which it runs.
 
 ## Part 2 — Facts
 

@@ -29,7 +29,7 @@ Exit 0 → proceed. Exit 2 (in-progress git op) or 3 (wrong branch) → halt and
 
 ## 2a. Pre-staging hygiene — debug tags, then scratch artifacts
 
-**`grep -rn "\[DEBUG-" <the paths about to be staged>` must return nothing; remove any tagged line before staging.** It is `/cla:diagnose`'s instrumentation tag, which only an interrupted run leaks this far. The pattern also lives in `${CLAUDE_PLUGIN_ROOT}/skills/diagnose/SKILL.md` Phase 6; a rename must touch both, or this grep searches for a string nothing writes.
+**`grep -rn "\[DEBUG-" <the paths about to be staged>` must return nothing; remove any tagged line before staging.** It is `/cla:diagnose`'s instrumentation tag, which only an interrupted run leaks this far. The pattern also lives in `${CLAUDE_PLUGIN_ROOT}/skills/diagnose/SKILL.md` Phase 6 and in the guard hook `${CLAUDE_PLUGIN_ROOT}/hooks/ask-staged-debug-tag.py`; a rename must touch all three, or this grep searches for a string nothing writes.
 
 Then scan the untracked (`??`) entries of `git status --porcelain` for a stray scratch artifact: a background agent's tool-redirect bug can write a mangled, extension-bearing filename into the repo root instead of the scratchpad. It sits at the repo root (no `/` in the path) AND contains a substring characteristic of a scratch/temp-dir path. Read its first lines to confirm (typically a `git diff` dump), then `rm "<path>"` before staging. Never fold it into the commit, and never skip this because Implement's delegate reported success.
 

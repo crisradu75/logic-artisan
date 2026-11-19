@@ -14,8 +14,11 @@ re-breaks exactly that path.
 
 WHY THE MUTATIONS TARGET THE HOOK, NOT THE GUARD. Mutating the test file's own
 assertions would prove the guard's prose reacts to a change in its own prose --
-circular. Every mutant here edits `ask-destructive-git.py`, the file the guard
-is actually meant to pin.
+circular. Every mutant here edits the hook: `ask-destructive-git.py` and the
+three files it was split into (`_destructive_git_rules.py`,
+`_destructive_git_probes.py`, `_shell_read.py`). `_line` searches all four,
+and each mutant is planted in the one file that holds its anchor (`_home`,
+at the end), so an anchor that moves between them follows on its own.
 
 ANCHORS ARE LOCATED, NOT HAND-COPIED. This hook's source is dense with regex
 literals (`\\s`, `\\\\`, character classes), and retyping one by hand is exactly
@@ -35,17 +38,30 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]          # <repo>/plugin-tests
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 HOOK = PLUGIN / "hooks" / "ask-destructive-git.py"
+_FILES = [
+    HOOK,
+    PLUGIN / "hooks" / "_destructive_git_rules.py",
+    PLUGIN / "hooks" / "_destructive_git_probes.py",
+    PLUGIN / "hooks" / "_shell_read.py",
+]
 GUARD = DEV / "tests" / "hooks" / "test_ask_destructive_git.py"
 TARGETS = [GUARD]
 
 _RAW = HOOK.read_bytes()
 _NL = "\r\n" if b"\r\n" in _RAW else "\n"
-_TEXT = _RAW.decode("utf-8")
-_LINES = _TEXT.split(_NL)
+_TEXTS = {f: f.read_bytes().decode("utf-8") for f in _FILES}
+# Every file's lines, one after another, and the file each line came from. A
+# block (`_mut`'s `n`) is taken within one file.
+_LINES: list[str] = []
+_LINE_HOME: list[Path] = []
+for _f in _FILES:
+    _f_lines = _TEXTS[_f].split(_NL)
+    _LINES += _f_lines
+    _LINE_HOME += [_f] * len(_f_lines)
 
 
 def _line(needle: str) -> str:
-    """The one line in the hook source containing `needle`.
+    """The one line in the hook's four files containing `needle`.
 
     Asserted unique HERE, at batch-load time, so a future edit that duplicates
     the needle fails loudly on import rather than silently building a mutant
@@ -143,7 +159,7 @@ MUTANTS.append((
 
 # --- 6. `git branch` ---------------------------------------------------------
 # Was: `_BRANCH` composed with `_GIT_CMD` swapped for a bare `git`. Since #526
-# `GIT_CMD` is composed once, inside `_dispatch_lib.GitInvocation`, so that
+# `GIT_CMD` is composed once, inside `_shell_text.GitInvocation`, so that
 # mutant lives in `test_dispatch_lib.py`'s batch. Here the subcommand word is
 # corrupted, so no force-delete spelling matches.
 _l6 = _line('_BRANCH = GitInvocation(')
@@ -199,7 +215,7 @@ MUTANTS.append((
 #
 # Killed by `test_a_wedged_git_prompts_rather_than_going_silent`, which stubs
 # `_run_git` to return None and asserts a payload is still produced.
-_l9 = _line("lines = _status_lines(cwd, paths, ignored)")
+_l9 = _line("lines = _status_lines(cwd, paths, ignored, probes)")
 MUTANTS.append((
     "a wedged git makes the discard layer fail OPEN: the probe returning None "
     "is read as 'nothing would be lost' instead of 'ask'",
@@ -285,16 +301,17 @@ def _mut(what: str, needle: str, old: str, new: str, n: int = 1, at: int = 0) ->
     first = _line(needle)
     i = _LINES.index(first)
     block = _LINES[i:i + n]
+    assert len(set(_LINE_HOME[i:i + n])) == 1, ("a block spans two files", needle)
     assert block[at].count(old) == 1, (old, block[at])
     mutated = list(block)
     mutated[at] = block[at].replace(old, new)
-    MUTANTS.append((what, HOOK, _NL.join(block), _NL.join(mutated), TARGETS))
+    MUTANTS.append((what, _LINE_HOME[i], _NL.join(block), _NL.join(mutated), TARGETS))
 
 
 for _what, _args in (
     # imports and the shared directory helper
     ("the history checks lose `time`, so every command raises in _reasons",
-     ("import time", "import time", "import time as _unused_time")),
+     ("import time  # the deadline's clock", "import time", "import time as _unused_time")),
     ("each history probe may take 12s instead of at most 3s",
      ("import GIT_TIMEOUT_SECONDS", "from _dispatch_lib import GIT_TIMEOUT_SECONDS", "GIT_TIMEOUT_SECONDS = 12.0")),
     ("the history probe budget becomes zero, so none of them ever runs",
@@ -396,7 +413,7 @@ for _what, _args in (
     ("a word is kept with its quotes' scanned text",
      ("            words.append(real)", "append(real)", "append(flag)")),
     ("_words loses its last word",
-     ("    return words", "return words", "return words[:-1]")),
+     ("            words.append(real)", "return words", "return words[:-1]", 2, 1)),
     # _cluster
     ("a short cluster's first letter is skipped",
      ("for i, ch in enumerate(letters):", "enumerate(letters)", "enumerate(letters[1:])")),
@@ -537,7 +554,7 @@ for _what, _args in (
      ('                if ch == "m":', "break", "pass", 4, 3)),
     # _Probes
     ("the deadline is in the past",
-     ("self.deadline = started + _PROBE_BUDGET_SECONDS", "started + ", "started - ")),
+     ("self.deadline = started + budget", "started + ", "started - ")),
     ("every probe in a directory shares one answer",
      ("key = (directory, tuple(args))", "(directory, tuple(args))", "directory")),
     ("an identical probe runs again",
@@ -550,8 +567,10 @@ for _what, _args in (
      ("if left > 0 else None", "left > 0", "left > -1")),
     ("a probe that did not run is not noted",
      ("self.missed = self.missed or self.asked[key] is None", "is None", "is False")),
-    ("a missed probe is noted from the start",
-     ("        self.missed = False", "False", "True")),
+    # Not planted: "a missed probe is noted from the start" (`self.missed = True`
+    # in `_Probes.__init__`) SURVIVED as equivalent once every probe shared one
+    # `_Probes`: `_history_reasons` resets `missed` before its first probe, so
+    # the constructor's value is never read.
     ("the memo returns nothing",
      ("        return self.asked[key]", "self.asked[key]", "None")),
     ("a revision starting with a dash is probed",
@@ -732,8 +751,11 @@ for _what, _args in (
      ('out.append(_DOUBLE_ESCAPE.sub(r"', "_DOUBLE_ESCAPE.sub(", "(lambda p, r, t: t)(")),
     ("a double-quoted segment is never recognised",
      ("        elif double is not None:", "is not None", "is None and False")),
-    ("single, escaped and plain segments lose their text",
-     ("out.append(next(g for g in (single, escaped, plain)", "(single, escaped, plain)", "(escaped, plain, single)")),
+    # Was a reorder of `(single, escaped, plain)`, which changes nothing: at most
+    # one of the three groups is set for a segment. Dropping the plain text of a
+    # quoted word (`ma"in"`) is the defect a test can see.
+    ("the plain text of a quoted word is dropped",
+     ("out.append(next(g for g in (single, escaped, plain)", "(single, escaped, plain)", '(single, escaped, "")')),
     ("_unquote drops its last segment",
      ('    return "".join(out)', '"".join(out)', '"".join(out[:-1])')),
     ("a hex escape reads as octal",
@@ -883,3 +905,218 @@ MUTANTS.append((
     "run_git ignores a shorter timeout, so the history probes each get 3s",
     LIB, _lt, "            timeout=GIT_TIMEOUT_SECONDS,", TARGETS,
 ))
+
+
+# --- shell wrappers and expansions (guard-shell-wrappers) ----------------------
+# One mutant per changed line that a correct input can tell apart. Killing tests
+# are the `wrapped`, `expansion`, `quoted_or_partly_expanded`, `cap`,
+# `scan_cap`, `work_cap` and `measured_handler` tests at the end of
+# tests/hooks/test_ask_destructive_git.py. Deliberately absent, because no input
+# tells them from the real code:
+# - the early `return lines, True` inside `_rewrites` (the `_expand` line cap
+#   asks for the same commands, it is there to stop work sooner), `_scan`'s
+#   one-part shortcut (joining one part is the part), `_stripped`'s and
+#   `_paren_close`'s caches, and the `break` after a rule-B rewrite (the next
+#   round reads the rewritten line either way);
+# - `_word_end`'s loop steps whose removal never ends the loop, which would hang
+#   the run rather than fail a test, and its two fast paths (`_PLAIN_RUN`, and
+#   `_unquote`'s plain-word return), which give the same answer one character
+#   at a time;
+# - the `limit` passed to `str.find` and `startswith` (the final `min(i, n)`
+#   clamps any overshoot), `_resolve`'s `islice` (the line cap asks for the same
+#   commands), and `value == raw or` (a plain word rewritten to itself adds a
+#   line no check reads differently);
+# - in `_rewrites`, `part[b:limit]` after a rewritten option word: the text
+#   past a span's close is read by every matcher in the command itself anyway;
+# - `_live_ticks`'s cache;
+# - the work spent in `_at_command_start` and `tail_end`, and the slack term
+#   and the `finally` reset of the work cap: every command a test can build is
+#   walked far inside the cap without them, and every reader runs under
+#   `_expand`, which sets the cap first. The cap itself is held by the
+#   `work_cap` tests and by every scan-cap reproducer.
+for _what, _args in (
+    ("wrappers are never read", ("_WRAP_DEPTH = 3", "= 3", "= 0")),
+    ("only two levels of wrapper are read", ("_WRAP_DEPTH = 3", "= 3", "= 2")),
+    ("expansion rounds stop after one", ("_EXPAND_ROUNDS = 4", "= 4", "= 1")),
+    ("the line cap never trips", ("_EXPAND_MAX_LINES = 64", "= 64", "= 100000")),
+    ("the work cap is the text's own length", ("_WORK_FACTOR = 8", "= 8", "= 1")),
+    ("parts join with one newline, so a continued last line runs into a body",
+     ('_PART_SEP = "\\n\\n"', '"\\n\\n"', '"\\n"')),
+    ("a wrapper word may start anywhere, inside `refresh` too",
+     ("_WORD_START = r", 'r"(?:(?<=[/\\\\])|(?<![^\\s;&|(){}`!]))"', 'r"(?:)"')),
+    ("a path before the wrapper hides it", ("_WORD_START = r", "(?<=[/\\\\])|", "")),
+    ("eval is not a wrapper", ('r"|eval|iex|invoke-expression)', "|eval", "")),
+    ("pwsh is not a wrapper", ('+ r"(?i:bash|sh|zsh|dash|ksh', "|pwsh", "")),
+    ("bash.exe is not a wrapper", ('r"|eval|iex|invoke-expression)', "(?i:\\.exe)?", "")),
+    ("a line continuation after the wrapper hides it",
+     ('r"|eval|iex|invoke-expression)', "(?=[ \\t]|\\\\\\r?\\n)", "(?=[ \\t])")),
+    ("-ec is not -EncodedCommand", ("_PS_ENCODED = re.compile", "ec|", "xx|")),
+    ("a body holding only gh is dropped", ('_HAS_GIT = re.compile(r"(?i)git|gh")', "|gh", "")),
+    ("an unquoted ${F} before an operand does not ask", ("_SINGLE_VAR = re.compile", "|\\{([A-Za-z_]\\w*)\\}", "")),
+    ("${NAME} is not resolved",
+     ("braced = bare is None and _VAR_BRACED.match(word, i + 1)", "bare is None and _VAR_BRACED.match(word, i + 1)", "None")),
+    ("export X= is not an assignment", ('    r"(?:^|(?<=[\\s;&|(){}`]))(?:(?:export', "\\s;", ";")),
+    ("a PowerShell assignment is never read", ("_PS_ASSIGN = re.compile", "\\$([A-Za-z_]", "\\$\\$([A-Za-z_]")),
+    ("a comparison reads as a PowerShell assignment", ("_PS_ASSIGN = re.compile", "(?!=)", "")),
+    ("any value is a literal", ("_LITERAL_VALUE = re.compile", r'r"[\w ./:+=,@%~^-]*"', 'r".*"')),
+    ("sudo hides the command start", ('    "sudo env command exec time', '"sudo env', '"env')),
+    ("a quoted subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "\\\"'", "")),
+    ("a backtick subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "$`", "$")),
+    ("a subcommand is read only when its first character is special",
+     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", r"[^\s;&|<>()\\]*?", "")),
+    # backtick spans: pairing, not position
+    ("every git ends at the next backtick, opening or closing",
+     ("    if count % 2 == 0 and not (count and ticks[k - 1] == at - 1):", "count % 2 == 0 and not (count and ticks[k - 1] == at - 1)", "False")),
+    ("no git is ever inside a span",
+     ("    if count % 2 == 0 and not (count and ticks[k - 1] == at - 1):", "count % 2 == 0 and not (count and ticks[k - 1] == at - 1)", "True")),
+    ("only the count decides, so prose apostrophes break it",
+     ("    if count % 2 == 0 and not (count and ticks[k - 1] == at - 1):", " and not (count and ticks[k - 1] == at - 1)", "")),
+    ("backticks on earlier lines count, comments and heredoc bodies included",
+     ("    count = k - bisect.bisect_left(ticks, line)", "k - bisect.bisect_left(ticks, line)", "k")),
+    ("an unclosed span always runs to the end",
+     ("    return ticks[k] if k < len(ticks) else len(scanned)", "ticks[k] if k < len(ticks) else len(scanned)", "len(scanned)")),
+    ("an escaped backtick opens or closes a span",
+     ("    ticks = [m.end() - 1 for m in re.finditer(", "len(m.group(1)) % 2 == 0", "True")),
+    ("one backslash before a backtick escapes it, whatever came before",
+     ("    ticks = [m.end() - 1 for m in re.finditer(", "len(m.group(1)) % 2 == 0", "len(m.group(1)) == 0")),
+    ("a plain word cut at a span's close is rewritten anyway",
+     ("            continue  # cut at the span's close, it is a plain word", "continue", "pass")),
+    ("a subcommand's line runs past the span's close",
+     ("        stop = tail_end(end) if close is None else min(tail_end(end), close)",
+      "tail_end(end) if close is None else min(tail_end(end), close)", "tail_end(end)")),
+    ("an option word runs past the span's close",
+     ("            limit = m.end(1) if close is None else min(m.end(1), close)",
+      "m.end(1) if close is None else min(m.end(1), close)", "m.end(1)")),
+    ("an option the matcher skipped reads as the subcommand",
+     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "(?!-)", "")),
+    ("-C's value reads as the subcommand", ("_GIT_VALUE_OPT = re.compile", "-[cC]", "-[c]")),
+    # the work cap
+    ("the work cap never trips", ("    if _WORK_LEFT[0] < 0:", "if _WORK_LEFT", "if False and _WORK_LEFT")),
+    ("a word costs nothing against the work cap", ("    _spend(end - start)", "end - start", "0")),
+    ("reading past the work cap passes what was read",
+     ("        return _expand_into(parts)", "return parts, UNRESOLVED_REASON", "return parts, None", 3, 2)),
+    # `$(...)`
+    ("a `$(` runs to the end of the text", ("            i = _paren_close(text).get(i + 1, n) + 1", "_paren_close(text).get(i + 1, n) + 1", "n")),
+    ("a `)` closes the outermost open `(`", ("            close[stack.pop()] = m.start()", "stack.pop()", "stack.pop(0)")),
+    ("an unquoted backslash does not escape the next character",
+     ("    start = i", "i += 2", "i += 1", 5, 4)),
+    ("a wrapper's words run on past its command",
+     ('        elif ch in "<>":', "break", "i += 1", 6, 5)),
+    ("a backtick is not an expansion",
+     ("            double = not double", "return (i if first < 0 else first), None", "pass", 3, 2)),
+    ("only ${ and $( are expansions",
+     ('elif ch == "$" and i + 1 < n and (word[i + 1].isalnum()', 'word[i + 1].isalnum() or word[i + 1] in "_{(@*#?!$-"', 'word[i + 1] in "{("')),
+    ("single-quoted text can hold an expansion",
+     ("""        if ch == "'" and not double:""", "if ch", "if False and ch")),
+    ("a word glued to `git` counts as its command start",
+     ('    if i > 0 and scanned[i - 1] not in " \\t\\n;&|(){}`!/\\\\":', "if i > 0 and", "if False and")),
+    ("an option before git hides the command start", ('            or word.startswith("-")', "or word", "or False and word")),
+    ("an assignment before git hides the command start",
+     ('            or re.fullmatch(r"[A-Za-z_]\\w*=\\S*", word)', "or re", "or False and re")),
+    ("an assignment inside an earlier value is read",
+     ("        for pattern in (_ASSIGN, _PS_ASSIGN):", "if m.start() < read_to:", "if False:", 4, 3)),
+    ("a bare PowerShell word is a literal", ("bare_ps = pattern is _PS_ASSIGN and", "bare_ps = pattern", "bare_ps = False and pattern")),
+    ("a value followed by ( is a literal", ('not part.startswith("(", end)', 'not part.startswith("(", end)', "True")),
+    ("a non-literal value is kept", ("                    if not _LITERAL_VALUE.fullmatch(value):", "if not", "if False and not")),
+    ("a wrapper inside the words of the one before is read again",
+     ("    for m in _WRAPPER.finditer(_stripped(part)):", "if m.start() < read_to:", "if False:", 2, 1)),
+    ("a wrapper's first word is dropped", ('        bodies.append(" ".join(words))', "join(words)", "join(words[1:])")),
+    ("the encoded command is read from the flag itself", ("for flag, value in zip(words, words[1:]):", "words[1:]", "words")),
+    ("the encoded command is decoded as UTF-8", ('.decode("utf-16-le")', '"utf-16-le"', '"utf-8"')),
+    ("an assignment that is not a literal still resolves",
+     ("        if not values or any(v is None for v in values):", " or any(v is None for v in values)", "")),
+    ("only the first value a name is given is tried",
+     ("        choices.append(list(dict.fromkeys(values)))", "list(dict.fromkeys(values))", "values[:1]")),
+    ("a resolved word keeps its quotes", ('        readings.append(_unquote("".join(pieces)))', '_unquote("".join(pieces))', '"".join(pieces)')),
+    ("an unresolved subcommand is not reported",
+     ("            continue  # cut at the span's close, it is a plain word", "_resolve(raw, names)", "_resolve(raw, names) or []", 2, 1)),
+    ("a rewritten line loses its git", ("lines += [part[m.start():sub] + v + part[end:stop] for v in values]", "part[m.start():sub] + v", "v")),
+    ("reset's options are not read", ("    for pattern in (_PUSH, _RESET, _BRANCH):", "_RESET, ", "")),
+    ("an operand never ends the option run",
+     ('                        operand = operand or not value.startswith("-")', "operand or not", "False and not")),
+    ("a quoted refspec is not read", ('if value == raw or not value.startswith(("-", "+")):', '("-", "+")', '"-"')),
+    ("the literal start keeps its quotes", ("                    lead = _unquote(raw[:first])", "_unquote(raw[:first])", "raw[:first]")),
+    ("a forced refspec's placeholder is dropped", ('                        values = [lead + "x"]', 'lead + "x"', "lead")),
+    ("a named flag with an unknown value asks", ('elif lead.startswith("-") and "=" in lead:', ' and "=" in lead', ' and False')),
+    ("a flag with an unknown expansion glued on stays silent",
+     ('                    elif lead.startswith("-"):', "unresolved = True", "unresolved = False", 2, 1)),
+    ("a quoted expansion before the operand asks",
+     ('                            not operand and raw.startswith("$") and', ' and raw.startswith("$")', "")),
+    ("a resolved option is dropped from the line",
+     ("lines += [part[m.start():a] + v + part[b:limit] for v in values]", " + v + ", " + ")),
+    ("text past the cap is read anyway",
+     ("        budget -= sum(len(b) for b in frontier)", "len(b)", "0 * len(b)")),
+    ("a wrapper past the depth cap is allowed",
+     ("        if any(_NAMES_GIT.search(b) for p in frontier", "if any", "if False and any")),
+    ("a wrapper past the depth cap gives the unresolved reason",
+     ("        if any(_NAMES_GIT.search(b) for p in frontier", "WRAP_DEPTH_REASON", "UNRESOLVED_REASON", 2, 1)),
+    ("assignments in a wrapper body are not read", ("    names = _assignments(parts)", "(parts)", "([command])")),
+    ("every round re-adds every line", ("                if line not in seen:", "line not in seen", "True")),
+    ("a line still changing after the last round is allowed",
+     ("        frontier = new", "return parts, UNRESOLVED_REASON", "return parts, None", 2, 1)),
+    ("parts are quote-stripped as one text, so quotes pair across them",
+     ("        _PART_SEP.join(_stripped(p) for p in parts),", "_PART_SEP.join(_stripped(p) for p in parts)", "_stripped(_PART_SEP.join(parts))")),
+    ("the unread reason is never given", ("        found.append(unread)", "found.append(unread)", "pass")),
+    ("the merge override reads the raw text again",
+     ("        or _every_merge_is_authorized(_scan(command)[1])", "[1]", "[0]")),
+    ("a measured handler deadline is ignored", ("        if handler.measured:", "if handler", "if False and handler")),
+    ("the history probes take the later of the two deadlines",
+     ("            budget = min(budget, handler.remaining())", "min(", "max(")),
+    # The depth cap asks only for an unread body that names git or gh as a word.
+    ("the depth cap asks on any body `_HAS_GIT` keeps (\"through\" holds gh)",
+     ("        if any(_NAMES_GIT.search(b)", "_NAMES_GIT.search(b) for p in frontier for b in _wrapper_bodies(p)",
+      "_wrapper_bodies(p) for p in frontier")),
+    ("the depth cap matches git at the end of a word", ('_NAMES_GIT = re.compile(', "(?<![\\w-])", "")),
+    ("the depth cap matches git at the start of a word", ('_NAMES_GIT = re.compile(', "(?![\\w-])", "")),
+    ("the depth cap's git word is case-sensitive", ('_NAMES_GIT = re.compile(', '(?i)(?<!', '(?<!')),
+    ("the depth cap forgets gh", ('_NAMES_GIT = re.compile(', "(?:git|gh)", "(?:git)")),
+):
+    _mut(_what, *_args)
+
+
+
+# --- The pre-push tag override, the mirror push, and the shared deadline --------
+for _what, _args in (
+    ("the tag override typed inline no longer asks",
+     ("ALLOW_(?:PUSH_TO_MAIN|TAG_REWRITE)=", "|TAG_REWRITE", "")),
+    ("an override set in PowerShell's $env: form no longer asks",
+     ("|(?i:\\$env:ALLOW_", 'r"|(?i:', 'r"|(?!)(?i:')),
+    ("the $env: name is read case-sensitively",
+     ("|(?i:\\$env:ALLOW_", "(?i:", "(?:")),
+    ("no space is allowed around a PowerShell =",
+     ("|(?i:\\$env:ALLOW_", "[ \\t]*=[ \\t]*", "=")),
+    ("a mirror push no longer asks",
+     ("    if any(_MIRROR_FLAG.search(m.group(1)) for m in pushes):", "if any(", "if False and any(")),
+    ("--m no longer reads as --mirror",
+     ("_MIRROR_FLAG = re.compile(", '_abbrev("mirror", 1)', '_abbrev("mirror", 6)')),
+    ("a word that only starts like --mirror asks",
+     ("_MIRROR_FLAG = re.compile(", ' + _END)', ')')),
+    ("the mirror reason is given as a force-push",
+     ("        found.append(MIRROR_REASON)", "MIRROR_REASON", '"a force-push"')),
+    ("the discard probe gets a deadline of its own",
+     ('                "ignored" in discard_wanted,', "probes,", "None,", 3, 2)),
+    ("the clean probe gets a deadline of its own",
+     ('            "ignored" in clean_wanted,', "probes,", "None,", 3, 2)),
+    ("the stash probe gets a deadline of its own",
+     ("            in_progress = _operation_in_progress(stash_dirs[0], probes)", ", probes)", ")")),
+    ("a refused working-tree probe reads as a missed history probe",
+     ("    probes.missed = False", "probes.missed = False", "pass")),
+):
+    _mut(_what, *_args)
+
+
+def _home(old: str) -> Path:
+    """The one file of the four that holds `old`. An anchor found in two would
+    be planted in the wrong one as readily as the right one, so it is refused
+    here, at batch-load time, the way `_line` refuses a duplicate needle."""
+    homes = [f for f in _FILES if old in _TEXTS[f]]
+    assert len(homes) == 1, (old, homes)
+    return homes[0]
+
+
+# Every mutant built above with `HOOK` as its file is planted where its anchor
+# now lives.
+MUTANTS = [
+    (what, _home(old) if path == HOOK else path, old, new, targets)
+    for what, path, old, new, targets in MUTANTS
+]

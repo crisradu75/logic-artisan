@@ -461,3 +461,96 @@ def test_the_worst_case_subprocess_budget_fits_the_handler_timeout():
         f"3 chained git calls at {hook._GIT_TIMEOUT_SECONDS}s = {worst_case}s, "
         f"against a {timeout}s handler timeout"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Return paths the tests above never reached
+# --------------------------------------------------------------------------- #
+
+
+class _Result:
+    def __init__(self, returncode, stdout=b"", stderr=b""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+def test_an_empty_path_never_reaches_git(monkeypatch, capsys, repo):
+    """`file_path: ""` resolves to the project directory itself; it must exit before any lookup."""
+    def boom(*a, **k):
+        raise AssertionError("git was run for an empty path")
+
+    monkeypatch.setattr(hook.subprocess, "run", boom)
+    assert _run(monkeypatch, capsys, repo, _payload("")) == ""
+
+
+def test_a_warning_goes_to_the_hook_output_and_leaves_stderr_empty(monkeypatch, capsys, repo):
+    (repo / REL).write_text(_words(200), encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(_payload())))
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "replaced 400 committed words" in _context(captured.out)
+
+
+def test_a_file_deleted_before_the_hook_ran_is_silent(monkeypatch, capsys, repo):
+    (repo / REL).unlink()
+    assert _run(monkeypatch, capsys, repo, _payload()) == ""
+
+
+def test_a_file_replaced_by_non_text_is_silent(monkeypatch, capsys, repo):
+    (repo / REL).write_bytes(b"\xff\xfe\x00\x80 not utf-8 " * 40)
+    assert _run(monkeypatch, capsys, repo, _payload()) == ""
+
+
+def test_a_path_git_cannot_resolve_is_announced_with_git_s_reason(repo, capsys):
+    """A repo WITH a baseline, and a path the hook built wrong: not a silent no-op."""
+    assert hook._committed_word_count(repo, "../outside-the-repo.md") is None
+    err = capsys.readouterr().err
+    assert err.startswith("[warn-wholesale-rewrite] disabled for this write: git could not resolve ")
+    assert "'../outside-the-repo.md'" in err
+    assert "fatal" in err                                   # git's own words, so the cause is visible
+
+
+def test_a_path_that_is_simply_not_in_head_is_never_announced(repo, capsys):
+    (repo / "docs" / "on-disk-only.md").write_text(_words(300), encoding="utf-8")
+    assert hook._committed_word_count(repo, "docs/on-disk-only.md") is None   # exists on disk, not in HEAD
+    assert hook._committed_word_count(repo, "docs/nowhere-at-all.md") is None  # not on disk either
+    assert capsys.readouterr().err == ""
+
+
+def test_head_exists_is_false_when_git_cannot_run_and_true_for_a_real_repo(monkeypatch, repo):
+    assert hook._head_exists(repo) is True
+    for exc in (FileNotFoundError("no git"), subprocess.TimeoutExpired("git", 3)):
+        def run(*a, _exc=exc, **k):
+            raise _exc
+        monkeypatch.setattr(hook.subprocess, "run", run)
+        assert hook._head_exists(repo) is False
+
+
+@pytest.mark.parametrize(
+    "result, expected",
+    [
+        (_Result(128, b"/some/where\n"), None),     # a failing git, even if it printed something
+        (_Result(0, b"  \n"), None),                # a success with no path
+        (_Result(0, b""), None),
+    ],
+    ids=["failed-with-output", "blank-output", "empty-output"],
+)
+def test_repo_root_for_is_none_unless_git_succeeds_with_a_path(monkeypatch, tmp_path, result, expected):
+    monkeypatch.setattr(hook.subprocess, "run", lambda *a, **k: result)
+    assert hook._repo_root_for(tmp_path / "x.md") is expected
+
+
+def test_repo_root_for_resolves_what_git_prints(monkeypatch, tmp_path):
+    monkeypatch.setattr(hook.subprocess, "run", lambda *a, **k: _Result(0, str(tmp_path).encode() + b"\n"))
+    assert hook._repo_root_for(tmp_path / "x.md") == tmp_path.resolve()
+
+
+def test_a_repo_root_that_does_not_contain_the_file_is_silent(monkeypatch, capsys, repo, tmp_path_factory):
+    """git named a root the file is not under (a link, a bind mount): nothing sensible to compare."""
+    elsewhere = tmp_path_factory.mktemp("elsewhere-file")
+    stray = elsewhere / "stray.md"
+    stray.write_text(_words(10), encoding="utf-8")
+    unrelated = tmp_path_factory.mktemp("unrelated-root")
+    monkeypatch.setattr(hook, "_repo_root_for", lambda p: unrelated)
+    assert _run(monkeypatch, capsys, repo, _payload(str(stray))) == ""

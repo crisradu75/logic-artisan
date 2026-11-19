@@ -20,6 +20,7 @@ import ast
 import importlib.util
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -438,6 +439,39 @@ def test_enforcing_hooks_fit_inside_the_handler_budget(dispatcher):
     )
 
 
+def test_per_part_enforcing_hooks_spawn_nothing():
+    """The sum above counts each hook once, which holds only for a hook that
+    runs once.
+
+    The Bash dispatcher runs every hook not in `_READS_COMMAND_ONLY` on the
+    command AND on each wrapper part `_shell_read.guard_parts` finds, and the
+    part count has no cap. A skippable hook is re-admitted against the deadline
+    before each part; an enforcing one is never skipped, so its real worst case
+    is its table entry times the part count, unbounded. The only figure that
+    stays inside the budget whatever the count is zero: no subprocess.
+    """
+    lib = _load_dispatch_lib()
+    dispatcher_path = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
+    command_only = _named_collection(dispatcher_path, "_READS_COMMAND_ONLY")
+    skippable = _named_collection(dispatcher_path, "_ADVISORY_HOOKS") | _best_effort(dispatcher_path)
+    per_part_enforcing = [
+        name for name in _hook_files_list(dispatcher_path)
+        if name not in skippable and name not in command_only
+    ]
+    assert per_part_enforcing, "no enforcing hook runs per part: this test checks nothing"
+    costly = {
+        name: lib.HOOK_WORST_CASE_SECONDS[name]
+        for name in per_part_enforcing
+        if lib.HOOK_WORST_CASE_SECONDS[name] != 0.0
+    }
+    assert not costly, (
+        f"these enforcing hooks run once per wrapper part, with no cap on the "
+        f"part count, and spend time in subprocesses: {costly}. List one in "
+        "`_READS_COMMAND_ONLY` if it reads the command alone, or give it one "
+        "deadline shared across all its parts and make it best-effort."
+    )
+
+
 @pytest.mark.parametrize("dispatcher", _DISPATCHERS)
 def test_every_advisory_hook_is_admissible_on_an_idle_budget(dispatcher):
     """No advisory hook may be structurally impossible to run.
@@ -595,8 +629,8 @@ def test_the_block_detector_is_silent_on_an_ask_hook():
 def test_skippable_hooks_run_after_every_enforcing_hook_in_the_bash_dispatcher():
     """Order is the Bash dispatcher's backstop: a skippable hook that runs before
     an enforcing one spends budget the enforcing one may need. Moving the 4 s
-    broad-add probe ahead of the 12 s destructive-git hook adds up to more than
-    the handler timeout, and a killed handler lets the call through."""
+    broad-add probe ahead of the destructive-git hook spends budget that hook's
+    probes may need, and a killed handler lets the call through."""
     dispatcher_path = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
     order = _hook_files_list(dispatcher_path)
     skippable = _named_collection(dispatcher_path, "_ADVISORY_HOOKS") | _best_effort(dispatcher_path)
@@ -609,8 +643,11 @@ def test_skippable_hooks_run_after_every_enforcing_hook_in_the_bash_dispatcher()
 
 
 def test_the_bash_dispatcher_declares_the_git_probing_ask_hooks_best_effort():
-    # Non-vacuity for the test above, and the budget arithmetic: the enforcing
-    # hooks already spend the whole budget, so these hooks fit only as skippable.
+    # Non-vacuity for the test above. These hooks were declared best-effort when
+    # the enforcing hooks spent the whole budget. 6s is free since
+    # `ask-destructive-git.py`'s probes share one deadline, but only for a hook
+    # in `_READS_COMMAND_ONLY`; both of these read wrapper parts too
+    # (`test_per_part_enforcing_hooks_spawn_nothing`).
     assert _best_effort(_HOOKS_DIR / "dispatch-bash-pretooluse.py") == {
         "ask-broad-git-add.py", "ask-staged-debug-tag.py",
     }
@@ -1097,6 +1134,32 @@ def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
     assert "SELECTED:/definitely/not/a/python" not in r.stdout
     assert r.returncode == 1, "must refuse, and non-zero so the notice reaches the transcript"
     assert "NOT running" in r.stderr
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_probe_refuses_a_python_that_is_not_an_executable_file(tmp_path):
+    """`command -v` names a shell function, not a file. A working `python3`
+    function in the calling shell passes the version check, so only the
+    refusal's `-x` stops `$PYEXE` from being a bare name no hook can exec by path.
+    PATH and stage 3 as in the stale-PYEXE test: nothing else to find.
+
+    The probe is sourced directly: every wiring re-checks `[ -x "$PYEXE" ]`
+    after it, which would hide the probe's own check. This holds the probe's
+    stated postcondition, not the wiring's."""
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    env = {
+        "PATH": str(empty),
+        "CLA_PY_SEARCH": "",
+        "CLA_PROBE_NO_CACHE": "1",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
+    real = Path(sys.executable).as_posix()
+    script = f'python3() {{ "{real}" "$@"; }}; . "{_PROBE_SH.as_posix()}"; echo "SELECTED:$PYEXE"'
+    r = _sp.run([_BASH, "-c", script],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert "SELECTED:python3" not in r.stdout
+    assert r.returncode == 1 and "NOT running" in r.stderr
 
 
 @pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
@@ -1676,3 +1739,52 @@ def test_an_empty_relocation_is_the_documented_opt_out():
         "the probe no longer treats an empty CLA_PROBE_CACHE as unset; the "
         "opt-out used by the two cache tests is broken"
     )
+
+
+# --------------------------------------------------------------------------- #
+# The start stamp: CLA_HOOK_T0
+# --------------------------------------------------------------------------- #
+
+_READ_T0 = (
+    '; "$PYEXE" -c \'import os, sys, time; v = os.environ.get("CLA_HOOK_T0"); '
+    'sys.stdout.write(repr(v) + " " + repr(time.time()))\''
+)
+
+
+@pytest.mark.skipif(not _SHELLS, reason="no POSIX shell available")
+@pytest.mark.parametrize("shell", _SHELLS, ids=_shell_ids)
+def test_the_probe_exports_a_fresh_start_stamp_or_an_empty_one(shell):
+    """Every shell gets a value the hook can trust: bash a fresh `$EPOCHREALTIME`,
+    a shell without it the empty string. Never the stale value inherited from
+    the environment, which belongs to some other call."""
+    r = _sp.run([shell, "-c", _probe_prefix() + _READ_T0],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=_inherited_env(CLA_HOOK_T0="12345.5"))
+    assert r.returncode == 0, r.stderr
+    value, now = r.stdout.rsplit(" ", 1)
+    value = ast.literal_eval(value)
+    assert value != "12345.5", f"{shell} kept the inherited stamp"
+    probe = _sp.run([shell, "-c", 'printf %s "${EPOCHREALTIME:-}"'], capture_output=True, text=True,
+                   encoding="utf-8", errors="replace")
+    if probe.stdout:
+        stamp = float(value.replace(",", "."))
+        assert 0.0 <= float(now) - stamp < 10.0, (value, now)
+    else:
+        assert value == "", f"{shell} has no EPOCHREALTIME but exported {value!r}"
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_the_stamp_reaches_the_dispatcher_deadline():
+    """End to end: under bash the dispatcher's Deadline is a measured one."""
+    script = (
+        '; "$PYEXE" -c \'import sys; sys.path.insert(0, sys.argv[1]); import _dispatch_lib as l; '
+        'd = l.Deadline(); sys.stdout.write(str(d.measured) + " " + str(d.remaining()))\' '
+        '"$CLAUDE_PLUGIN_ROOT/hooks"'
+    )
+    r = _sp.run([_BASH, "-c", _probe_prefix() + script],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=_inherited_env())
+    assert r.returncode == 0, r.stderr
+    measured, remaining = r.stdout.split()
+    assert measured == "True", r.stdout
+    assert 10.0 < float(remaining) <= 14.0, r.stdout
