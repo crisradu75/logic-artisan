@@ -1655,6 +1655,8 @@ def _shell_read():
         ("bash -c 'echo $A'; A=1", ("echo $A",)),  # assigned after: not inherited
         ("git commit -F - <<'EOF'\nsee bash -c 'x'\nEOF\nbash -c 'echo a'", ("echo a",)),
         ("git commit -F - <<\"EOF\"\nsee bash -c 'x'\nEOF", ()),
+        # a quoted delimiter's body is literal, substitutions and all
+        ("cat <<'EOF'\n$(bash -c 'echo a') `sh -c 'echo b'`\nEOF", ()),
         ("git commit -F - <<\\EOF\nsee bash -c 'x'\nEOF", ()),
         ("git commit -F - <<EOF\nsee bash -c 'x'\nEOF", ()),
         # an operator inside a body is text: the body still ends at its own line
@@ -1668,6 +1670,7 @@ def _shell_read():
         # option words
         ("bash --norc -x -o pipefail -c 'echo a' zero one", ("echo a",)),
         ("bash -- script.sh arg", ("script.sh arg",)),
+        ("bash -- -c 'echo a'", ("-c echo a",)),  # after `--`, `-c` is the script's name
         ("bash --rcfile rc -c 'echo a'", ("echo a",)),
         ("pwsh -ExecutionPolicy Bypass -NoProfile -Command 'echo a'", ("echo a",)),
         ("powershell -c 'echo a'", ("echo a",)),

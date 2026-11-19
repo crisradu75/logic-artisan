@@ -1080,7 +1080,7 @@ for _what, _args in (
     ("the tag override typed inline no longer asks",
      ("ALLOW_(?:PUSH_TO_MAIN|TAG_REWRITE)=", "|TAG_REWRITE", "")),
     ("an override set in PowerShell's $env: form no longer asks",
-     ("|(?i:\\$env:ALLOW_", 'r"|(?i:', 'r"|(?!x)(?i:')),
+     ("|(?i:\\$env:ALLOW_", 'r"|(?i:', 'r"|(?!)(?i:')),
     ("the $env: name is read case-sensitively",
      ("|(?i:\\$env:ALLOW_", "(?i:", "(?:")),
     ("no space is allowed around a PowerShell =",
