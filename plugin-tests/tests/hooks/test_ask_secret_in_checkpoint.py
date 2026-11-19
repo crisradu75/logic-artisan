@@ -434,7 +434,9 @@ def test_an_empty_cwd_still_names_the_absolute_target(repo, monkeypatch):
     monkeypatch.chdir(repo)
     payload = _payload("cla.io/checkpoints/x.md", SAMPLES["Anthropic API key"])
     payload["cwd"] = ""
-    assert f"'{_checkpoint(repo).parent / 'x.md'}'" in _asks(monkeypatch, payload)
+    # Built as the hook builds it (os.path.join), so the payload's forward slashes stay forward on Windows.
+    expected = os.path.join(str(repo), "cla.io/checkpoints/x.md")
+    assert f"'{expected}'" in _asks(monkeypatch, payload)
 
 
 def test_a_windows_style_path_asks(tmp_path, monkeypatch):

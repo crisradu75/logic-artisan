@@ -68,3 +68,41 @@ In the source repo, `/release` SHALL bump the version in the Claude plugin manif
 
 - **WHEN** either manifest, either catalog or the release note names a version the others do not
 - **THEN** the test suite fails
+
+### Requirement: A catalog never names a missing tag
+
+`/release` SHALL refuse to start while either marketplace catalog names a release tag the remote does not have, and SHALL NOT report a release as done until every catalog's tag is on the remote; a remote that cannot be asked SHALL count as a failure, never a pass.
+
+#### Scenario: An earlier release was merged but never tagged
+
+- **WHEN** `/release` starts and a catalog names a tag the remote does not have
+- **THEN** it stops, names the catalog and the tag, and edits nothing
+
+#### Scenario: The tag push did not reach the remote
+
+- **WHEN** the release commit is merged and the new tag exists only in the local clone
+- **THEN** `/release` reports the release as not done and names the missing tag
+
+#### Scenario: The remote does not answer
+
+- **WHEN** the remote cannot be reached while the tags are checked
+- **THEN** the check fails as not checked, and the release is not reported done
+
+### Requirement: A release is tagged before its catalogs name it
+
+`/release` SHALL push the new tag on the release pull request's head commit and confirm the remote has it before merging that pull request with a merge commit, so the tagged commit is on the default branch, and SHALL restart as the next version, leaving the tag where it is, when the pull request needs another commit after the tag is pushed.
+
+#### Scenario: The tag push fails
+
+- **WHEN** the tag push to the remote is refused
+- **THEN** the release pull request is not merged and the default branch's catalogs still name the previous tag
+
+#### Scenario: The release merges
+
+- **WHEN** the tag is on the remote and the release pull request is merged
+- **THEN** the tagged commit is on the default branch
+
+#### Scenario: The release pull request needs another commit
+
+- **WHEN** the release pull request needs another commit after the tag was pushed
+- **THEN** the tag stays where it is and the release starts again as the next version

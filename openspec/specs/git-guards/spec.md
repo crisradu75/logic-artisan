@@ -4,7 +4,7 @@
 
 **Serves:** maintainers whose agents run git commands and pushes in a repo that installs the plugin.
 
-When a git command asks first and when a push to the default branch is refused.
+When a git command asks first, and when a push to the default branch, or one that deletes or moves a tag on the remote, is refused.
 
 ## Requirements
 
@@ -94,7 +94,7 @@ The guard hooks SHALL ask the user before a `git push` that skips the default-br
 
 ### Requirement: Direct pushes to main are refused
 
-The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set.
+The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
 
 #### Scenario: Pushing to main
 
@@ -108,7 +108,7 @@ The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.g
 
 ### Requirement: A push to the remote's own default branch is refused
 
-The `pre-push` hook SHALL also refuse a push that updates or deletes the branch the remote names as its default, whatever its name, unless `ALLOW_PUSH_TO_MAIN=1` is set.
+The `pre-push` hook SHALL also refuse a push that updates or deletes the branch the remote names as its default, whatever its name, unless `ALLOW_PUSH_TO_MAIN=1` is set; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
 
 #### Scenario: A default branch that is not main
 
@@ -288,3 +288,22 @@ The guard hooks SHALL finish reading any command up to the dispatcher's scan lim
 
 - **WHEN** an agent runs a command of hundreds of thousands of characters of repeated `eval` words followed by `git push -f origin x`
 - **THEN** the user is asked before it runs, within two seconds of the guard's processing time
+
+### Requirement: A push that deletes or moves a tag on the remote is refused
+
+The `pre-push` hook SHALL refuse a push that deletes a tag on the remote or points a tag the remote already has at a different object, naming the `ALLOW_TAG_REWRITE=1` override in its message, SHALL let a push that creates a new tag through, and setting `ALLOW_TAG_REWRITE=1` SHALL lift only this refusal; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
+
+#### Scenario: Deleting a tag
+
+- **WHEN** a push from a clone with the hook installed would delete a tag on the remote
+- **THEN** git refuses the push and the message names `ALLOW_TAG_REWRITE=1`
+
+#### Scenario: Moving a tag
+
+- **WHEN** a forced push would point a tag the remote already has at another commit or tag object
+- **THEN** git refuses the push and the remote tag stays where it was
+
+#### Scenario: A new tag
+
+- **WHEN** a push creates a tag the remote does not have
+- **THEN** the push goes through

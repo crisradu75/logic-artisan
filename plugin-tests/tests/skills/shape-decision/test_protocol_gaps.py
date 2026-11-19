@@ -39,6 +39,7 @@ def test_model_signal_has_three_plain_tests_and_grounds_in_instruction_files():
     assert "root `CLAUDE.md`" in start and "AGENTS.md" in start, "grounding lost the instruction files"
 
 
+# requirement: session-records / A decision is shaped one question at a time until every axis is settled
 def test_axis_list_has_three_always_axes_and_the_outside_service_items():
     axes = _section("The axis list")
     assert "The first three are always listed" in axes
@@ -58,6 +59,7 @@ def test_axis_list_has_three_always_axes_and_the_outside_service_items():
     assert "if no fragment can be quoted, the axis is Partial" in axes
 
 
+# requirement: session-records / A decision is shaped one question at a time until every axis is settled
 def test_stops_on_clarity_never_on_a_question_count():
     text = _text()
     assert "Stop on clarity, never on a question count." in text
