@@ -79,7 +79,7 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
 
 <details>
-<summary>Where the numbers come from (counted 2026-11-19 on <code>main</code> at <code>d27a0ea</code> with #548, #549, #550, #552 and #554 merged)</summary>
+<summary>Where the numbers come from (counted 2026-11-19 on <code>main</code> at <code>d27a0ea</code> with #546, #548, #549, #550, #552 and #554 merged)</summary>
 
 ```bash
 git ls-files .claude/plugins/cla/skills | cut -d/ -f5 | grep -v '^_' | sort -u | wc -l   # skills (tracked only)
