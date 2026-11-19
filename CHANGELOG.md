@@ -10,6 +10,19 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ### Changed
 
+- **An implementer's model is stated once.** `model-routing.md` holds one implementer table, inside
+  the review-sizing span that `cla-setup` renders into a repo's `.claude/rules/cla-economy.md`:
+  Sonnet at low risk, Opus at high risk, judged by the review-sizing signals. spec-to-pr's
+  Implement delegate and Revise fix-delegate, which had said sonnet whatever the risk, now point
+  at it, as do the economy rules and the routing table. multi-spec's per-change authoring dispatch
+  has its own routing-table row. A new test fails on any second statement of an implementer model.
+- **The push guard's docs say it is client-side.** The root and plugin READMEs and DEVELOPER-GUIDE
+  §8 say `pre-push` guards only the clones that installed it, and give the GitHub tag ruleset
+  (restrict updates and deletions of the release-tag pattern) as the server-side guard;
+  `/release` Step 1 names it without making it a precondition.
+- **`openspec/spec-map.md` lists each shipped skill and the specs that cover it,** replacing the
+  "Skills without a spec" line; a test keeps the rows in step with the skills on disk.
+
 - **The four largest shipped scripts are split by concern.** `render_doc.py`, `render_change.py`,
   `openspec_change.py` and `check_spec_proof.py` now import 15 smaller modules beside them; every
   entry point keeps its name, flags, exit codes and byte-identical output. `check_spec_proof.py`

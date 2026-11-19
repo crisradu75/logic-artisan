@@ -1,6 +1,6 @@
 # Spec map
 
-How the plugin's capabilities, the workflows a user runs and the specs fit together. Links only: a
+How the plugin's capabilities, the workflows a user runs, the shipped skills and the specs fit together. Links only: a
 rule lives in its spec, and a value lives in its config. `check_spec_proof.py` fails when a spec
 is linked from no workflow step here, or a link points at a spec that does not exist.
 
@@ -56,10 +56,32 @@ is linked from no workflow step here, or a link points at a spec that does not e
 1. Say what a release contains and publish it: [plugin-distribution](specs/plugin-distribution/spec.md)
 2. Offer the plugin, its helper agents and its guards to GitHub Copilot CLI: [copilot-cli](specs/copilot-cli/spec.md)
 
-### Skills without a spec
-
-The skills checkpoint, feedback, new-worktree, project-review, report-upstream, right-model, save-permissions and shape-decision have no spec; the repo's `CLAUDE.md` governs them.
-
 ### Read the run records
 
 1. Summarise recent runs and suggest a retro: [run-ledgers](specs/run-ledgers/spec.md)
+
+## Skills
+
+Each shipped skill and the specs that cover it. A skill with no spec is governed by the repo's `CLAUDE.md`.
+
+| Skill | Specs |
+|---|---|
+| `/cla:annotate` | [annotate](specs/annotate/spec.md) |
+| `/cla:checkpoint` | none |
+| `/cla:cla-setup` | [cla-setup](specs/cla-setup/spec.md), [repo-context](specs/repo-context/spec.md), [spec-map](specs/spec-map/spec.md) |
+| `/cla:codify-learnings` | [instruction-files](specs/instruction-files/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:diagnose` | [git-guards](specs/git-guards/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:feedback` | none |
+| `/cla:lite-pr` | [change-workflow](specs/change-workflow/spec.md), [review-agents](specs/review-agents/spec.md), [docs-currency](specs/docs-currency/spec.md) |
+| `/cla:multi-lite` | [small-change-chains](specs/small-change-chains/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:multi-pr` | [change-chains](specs/change-chains/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:multi-spec` | [change-chains](specs/change-chains/spec.md) |
+| `/cla:new-worktree` | none |
+| `/cla:project-review` | none |
+| `/cla:report-upstream` | none |
+| `/cla:review-change` | [change-workflow](specs/change-workflow/spec.md) |
+| `/cla:right-model` | none |
+| `/cla:save-permissions` | none |
+| `/cla:shape-decision` | none |
+| `/cla:spec-to-pr` | [change-workflow](specs/change-workflow/spec.md), [spec-proof](specs/spec-proof/spec.md), [docs-currency](specs/docs-currency/spec.md), [review-agents](specs/review-agents/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:spec-to-pr-retro` | [run-ledgers](specs/run-ledgers/spec.md) |
