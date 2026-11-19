@@ -57,6 +57,7 @@ def repo(tmp_path, cached_git_repo):
 # --------------------------------------------------------------------------- #
 
 
+# requirement: worktree-setup / A casing refusal falls back without deleting anyone's files
 def test_creates_a_worktree_on_a_new_branch(repo):
     result = mw.create_worktree(repo, "alpha", "origin/main")
 
@@ -119,6 +120,7 @@ def test_a_duplicate_branch_is_refused_with_an_actionable_message(repo):
 # --------------------------------------------------------------------------- #
 
 
+# requirement: worktree-setup / A casing refusal falls back without deleting anyone's files
 def test_a_registered_leftover_worktree_is_cleaned_before_retrying(repo):
     """The observed failure mode: EnterWorktree registers the worktree with git
     and THEN refuses, so a stale entry blocks the next attempt at that path."""
@@ -130,6 +132,7 @@ def test_a_registered_leftover_worktree_is_cleaned_before_retrying(repo):
     assert os.path.realpath(str(path)) not in mw._registered_worktrees(repo)
 
 
+# requirement: worktree-setup / A casing refusal falls back without deleting anyone's files
 def test_creating_over_a_stale_entry_succeeds_and_says_it_cleaned(repo):
     path = repo / ".claude/worktrees/reuse"
     _git(repo, "worktree", "add", "-q", str(path), "-b", "leftover2", "origin/main")
@@ -161,6 +164,7 @@ def test_a_registration_whose_directory_vanished_is_pruned_and_reported(repo):
     assert os.path.realpath(str(path)) not in mw._registered_worktrees(repo)
 
 
+# requirement: worktree-setup / A casing refusal falls back without deleting anyone's files
 def test_a_nonempty_unregistered_directory_is_never_deleted(repo):
     """It is somebody's work. Deleting it to make room is exactly the
     'destroyed to fix a mistake' failure the skill warns about — better to fail
@@ -389,6 +393,7 @@ def test_a_clean_registered_worktree_is_still_cleaned(repo):
 # --------------------------------------------------------------------------- #
 
 
+# requirement: worktree-setup / The fallback keeps a worktree inside the repo
 @pytest.mark.parametrize("bad", ["../escape", "a/b", "..", "", "sub" + chr(92) + "dir"])
 def test_a_name_that_would_escape_the_worktree_dir_is_refused(bad):
     # Otherwise `--name ../../x` places the worktree outside .claude/worktrees
@@ -403,6 +408,7 @@ def test_an_ordinary_name_is_accepted():
     assert mw.validate_name("my-task") == "my-task"
 
 
+# requirement: worktree-setup / The fallback keeps a worktree inside the repo
 @pytest.mark.parametrize("bad", ["", "../outside", "a/../../b", "/rooted/path"])
 def test_a_worktree_dir_that_would_escape_the_repo_is_refused(bad):
     """`--name` was hardened against traversal and the argument beside it was
@@ -520,6 +526,7 @@ def test_create_worktree_validates_its_own_arguments(repo, kwargs):
     assert not (repo.parent / "escape").exists()
 
 
+# requirement: worktree-setup / The fallback keeps a worktree inside the repo
 def test_the_cli_actually_calls_the_worktree_dir_validator(repo, capsys):
     """The validator existing is not the same as `main` reaching it.
 
@@ -534,6 +541,15 @@ def test_the_cli_actually_calls_the_worktree_dir_validator(repo, capsys):
     assert not (repo.parent / "outside").exists(), (
         "a rejected --worktree-dir must not have created anything on the way out"
     )
+
+
+# requirement: worktree-setup / The fallback keeps a worktree inside the repo
+def test_the_cli_refuses_a_name_that_climbs_out_before_creating_anything(repo, capsys):
+    rc = mw.main(["--repo", str(repo), "--name", "../escape"])
+    assert rc == 1
+    assert "--name" in json.loads(capsys.readouterr().out)["error"]
+    assert not (repo / ".claude" / "escape").exists()
+    assert not (repo / ".claude" / "worktrees").exists() or not any((repo / ".claude" / "worktrees").iterdir())
 
 
 def test_the_worktree_actually_lands_on_the_requested_base(repo):

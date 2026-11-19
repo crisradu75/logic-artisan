@@ -2,7 +2,7 @@
 name: report-upstream
 description: "File a defect in the cla plugin's own portable core (a synced skill, agent, hook or script that would be wrong in every repo) as an issue against the canonical source. Triggers: /cla:report-upstream, 'this hook is broken upstream', 'report this to the cla source'."
 argument-hint: "[what is wrong | (empty — infer from the conversation)]"
-allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
+allowed-tools: Bash, Read, Grep, Glob, Write, AskUserQuestion
 ---
 
 # /cla:report-upstream — send a core defect back to the canonical source
@@ -99,6 +99,7 @@ what core does not cover and what that costs.>
 or a precise description. Say so plainly if you only have a diagnosis and no fix.>
 ```
 
+Write the body to a temporary file with the `Write` tool, in a temp directory outside the repo (an untracked file inside the repo is debris).
 Open it with a body file, never an inline multi-line string:
 
 ```bash

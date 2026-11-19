@@ -4,7 +4,7 @@
 
 **Serves:** maintainers whose agents run git commands and pushes in a repo that installs the plugin.
 
-When a git command asks first and when a push to the default branch is refused.
+When a git command asks first, and when a push to the default branch, or one that deletes or moves a tag on the remote, is refused.
 
 ## Requirements
 
@@ -99,7 +99,7 @@ The guard hooks SHALL ask the user before a `git push` that skips the `pre-push`
 
 ### Requirement: Direct pushes to main are refused
 
-The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set.
+The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
 
 #### Scenario: Pushing to main
 
@@ -113,7 +113,7 @@ The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.g
 
 ### Requirement: A push to the remote's own default branch is refused
 
-The `pre-push` hook SHALL also refuse a push that updates or deletes the branch the remote names as its default, whatever its name, unless `ALLOW_PUSH_TO_MAIN=1` is set.
+The `pre-push` hook SHALL also refuse a push that updates or deletes the branch the remote names as its default, whatever its name, unless `ALLOW_PUSH_TO_MAIN=1` is set; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
 
 #### Scenario: A default branch that is not main
 
