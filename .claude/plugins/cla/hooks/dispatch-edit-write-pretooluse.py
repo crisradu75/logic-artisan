@@ -59,10 +59,21 @@ try:
         fit_json_payload,
         run_hook_file,
     )
+    # One definition for both dispatchers; the name stays for their callers.
+    from _dispatch_lib import extract_ask as _extract_ask
 except Exception as _exc:  # noqa: BLE001 -- any load failure must fail closed
     _LIB_ERROR: Exception | None = _exc
 else:
     _LIB_ERROR = None
+
+# True after `main()` or `_fail_closed` asked because a guard could NOT run on
+# this call (an enforcing hook that failed to load or crashed, or the library
+# itself), as opposed to a guard that ran and asked. Claude Code reads only the
+# JSON, where both are the same `ask`; the Copilot adapter loads this module,
+# calls `main()` and reads this flag to turn an unchecked call into a deny,
+# instead of matching words in the reason. Not in the JSON, because Claude Code
+# validates that object and a key it does not know is a risk to the ask itself.
+GUARD_NOT_RUN = False
 
 _HOOK_FILES = [
     "warn-comment-dates.py",
@@ -102,29 +113,6 @@ def _extract_context(stdout_text: str) -> str | None:
     if isinstance(nested, dict) and nested.get("additionalContext"):
         return str(nested["additionalContext"])
     return None
-
-
-def _extract_ask(stdout_text: str) -> str | None:
-    """Pull an `ask` escalation's reason out of a hook's stdout JSON.
-
-    A hook that wants the user prompted (rather than blocked outright) exits 0
-    and emits `permissionDecision: "ask"`. Only this process's stdout is read
-    per PreToolUse call, so the decision has to be re-emitted here or it is
-    silently downgraded to an allow.
-    """
-    stdout_text = stdout_text.strip()
-    if not stdout_text:
-        return None
-    try:
-        payload = json.loads(stdout_text)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(payload, dict):
-        return None
-    nested = payload.get("hookSpecificOutput")
-    if not isinstance(nested, dict) or nested.get("permissionDecision") != "ask":
-        return None
-    return str(nested.get("permissionDecisionReason") or "A guard requested confirmation.")
 
 
 def _ask_json(reason: str, contexts: list[str]) -> str:
@@ -178,6 +166,8 @@ def _skip_notice(skipped: list[str]) -> str:
 
 
 def main() -> int:
+    global GUARD_NOT_RUN
+    GUARD_NOT_RUN = False
     stdin_text = sys.stdin.read()
     deadline = Deadline()
     warnings: list[str] = []
@@ -243,6 +233,7 @@ def main() -> int:
             "for the traceback."
         )
     if errored_enforcing:
+        GUARD_NOT_RUN = True
         # Escalated to `ask`, not left as a warning. `_dispatch_lib`'s docstring
         # records why exiting non-zero here would be wrong — it USED to ask for
         # it, and was corrected to match what both dispatchers actually do, so
@@ -289,8 +280,10 @@ def _fail_closed(why: str, exc: BaseException) -> int:
     the rule a crashed enforcing hook already follows (see `main()`): it reaches the
     user, and a non-zero exit would discard it and let the call through unguarded.
     """
+    global GUARD_NOT_RUN
     import traceback
 
+    GUARD_NOT_RUN = True
     trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     print(f"[dispatch] {why}\n{trace}", file=sys.stderr)
     print(json.dumps({"hookSpecificOutput": {

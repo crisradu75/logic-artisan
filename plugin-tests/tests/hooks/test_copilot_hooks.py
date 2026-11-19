@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
+import io
 import importlib.util
 import json
 import os
@@ -304,7 +306,7 @@ def test_copilot_pretooluse_denies_when_a_required_guard_is_missing(tmp_path):
 def test_copilot_pretooluse_denies_when_dispatcher_returns_malformed_output(tmp_path):
     root, adapter = _copy_adapter_tree(tmp_path)
     (root / "hooks" / "dispatch-bash-pretooluse.py").write_text(
-        "def main():\n    print('not json')\n    return 0\n",
+        "GUARD_NOT_RUN = False\ndef main():\n    print('not json')\n    return 0\n",
         encoding="utf-8",
     )
     result = _run_hook(
@@ -371,8 +373,11 @@ def _post_event(work: Path, **overrides) -> dict:
 
 
 def _fake_dispatcher(tmp_path: Path, body: str) -> tuple[Path, Path]:
-    """A copied plugin tree whose Bash dispatcher is replaced by `body`."""
+    """A copied plugin tree whose Bash dispatcher is replaced by `body`. The
+    fake declares the dispatchers' `GUARD_NOT_RUN = False` unless `body` sets it."""
     root, adapter = _copy_adapter_tree(tmp_path)
+    if "GUARD_NOT_RUN" not in body:
+        body = "GUARD_NOT_RUN = False\n" + body
     (root / "hooks" / "dispatch-bash-pretooluse.py").write_text(body, encoding="utf-8")
     return root, adapter
 
@@ -526,10 +531,33 @@ def test_copilot_pretooluse_denies_an_ask_without_a_reason(tmp_path):
 
 
 def test_copilot_pretooluse_turns_a_failure_ask_into_a_deny(tmp_path):
-    reason = "an ENFORCING guard could not run on this call"
-    result = _pre_with_fake(
-        tmp_path, _nested(hookEventName="PreToolUse", permissionDecision="ask", permissionDecisionReason=reason))
-    _denied(result, "could not run")
+    """The flag decides, not the wording: a failure ask phrased with none of the
+    old marker words is still denied, and the same ask without the flag passes."""
+    reason = "an enforcing guard is missing on this call"
+    body = _nested(hookEventName="PreToolUse", permissionDecision="ask", permissionDecisionReason=reason)
+    flagged = "GUARD_NOT_RUN = False\n" + body.replace(
+        "def main():\n", "def main():\n    global GUARD_NOT_RUN\n    GUARD_NOT_RUN = True\n")
+    _denied(_pre_with_fake(tmp_path / "f", flagged), "enforcing guard is missing")
+    passed = json.loads(_pre_with_fake(tmp_path / "p", body).stdout)
+    assert passed == {"permissionDecision": "ask", "permissionDecisionReason": reason}
+
+
+def test_copilot_pretooluse_denies_a_dispatcher_without_the_flag(tmp_path):
+    """A dispatcher that cannot say whether its guards ran is an unknown contract."""
+    body = "import json\ndef main():\n    return 0\n"
+    root, adapter = _copy_adapter_tree(tmp_path)
+    (root / "hooks" / "dispatch-bash-pretooluse.py").write_text(body, encoding="utf-8")
+    _denied(_run_hook(adapter, _pre_event("Bash", {"command": "echo safe"}, tmp_path), tmp_path, root),
+            "GUARD_NOT_RUN")
+
+
+def test_copilot_pretooluse_keeps_the_oversize_ask_an_ask(tmp_path):
+    """The one unchecked call that stays an ask: it sets no flag."""
+    root, adapter = _copy_adapter_tree(tmp_path)
+    huge = "echo " + "x" * 500_001
+    result = _run_hook(adapter, _pre_event("Bash", {"command": huge}, tmp_path), tmp_path, root)
+    decision = json.loads(result.stdout)
+    assert decision["permissionDecision"] == "ask", decision
 
 
 def test_copilot_pretooluse_passes_an_ask_with_context_and_a_dispatcher_deny(tmp_path):
@@ -547,25 +575,29 @@ def test_copilot_pretooluse_passes_an_ask_with_context_and_a_dispatcher_deny(tmp
     _denied(result, "no")
 
 
-# The adapter treats a dispatcher `ask` as a failed guard by matching wording.
-# These tests drive each dispatcher into each way it reports "a guard did not
-# run" and require the adapter's marker list to still recognise the wording.
-def _adapter_markers() -> tuple[str, ...]:
-    spec = importlib.util.spec_from_file_location(
-        "copilot_pretooluse_markers", _PLUGIN / "hooks" / "copilot-pretooluse.py")
+# The adapter treats a dispatcher `ask` as a failed guard when the dispatcher
+# sets its `GUARD_NOT_RUN` flag. These tests drive each dispatcher into each way
+# it reports "a guard did not run" and require the flag to be set, in process
+# (the adapter's own path) and through `_fail_closed` (the script's path).
+def _flag_after_main(root: Path, name: str, payload: dict) -> object:
+    spec = importlib.util.spec_from_file_location("copilot_flag_dispatcher", root / "hooks" / name)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.FAILURE_MARKERS
+    sys.path.insert(0, str(root / "hooks"))
+    # The copy's own library, not one an earlier test imported from the plugin.
+    sys.modules.pop("_dispatch_lib", None)
+    saved_stdin, saved_out = sys.stdin, sys.stdout
+    try:
+        spec.loader.exec_module(module)
+        sys.stdin, sys.stdout = io.StringIO(json.dumps(payload)), io.StringIO()
+        module.main()
+    finally:
+        sys.stdin, sys.stdout = saved_stdin, saved_out
+        sys.path.remove(str(root / "hooks"))
+        sys.modules.pop("_dispatch_lib", None)
+    return module.GUARD_NOT_RUN
 
 
-def _run_dispatcher(root: Path, name: str, payload: dict, cwd: Path) -> dict:
-    result = _run_hook(root / "hooks" / name, payload, cwd, root)
-    assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout)["hookSpecificOutput"]
-
-
-def test_failure_wording_of_every_dispatcher_matches_the_adapter_markers(tmp_path):
-    markers = _adapter_markers()
+def test_every_dispatcher_flags_each_way_a_guard_did_not_run(tmp_path):
     bash_event = _pre_event("Bash", {"command": "echo safe"}, tmp_path)
     edit_event = _pre_event("Edit", {"file_path": str(tmp_path / "a.py"), "new_string": "x"}, tmp_path)
     cases = [
@@ -578,13 +610,20 @@ def test_failure_wording_of_every_dispatcher_matches_the_adapter_markers(tmp_pat
         # An enforcing guard that is missing: the escalation inside main().
         root, _ = _copy_adapter_tree(tmp_path / f"guard{index}")
         (root / "hooks" / guard).unlink()
-        reason = _run_dispatcher(root, dispatcher, event, tmp_path)["permissionDecisionReason"]
-        assert any(m in reason.lower() for m in markers), (dispatcher, reason)
-        # The shared library missing: the `_fail_closed` path.
-        root, _ = _copy_adapter_tree(tmp_path / f"lib{index}")
-        (root / "hooks" / "_dispatch_lib.py").unlink()
-        reason = _run_dispatcher(root, dispatcher, event, tmp_path)["permissionDecisionReason"]
-        assert any(m in reason.lower() for m in markers), (dispatcher, reason)
+        assert _flag_after_main(root, dispatcher, event) is True, (dispatcher, guard)
+        # Every guard present: the flag stays down.
+        root, _ = _copy_adapter_tree(tmp_path / f"ok{index}")
+        assert _flag_after_main(root, dispatcher, event) is False, dispatcher
+        # `_fail_closed` (a missing library, a crash in main) sets the flag
+        # before it asks. Called directly: which `_dispatch_lib` an in-process
+        # import finds depends on what earlier tests put on `sys.path`.
+        spec = importlib.util.spec_from_file_location("copilot_flag_fc", _PLUGIN / "hooks" / dispatcher)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.GUARD_NOT_RUN is False
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            module._fail_closed("library missing", RuntimeError("library missing"))
+        assert module.GUARD_NOT_RUN is True, dispatcher
 
 
 def test_the_adapter_denies_each_dispatcher_failure_ask_end_to_end(tmp_path):

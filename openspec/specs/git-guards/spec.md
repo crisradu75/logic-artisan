@@ -246,3 +246,36 @@ The guard hooks SHALL ask before a `git commit` that would add a line holding a 
 
 - **WHEN** the staged diff adds no debug tag
 - **THEN** no prompt is shown
+
+### Requirement: A destructive git command run through a shell wrapper asks first
+
+The guard hooks SHALL ask the user before a git command they would ask about when that command is handed to another shell as text, by `bash -c`, `sh -c`, `zsh -c`, `eval`, `pwsh -Command`, `Invoke-Expression` or `cmd /c`, and SHALL stay silent when the wrapped command is one they would not ask about.
+
+#### Scenario: A force-push inside bash -c
+
+- **WHEN** an agent runs `bash -c "git push -f origin x"`
+- **THEN** the user is asked before it runs
+
+#### Scenario: A harmless wrapped command
+
+- **WHEN** an agent runs `bash -c "git status"` or `eval "$(ssh-agent)"`
+- **THEN** no prompt is shown
+
+### Requirement: A git subcommand or flag from an unresolved expansion asks first
+
+The guard hooks SHALL read a git subcommand, or a push, reset or branch option, that a variable assigned a plain value in the same command supplies as that value, and SHALL ask the user when the subcommand, or an unquoted option of a push, reset or branch before its first operand, comes from an expansion they cannot resolve.
+
+#### Scenario: A subcommand from a variable set in the command
+
+- **WHEN** an agent runs `X=push; git $X -f origin x`
+- **THEN** the user is asked before it runs, as for a force-push
+
+#### Scenario: A subcommand from an unknown variable
+
+- **WHEN** an agent runs `git $SUB -f origin x` and nothing in the command sets `SUB`
+- **THEN** the user is asked before it runs
+
+#### Scenario: A branch name from a variable
+
+- **WHEN** an agent runs `git push origin "$BRANCH"`
+- **THEN** no prompt is shown

@@ -15,11 +15,13 @@ reset must stay silent.
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import io
 import json
 import subprocess
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -3585,3 +3587,269 @@ def test_a_quoted_reset_name_or_searched_start_still_asks(
     payload = _run(command, monkeypatch, capsys, cwd=str(history))
     assert payload is not None, command
     assert "orphans them" in _reason(payload)
+
+
+# --- shell wrappers and expansions ----------------------------------------------
+# `bash -c "git push -f origin x"` and `X=push; git $X -f origin x` were measured
+# allowed before `_expand` existed: the quoted body was blanked, and `$X` matched
+# no subcommand. Each wrapped form must reach the decision its bare form reaches.
+
+_FORCE = "force-push"
+_HARD = "reset --hard"
+_DELETE = "force-delete of a branch"
+
+
+def _wrapped_ps(command: str) -> str:
+    return base64.b64encode(command.encode("utf-16-le")).decode("ascii")
+
+
+# requirement: git-guards / A destructive git command run through a shell wrapper asks first
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ('bash -c "git push -f origin x"', _FORCE),
+        ("sh -c 'git reset --hard'", _HARD),
+        ("zsh -c 'git branch -D topic'", _DELETE),
+        ('eval "git push --force"', _FORCE),
+        ("eval git push --force origin x", _FORCE),
+        ("bash -lc 'git push --force origin x'", _FORCE),
+        ("bash -e -o pipefail -c 'git reset --hard HEAD~1'", _HARD),
+        ('sudo bash -c "git reset --hard HEAD~1"', _HARD),
+        ("/bin/bash -c 'git push -f origin x'", _FORCE),
+        ("bash.exe -c 'git push -f origin x'", _FORCE),
+        ("bash \\\n  -c 'git push -f origin x'", _FORCE),
+        ("bash -c \"sh -c 'git push -f origin x'\"", _FORCE),
+        ("bash -c \"eval 'git push -f origin x'\"", _FORCE),
+        ("bash -c 'cd sub && git reset --hard'", _HARD),
+        ("echo ok && bash -c 'git push -f origin x' && echo done", _FORCE),
+        ('xargs -I{} sh -c "git branch -D {}"', _DELETE),
+        ('echo "$(bash -c \'git push -f origin x\')"', _FORCE),
+        # PowerShell runs through the same dispatcher
+        ("pwsh -Command 'git push -f origin x'", _FORCE),
+        ('powershell -c "git reset --hard"', _HARD),
+        ("pwsh -NoProfile -ExecutionPolicy Bypass -Command \"git push -f origin x\"", _FORCE),
+        ("Invoke-Expression 'git push --force origin x'", _FORCE),
+        ('iex "git branch -D topic"', _DELETE),
+        ('cmd /c "git push -f origin x"', _FORCE),
+        ("pwsh -EncodedCommand " + _wrapped_ps("git push -f origin x"), _FORCE),
+        ("powershell.exe -ec " + _wrapped_ps("git reset --hard"), _HARD),
+        ('bash -c "gh pr merge 27 --squash"', "PR merge"),
+        ('bash -c "git push --no-verify origin main"', "pre-push"),
+    ],
+)
+def test_a_wrapped_destructive_command_asks_like_the_bare_one(command, expected, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is not None, f"expected an ask for: {command!r}"
+    reason = _reason(payload)
+    assert expected in reason, reason
+    assert "cannot resolve" not in reason, reason
+
+
+# requirement: git-guards / A destructive git command run through a shell wrapper asks first
+@pytest.mark.parametrize(
+    "command",
+    [
+        'bash -c "git status"',
+        "bash -c 'git log --oneline -3'",
+        "sh -c 'git push origin feature/x'",
+        'eval "$(ssh-agent)"',
+        'eval "$(ssh-agent -s)" && git push origin feat',
+        "pwsh -Command 'git status'",
+        "Invoke-Expression 'git fetch origin'",
+        "pwsh -EncodedCommand " + _wrapped_ps("git status"),
+        "pwsh -EncodedCommand not-base64!",
+        'cmd /c "git diff"',
+        'sh -c "$CMD"',
+        "bash script.sh",
+        "cd /opt/cmd && git status",
+        # the wrapper is inside quoted text, which the shell never runs
+        'echo "bash -c \'git push -f\'"',
+        "git commit -m \"fix: bash -c 'git push -f' was allowed\"",
+        "git commit -m 'eval \"git reset --hard\" was allowed'",
+        "git commit -m \"$(cat <<'EOF'\nfix: sh -c 'git reset --hard' was allowed\nEOF\n)\"",
+    ],
+)
+def test_a_wrapped_harmless_command_stays_silent(command, monkeypatch, capsys):
+    assert _run(command, monkeypatch, capsys) is None, command
+
+
+# requirement: git-guards / A destructive git command run through a shell wrapper asks first
+def test_a_wrapped_discard_probes_the_tree_like_the_bare_one(dirty, monkeypatch, capsys):
+    """The working-tree probes read the wrapper's body too: a wrapped checkout
+    over uncommitted work asks, and the same wrapper on a clean path does not."""
+    payload = _run("bash -c 'git checkout tracked.txt'", monkeypatch, capsys, cwd=str(dirty))
+    assert payload is not None
+    assert "uncommitted" in _reason(payload)
+    (dirty / "other.txt").write_text("x\n", encoding="utf-8")
+    _git(dirty, "add", "other.txt")
+    _git(dirty, "commit", "-qm", "other")
+    assert _run("bash -c 'git checkout other.txt'", monkeypatch, capsys, cwd=str(dirty)) is None
+
+
+# requirement: git-guards / A destructive git command run through a shell wrapper asks first
+def test_wrappers_nested_past_the_depth_cap_ask_rather_than_pass(monkeypatch, capsys):
+    """Three levels are read. A fourth is not, and asks instead of being allowed:
+    the body there was never read."""
+    inner = "git status"
+    for _ in range(hook._WRAP_DEPTH):
+        inner = "eval " + json.dumps(inner)
+    assert _run(inner, monkeypatch, capsys) is None
+    payload = _run("eval " + json.dumps(inner), monkeypatch, capsys)
+    assert payload is not None
+    assert hook.UNRESOLVED_REASON in _reason(payload)
+
+
+def test_a_command_with_nothing_to_expand_is_read_as_itself():
+    """The expansion is invisible to every other command: nothing appended, so
+    each existing check reads exactly the text it read before."""
+    for command in ("git push origin main", "echo hi", "git commit -m 'bash -c x'"):
+        text, scanned, unresolved = hook._scan(command)
+        assert text == command and unresolved is False
+        assert scanned == hook._strip_quoted_spans(command)
+
+
+def test_each_part_is_quote_stripped_on_its_own():
+    """An odd quote in the command must not pair with one in an appended body."""
+    command = "echo \"it's\" ; bash -c 'git push -f origin x' ; echo '"
+    text, scanned, _ = hook._scan(command)
+    assert len(text) == len(scanned)
+    parts = text.split(hook._PART_SEP)
+    assert scanned.split(hook._PART_SEP) == [hook._strip_quoted_spans(p) for p in parts]
+
+
+# requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("X=push; git $X -f origin x", _FORCE),
+        ("X=push; git ${X} -f origin x", _FORCE),
+        ('export X=push && git "$X" --force origin x', _FORCE),
+        ("git 'push' -f origin x", _FORCE),
+        ('git "reset" --hard', _HARD),
+        ("git $'branch' -D topic", _DELETE),
+        ("F=--force; git push $F origin x", _FORCE),
+        ("M=--hard; git reset $M HEAD~1", _HARD),
+        ("A=push; B=-f; git $A $B origin x", _FORCE),
+        # every value a name is given is tried
+        ("X=status; git $X; X=push; git $X -f origin x", _FORCE),
+        ('bash -c \'X=push; git $X -f origin x\'', _FORCE),
+        ("$X = 'push'; git $X -f origin x", _FORCE),
+    ],
+)
+def test_a_resolved_expansion_asks_like_the_literal(command, expected, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is not None, f"expected an ask for: {command!r}"
+    reason = _reason(payload)
+    assert expected in reason, reason
+    assert hook.UNRESOLVED_REASON not in reason, reason
+
+
+# requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git $SUB -f origin x",
+        "git ${SUB} origin x",
+        'git "$@"',
+        "git $1 --hard",
+        "git $(echo push) -f origin x",
+        "git `echo push` -f origin x",
+        "X=$(echo push); git $X -f origin x",
+        "for s in push; do git $s -f origin x; done",
+        "git -C repo $SUB",
+        "sudo git $SUB",
+        "git push $F origin x",
+        "git reset $MODE",
+        "git branch $FLAGS topic",
+        "bash -c 'git $SUB -f origin x'",
+        "$X = Get-Verb; git $X -f origin x",
+    ],
+)
+def test_an_unresolved_expansion_asks(command, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert hook.UNRESOLVED_REASON in _reason(payload)
+
+
+# requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
+@pytest.mark.parametrize(
+    "command",
+    [
+        "X=status; git $X",
+        "X=log; git $X --oneline",
+        'git -C "$DIR" push origin x',
+        'git -c "$KEY" status',
+        'git --git-dir "$D" status',
+        'git push origin "$BRANCH"',
+        "git push -u origin $BRANCH",
+        "git push -u origin $(git branch --show-current)",
+        'git push "$REMOTE" "$BRANCH"',
+        'git branch "$NAME"',
+        'git reset --soft "$BASE"',
+        'git log --format="%H $X"',
+        'grep -rn git "$ROOT"',
+        'ls repo.git "$X"',
+        'echo git "$X"',
+        'git commit -m "$MSG"',
+    ],
+)
+def test_an_expansion_that_cannot_change_the_decision_stays_silent(command, monkeypatch, capsys):
+    assert _run(command, monkeypatch, capsys) is None, command
+
+
+def test_rewrites_past_their_cap_ask_rather_than_pass(monkeypatch, capsys):
+    """Each value is tried, up to `_EXPAND_MAX_LINES` lines; past that the
+    command asks rather than being read in part."""
+    values = "; ".join(f"X=v{i}" for i in range(hook._EXPAND_MAX_LINES + 1))
+    payload = _run(values + "; git $X", monkeypatch, capsys)
+    assert payload is not None
+    assert hook.UNRESOLVED_REASON in _reason(payload)
+    assert _run("X=v1; X=v2; git $X", monkeypatch, capsys) is None
+
+
+def test_a_merge_through_a_wrapper_still_honours_the_merge_override(monkeypatch, capsys):
+    """`ALLOW_PR_MERGE=1` in the environment drops the wrapped merge's prompt
+    exactly as it drops a bare one's; a wrapped force-push still asks."""
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    assert _run('bash -c "gh pr merge 27"', monkeypatch, capsys) is None
+    capsys.readouterr()
+    payload = _run("bash -c 'gh pr merge 27 && git push -f origin x'", monkeypatch, capsys)
+    assert payload is not None
+    assert _FORCE in _reason(payload) and "PR merge" not in _reason(payload)
+
+
+# requirement: git-guards / A destructive git command run through a shell wrapper asks first
+@pytest.mark.parametrize(
+    ("tool", "command"),
+    [
+        ("Bash", 'bash -c "git push -f origin x"'),
+        ("Bash", "X=push; git $X -f origin x"),
+        ("PowerShell", "pwsh -Command 'git reset --hard'"),
+        ("PowerShell", "$X = 'push'; git $X -f origin x"),
+    ],
+)
+def test_the_dispatcher_asks_on_a_wrapped_command(tool, command, tmp_path):
+    """End to end through the real Bash/PowerShell dispatcher, as Claude Code runs it."""
+    payload = json.dumps({"tool_name": tool, "tool_input": {"command": command}, "cwd": str(tmp_path)})
+    result = subprocess.run(
+        [sys.executable, str(_HOOKS_DIR / "dispatch-bash-pretooluse.py")],
+        input=payload, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+# --- the measured handler deadline ------------------------------------------------
+
+
+def test_the_history_probes_stop_at_a_measured_handler_deadline(history, monkeypatch, capsys):
+    """A stamp 14s old leaves `15 - 14 - 1` = 0s of handler: the history probes,
+    which run last, start none rather than risk a kill that would drop every
+    reason already found."""
+    monkeypatch.setenv("CLA_HOOK_T0", f"{time.time() - 14.0:.6f}")
+    calls = _history_probe(monkeypatch)
+    assert _run("git rebase main", monkeypatch, capsys, cwd=str(history)) is None
+    assert calls == []
+    monkeypatch.setenv("CLA_HOOK_T0", f"{time.time() - 0.5:.6f}")
+    _run("git rebase main", monkeypatch, capsys, cwd=str(history))
+    assert calls, "a fresh stamp leaves the probes their budget"

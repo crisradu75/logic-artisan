@@ -4,16 +4,17 @@ shared git-command-matching library.
 
 TWO responsibilities, deliberately in one file. (1) It runs several sibling hook
 scripts' `main()` in-process (one Python interpreter instead of one per hook) by
-importing each as a standalone module — the same technique this package's own
-`hooks/tests/` already uses — and temporarily redirecting
+importing each as a standalone module — the same technique the plugin's tests
+in `plugin-tests/tests/hooks/` use — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
 modified by this module; it only orchestrates them. (2) It also HOSTS
 `strip_quoted_spans` / `GitInvocation` / `GIT_CMD`, which every leaf hook
 that matches a git command line imports — `ask-destructive-git.py` and
 `warn-stray-scratch-artifact.py`. (Named, not counted: a count restated away
 from its source is what went stale here before, and a date-stamp turns a wrong
-number into a wrong number that reads as verified. `hooks/tests/`'s
-`_GIT_HOOK_FILES` is where the list is maintained. `ask-broad-git-add.py`
+number into a wrong number that reads as verified.
+`plugin-tests/tests/hooks/test_dispatch_lib.py`'s `_GIT_HOOK_FILES` is where
+the list is maintained. `ask-broad-git-add.py`
 imports `strip_quoted_spans` and `GIT_CMD` and walks tokens itself; the two
 commit-honesty guards hand each `GitInvocation` match to `_git_commit_args.py`,
 which reads the arguments. Both
@@ -120,24 +121,53 @@ HANDLER_TIMEOUT_SECONDS = 15.0
 # the machines that are busy. In a repo whose only gate is the local run, a
 # flaky assertion is worse than none — it trains people to ignore the suite.
 #
-# THE DURABLE FIX, not done here: stop guessing. Stamp a start time in the shell
-# (`CLA_HOOK_T0=$(date +%s%3N)` at the head of `hooks/probe-python.sh`, which is
-# where the probe now lives -- it was the `_pyexe` JSON string when this was
-# written, and one edit there now reaches all five wirings) and have `Deadline`
-# subtract the REAL elapsed pre-`main()` cost, falling back to this constant when
-# the variable is absent or unparseable (BSD `date` has no `%N`, so the fallback
-# is load-bearing, not decorative). That makes the window observable instead of
-# estimated, which is the only thing that can actually close this.
+# THE MEASURED PATH, which replaces the guess where the shell allows it:
+# `hooks/probe-python.sh` exports `CLA_HOOK_T0` from bash's `$EPOCHREALTIME` as
+# its first act, and `Deadline` subtracts the REAL elapsed pre-`main()` cost
+# (`_pre_main_seconds`) plus `_POST_HOOK_RESERVE_SECONDS` for the work after the
+# last hook. `$EPOCHREALTIME` is a shell variable, so stamping spawns nothing on
+# the probe's cache-hit path; `date +%s%3N`, the form first proposed here, would
+# have spawned a process on every tool call. Git Bash on Windows is bash 5 and
+# has it -- the platform this window was measured on. dash and macOS's bash 3.2
+# do not, and leave the variable EMPTY, so this constant is the fallback there
+# and whenever the value is unparseable, in the future, or older than the
+# handler timeout (a stale value exported into the environment). The fallback
+# is load-bearing, not decorative.
 #
-# NOTE the resulting tightness, which is deliberate: usable budget is now
+# NOTE the resulting tightness, which is deliberate: the FALLBACK budget is
 # exactly the enforcing sum both dispatchers carry (12.0). Those sums are
 # worst-case bounds assuming every hook's git call times out, so real runs sit
 # far below them -- but the next hook added, or the next timeout raised, will
 # fail `test_enforcing_hooks_fit_inside_the_handler_budget` immediately rather
-# than silently overrunning. That is the intended failure mode: the alternative
-# is a killed handler, which turns an enforcing hook's `return 2` into a silent
-# allow.
+# than silently overrunning. That test keeps using this constant: it is the
+# worst case, the budget a run gets when nothing was measured. On a quiet
+# machine the measured budget is larger (15 - ~0.7 - 1.0), which is what frees
+# room for the advisory hooks after the enforcing ones; on a loaded one it is
+# smaller, and is then the true figure rather than a guess that overran.
 _BUDGET_RESERVE_SECONDS = 3.0
+
+# Left after the last hook for the dispatcher's compose/print and exit, and for
+# the few shell statements the wiring runs before the probe stamps the time.
+# Used only when `CLA_HOOK_T0` was measured.
+_POST_HOOK_RESERVE_SECONDS = 1.0
+
+# Set by `hooks/probe-python.sh`: the wall-clock time the hook's shell began, in
+# seconds (bash's `$EPOCHREALTIME`, whose decimal point follows the locale).
+HOOK_T0_ENV = "CLA_HOOK_T0"
+
+
+def _pre_main_seconds() -> float | None:
+    """Seconds between the probe's stamp and now, or None when there is no
+    usable stamp: unset, empty, not a plain decimal number, more than a second
+    in the future, or as old as the handler timeout (a handler that old is
+    already dead, so the value is stale, not this call's)."""
+    raw = os.environ.get(HOOK_T0_ENV, "")
+    if not re.fullmatch(r"\d+(?:[.,]\d+)?", raw):
+        return None
+    elapsed = time.time() - float(raw.replace(",", "."))
+    if elapsed < -1.0 or elapsed >= HANDLER_TIMEOUT_SECONDS:
+        return None
+    return max(0.0, elapsed)
 
 # Worst-case wall time each dispatched hook can spend in subprocesses, as
 # (call sites on the hot path) x (that hook's own timeout constant). A hook that
@@ -222,15 +252,25 @@ class Deadline:
     """How much of the hooks.json handler timeout is left.
 
     Constructed at dispatcher entry, so `remaining()` already excludes the time
-    spent in hooks that ran before the check.
+    spent in hooks that ran before the check. With no explicit budget, the time
+    before construction is the measured `CLA_HOOK_T0` window when there is one,
+    else the fixed `_BUDGET_RESERVE_SECONDS` guess.
     """
 
-    __slots__ = ("_start", "_budget")
+    __slots__ = ("_start", "_budget", "measured")
 
     def __init__(self, budget_seconds: float | None = None) -> None:
         self._start = time.monotonic()
+        # True when the budget came from a real `CLA_HOOK_T0` measurement.
+        self.measured = False
         if budget_seconds is None:
-            budget_seconds = HANDLER_TIMEOUT_SECONDS - _BUDGET_RESERVE_SECONDS
+            before = _pre_main_seconds()
+            self.measured = before is not None
+            reserve = (
+                _BUDGET_RESERVE_SECONDS if before is None
+                else before + _POST_HOOK_RESERVE_SECONDS
+            )
+            budget_seconds = HANDLER_TIMEOUT_SECONDS - reserve
         self._budget = budget_seconds
 
     def remaining(self) -> float:
@@ -390,6 +430,30 @@ def compose_output(
     if budget <= 0:
         return must_keep
     return clamp_output(body, budget) + "\n" + must_keep
+
+
+def extract_ask(stdout_text: str) -> str | None:
+    """Pull an `ask` escalation's reason out of a hook's stdout JSON.
+
+    A hook that wants the user prompted (rather than blocked outright) exits 0
+    and emits `permissionDecision: "ask"`. Only the dispatcher's stdout is read
+    per PreToolUse call, so the decision has to be re-emitted there or it is
+    silently downgraded to an allow. Shared by both dispatchers, which carried
+    identical copies.
+    """
+    stdout_text = stdout_text.strip()
+    if not stdout_text:
+        return None
+    try:
+        payload = json.loads(stdout_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    nested = payload.get("hookSpecificOutput")
+    if not isinstance(nested, dict) or nested.get("permissionDecision") != "ask":
+        return None
+    return str(nested.get("permissionDecisionReason") or "A guard requested confirmation.")
 
 
 # --- Bounded git subprocess helpers -----------------------------------------
@@ -726,8 +790,10 @@ def strip_quoted_spans(cmd: str) -> str:
     - Accepted: a flag now ends at `)` or a backtick (`ask-destructive-git`'s
       `_END`), so prose such as `# undo with (git reset --hard)` in a comment, or
       a PowerShell backtick escape, can ask; comments were always scanned.
-    - NOT handled — `bash -c '…'` / `sh -c` / `eval '…'` bodies: single-quoted,
-      so blanked, as on main.
+    - NOT handled HERE — `bash -c '…'` / `sh -c` / `eval '…'` bodies are
+      quoted, so blanked. `ask-destructive-git.py` reads them itself (its
+      `_expand`: wrapper bodies and `git $X` expansions), and is the only guard
+      that does; every other guard still allows a wrapped command.
     - NOT handled — the paren counter ignores quotes and `case` patterns, and
       the single-quote pass runs first, so an apostrophe in earlier prose can
       pair with a later one.

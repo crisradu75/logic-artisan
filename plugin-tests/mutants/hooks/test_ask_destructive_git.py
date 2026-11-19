@@ -537,7 +537,7 @@ for _what, _args in (
      ('                if ch == "m":', "break", "pass", 4, 3)),
     # _Probes
     ("the deadline is in the past",
-     ("self.deadline = started + _PROBE_BUDGET_SECONDS", "started + ", "started - ")),
+     ("self.deadline = started + budget", "started + ", "started - ")),
     ("every probe in a directory shares one answer",
      ("key = (directory, tuple(args))", "(directory, tuple(args))", "directory")),
     ("an identical probe runs again",

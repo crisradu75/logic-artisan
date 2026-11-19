@@ -1676,3 +1676,51 @@ def test_an_empty_relocation_is_the_documented_opt_out():
         "the probe no longer treats an empty CLA_PROBE_CACHE as unset; the "
         "opt-out used by the two cache tests is broken"
     )
+
+
+# --------------------------------------------------------------------------- #
+# The start stamp: CLA_HOOK_T0
+# --------------------------------------------------------------------------- #
+
+_READ_T0 = (
+    '; "$PYEXE" -c \'import os, sys, time; v = os.environ.get("CLA_HOOK_T0"); '
+    'sys.stdout.write(repr(v) + " " + repr(time.time()))\''
+)
+
+
+@pytest.mark.skipif(not _SHELLS, reason="no POSIX shell available")
+@pytest.mark.parametrize("shell", _SHELLS, ids=_shell_ids)
+def test_the_probe_exports_a_fresh_start_stamp_or_an_empty_one(shell):
+    """Every shell gets a value the hook can trust: bash a fresh `$EPOCHREALTIME`,
+    a shell without it the empty string. Never the stale value inherited from
+    the environment, which belongs to some other call."""
+    r = _sp.run([shell, "-c", _probe_prefix() + _READ_T0],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=_inherited_env(CLA_HOOK_T0="12345.5"))
+    assert r.returncode == 0, r.stderr
+    value, now = r.stdout.rsplit(" ", 1)
+    value = ast.literal_eval(value)
+    assert value != "12345.5", f"{shell} kept the inherited stamp"
+    probe = _sp.run([shell, "-c", 'printf %s "${EPOCHREALTIME:-}"'], capture_output=True, text=True)
+    if probe.stdout:
+        stamp = float(value.replace(",", "."))
+        assert 0.0 <= float(now) - stamp < 10.0, (value, now)
+    else:
+        assert value == "", f"{shell} has no EPOCHREALTIME but exported {value!r}"
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_the_stamp_reaches_the_dispatcher_deadline():
+    """End to end: under bash the dispatcher's Deadline is a measured one."""
+    script = (
+        '; "$PYEXE" -c \'import sys; sys.path.insert(0, sys.argv[1]); import _dispatch_lib as l; '
+        'd = l.Deadline(); sys.stdout.write(str(d.measured) + " " + str(d.remaining()))\' '
+        '"$CLAUDE_PLUGIN_ROOT/hooks"'
+    )
+    r = _sp.run([_BASH, "-c", _probe_prefix() + script],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=_inherited_env())
+    assert r.returncode == 0, r.stderr
+    measured, remaining = r.stdout.split()
+    assert measured == "True", r.stdout
+    assert 10.0 < float(remaining) <= 14.0, r.stdout

@@ -3,8 +3,8 @@
 
 A generic, repo-agnostic checker enforcing the cla plugin's fact/procedure
 separation (``cla-overlay-convention`` + ``cla-skill-context-extraction``): a
-project-specific token must live behind an overlay (``project-context.md`` /
-``*.local.md``), never baked into a synced-core ``SKILL.md`` or
+project-specific token must live in the repo's own facts (``cla.io/project-facts.md``)
+or a ``*.local.md`` overlay, never baked into a synced-core ``SKILL.md`` or
 ``references/**/*.md``, or the marketplace install would carry it verbatim into
 every destination repo. The token list itself is a per-repo overlay
 (``project-tokens.local.md``) read as data — the checker hard-codes no token.
