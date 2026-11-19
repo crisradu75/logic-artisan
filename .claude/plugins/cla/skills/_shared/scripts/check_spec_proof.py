@@ -155,31 +155,37 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 # `noqa: F401` names are re-exports: tests and other scripts read them off this module.
-from spec_proof_budget import (  # noqa: E402
-    _BUDGET_PATTERNS,
-    change_budget_for,  # noqa: F401
-    change_totals,  # noqa: F401
-    check_change_budget,
-    read_change_budget,
-    read_format_limits,
-)
-from spec_proof_map import _glob_regex, _link_path, map_links, read_spec_map  # noqa: E402
-from spec_proof_notes import PROMPT_HALF, Note, resolve_scenario_marker, scan_notes  # noqa: E402,F401
-from spec_proof_parse import (  # noqa: E402
-    CheckerError,
-    FACTS_RELPATH,
-    SpecFile,
-    Unit,
-    _blocks,
-    _delta_ops,  # noqa: F401
-    _removed_headings,
-    _shared_scenarios,
-    _statement,  # noqa: F401
-    _unclosed_fence,
-    check_format,
-    parse_units,
-)
-from spec_proof_prose import _purpose_paragraphs, _spec_names_in, count_sentences, purpose_notes  # noqa: E402,F401
+# A part that cannot be imported (a partial or stale install) is "could not run", exit 2, never the
+# exit 1 that means "problems found": callers treat exit 1 as a finding list and exit 2 as unchecked.
+try:
+    from spec_proof_budget import (  # noqa: E402
+        _BUDGET_PATTERNS,
+        change_budget_for,  # noqa: F401
+        change_totals,  # noqa: F401
+        check_change_budget,
+        read_change_budget,
+        read_format_limits,
+    )
+    from spec_proof_map import _glob_regex, _link_path, map_links, read_spec_map  # noqa: E402
+    from spec_proof_notes import PROMPT_HALF, Note, resolve_scenario_marker, scan_notes  # noqa: E402,F401
+    from spec_proof_parse import (  # noqa: E402
+        CheckerError,
+        FACTS_RELPATH,
+        SpecFile,
+        Unit,
+        _blocks,
+        _delta_ops,  # noqa: F401
+        _removed_headings,
+        _shared_scenarios,
+        _statement,  # noqa: F401
+        _unclosed_fence,
+        check_format,
+        parse_units,
+    )
+    from spec_proof_prose import _purpose_paragraphs, _spec_names_in, count_sentences, purpose_notes  # noqa: E402,F401
+except ImportError as _exc:  # pragma: no cover - exercised by a subprocess test
+    print(f"check_spec_proof: cannot load its parts: {_exc}", file=sys.stderr)
+    sys.exit(2)
 
 GRANULARITIES = ("requirement", "scenario")
 _FACT_STRICT = re.compile(r"^- Test proof granularity: (requirement|scenario)$")

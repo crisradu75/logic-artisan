@@ -206,8 +206,8 @@ MUTANTS = [
     (
         "problems no longer set a non-zero exit",
         SCRIPT,
-        "    return (1 if problems else 0), problems + out",
-        "    return 0, problems + out",
+        "    return (1 if problems else 0), problems + purpose_notes(",
+        "    return 0, problems + purpose_notes(",
         TARGETS,
     ),
     (
@@ -423,8 +423,8 @@ MUTANTS = [
     (
         "config.yml is not read",
         SCRIPT_BUDGET,
-        '(root / "openspec" / "config.yaml", root / "openspec" / "config.yml")',
-        '(root / "openspec" / "config.yaml",)',
+        'found nothing wrong."""\n    cfg = next((p for p in (root / "openspec" / "config.yaml", root / "openspec" / "config.yml")',
+        'found nothing wrong."""\n    cfg = next((p for p in (root / "openspec" / "config.yaml",)',
         TARGETS,
     ),
     (
@@ -436,16 +436,16 @@ MUTANTS = [
     ),
     (
         "a fence no longer protects a statement from a subsection-like line",
-        SCRIPT,
-        "        if _FENCE.match(line):\n            fence = not fence\n        elif not fence and _H4.match(line):",
-        "        if _FENCE.match(line):\n            pass\n        elif not fence and _H4.match(line):",
+        SCRIPT_PARSE,
+        "        if not was_fenced and fence is None and _H4.match(line):",
+        "        if _H4.match(line):",
         TARGETS,
     ),
     (
         "a subsection heading no longer ends the statement",
-        SCRIPT,
-        "        elif not fence and _H4.match(line):\n            break",
-        "        elif not fence and _SCN.match(line):\n            break",
+        SCRIPT_PARSE,
+        "        if not was_fenced and fence is None and _H4.match(line):\n            break",
+        "        if not was_fenced and fence is None and _H4.match(line):\n            pass",
         TARGETS,
     ),
     (

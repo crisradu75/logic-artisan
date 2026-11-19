@@ -2298,3 +2298,25 @@ def test_a_requirement_with_a_closing_hash_run_is_proven_by_its_bare_name(repo, 
     _write(repo, "tests/test_h.py", _marker("requirement", "alpha", "Hashed"))
     code, out, _ = run(repo, capsys)
     assert code == 0, out
+
+
+def test_a_missing_part_module_exits_2_not_1(tmp_path):
+    """Review of the split (PR 550): a part that cannot be imported, as in a partial or stale
+    install, must read as "could not run" (exit 2). Callers treat exit 1 as "problems found"
+    and exit 2 as unchecked, so a crash on exit 1 would pass as a finding list."""
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / "skills" / "_shared" / "scripts"
+    dst = tmp_path / "scripts"
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
+    (dst / "spec_proof_notes.py").unlink()
+    r = subprocess.run(
+        [sys.executable, "-I", str(dst / "check_spec_proof.py"), "--root", str(tmp_path)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+    )
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "cannot load its parts" in r.stderr
+    assert "spec_proof_notes" in r.stderr
