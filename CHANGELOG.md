@@ -8,6 +8,34 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ## [Unreleased]
 
+### Changed
+
+- **The four largest shipped scripts are split by concern.** `render_doc.py`, `render_change.py`,
+  `openspec_change.py` and `check_spec_proof.py` now import 15 smaller modules beside them; every
+  entry point keeps its name, flags, exit codes and byte-identical output. `check_spec_proof.py`
+  exits 2 ("could not run"), not 1, when one of its parts is missing or half-written (#550).
+- **The plugin README states what the guards are not.** A new note lists the limits of reading
+  command text, running without Python and the time budget; the Copilot install, update and
+  troubleshooting steps live in one place with one set of update commands (#546).
+
+### Fixed
+
+- **`save-permissions` merges into any settings file safely.** A `settings.local.json` with no
+  `permissions` or `allow` key no longer crashes the merge; a file that is not valid JSON, or whose
+  allowlist is not a list, is left byte-identical with a `stopped, nothing written` message; both
+  the Python and PowerShell forms write a temporary file and replace the original in one step
+  (#549).
+- **`report-upstream` can write its issue body.** It told the model to write a body file but had no
+  tool to; `Write` is now allowed, and the file goes in a temp directory outside the repo (#549).
+- **The Copilot catalog no longer says the guard hooks are Claude-only**; they have been wired for
+  Copilot CLI since 2.3.0 (#546).
+
+### Development
+
+Not shipped: `/release` refuses to start while a catalog names a tag `origin` lacks, and reports a
+release done only once `check_catalog_tags.py --expect cla--v<new>` passes (#548); specs for the
+eight skills that had none, so every shipped skill now has a spec (#549).
+
 ## [2.4.0] — 2026-11-18
 
 **Upgrading.** After you update the plugin, re-run `/cla:cla-setup` in each repo that uses it and
