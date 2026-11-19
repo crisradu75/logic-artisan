@@ -252,7 +252,7 @@ from pathlib import Path
 
 # Why this bootstrap is needed: neither the
 # dispatcher's in-process load nor pytest puts the hooks dir at sys.path[0] for
-# this file, so the `_dispatch_lib` import below is made explicit rather than
+# this file, so the sibling imports below are made explicit rather than
 # left to depend on how the process happened to start.
 _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
@@ -261,32 +261,22 @@ if _HOOKS_DIR not in sys.path:
 # This hook is four files. Here: the decision (`_reasons`) and `main`. The
 # shared shell reading every Bash guard uses is `_shell_read.py`; the rule
 # tables and text classifiers are `_destructive_git_rules.py`; the git probes
-# and the one deadline they share are `_destructive_git_probes.py`. Every name
-# the decision uses is imported here by name, so a test or a mutant batch that
-# reaches one through this module still finds it. A test that REPLACES one
-# patches the module that looks it up (`_destructive_git_probes` for every git
-# call): `_run_git` and the probe budget are deliberately not imported here,
-# so patching them on this module fails loudly instead of changing nothing.
-from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402,F401
-from _shell_read import (  # noqa: E402,F401
+# and the one deadline they share are `_destructive_git_probes.py`. Only the
+# names the decision uses are imported here; a test or a mutant batch reaches
+# every other name in the module that defines it. A test that REPLACES one
+# patches the module that looks it up: this one for a name imported below,
+# `_destructive_git_probes` for every git call (`_run_git` and the probe budget
+# are not imported here, so patching them on this module fails loudly instead
+# of changing nothing).
+from _shell_read import (  # noqa: E402
     _BRANCH,
-    _EXPAND_MAX_LINES,
-    _EXPAND_ROUNDS,
-    _EXPAND_SLACK,
     _PART_SEP,
     _PUSH,
     _RESET,
-    _WORK_FACTOR,
-    _WRAP_DEPTH,
-    UNRESOLVED_REASON,
-    WRAP_DEPTH_REASON,
-    _abbrev,
-    _expand,
     _stripped,
-    _unquote,
     expand,
 )
-from _destructive_git_rules import (  # noqa: E402,F401
+from _destructive_git_rules import (  # noqa: E402
     _ALLOW_PUSH_TO_MAIN,
     _CHECKOUT,
     _CLEAN,
@@ -306,36 +296,28 @@ from _destructive_git_rules import (  # noqa: E402,F401
     _RESTORE_STAGED,
     _RESTORE_WORKTREE,
     _SWITCH,
-    BRANCH_RESET_REASON,
     CLEAN_REASON,
     DISCARD_REASON,
     MERGE_REASON,
-    MERGE_SWITCH_REASON,
     MIRROR_REASON,
     PUSH_GUARD_SKIP_REASON,
-    REBASE_REASON,
     STASH_MULTI_DIR_REASON,
     STASH_REASON,
     STASH_UNCHECKED_REASON,
     UNCHECKED_REASON,
     WHOLE_TREE_REASON,
-    _config_key,
-    _config_overrides,
     _every_merge_is_authorized,
     _force_deletes_a_branch,
-    _line_kind,
     _names_a_tree_ish,
     _operands,
     _stash_dirs,
 )
-from _destructive_git_probes import (  # noqa: E402,F401
+from _destructive_git_probes import (  # noqa: E402
     _Probes,
-    _status_lines,
     _history_reasons,
     _holds_work,
-    _is_true,
     _operation_in_progress,
-    _replays_nothing,
+    _status_lines,
 )
 
 

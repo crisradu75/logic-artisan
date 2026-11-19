@@ -21,8 +21,8 @@ Detection
 ---------
 A `git add` invocation anywhere in the command (behind global options such as
 `git -C <dir>`, in any `&&` / `;` / `|` / newline / `(` / backtick segment, and
-under the `git.exe` spellings `_dispatch_lib.GIT_CMD` accepts), after quoted
-spans are blanked by `_dispatch_lib.strip_quoted_spans`, is BROAD when:
+under the `git.exe` spellings `_shell_text.GIT_CMD` accepts), after quoted
+spans are blanked by `_shell_text.strip_quoted_spans`, is BROAD when:
 
 - it carries `-A`, `--all` or `--no-ignore-removal` (or any abbreviation git
   resolves) and names no positive pathspec, or only broad ones; or
@@ -78,8 +78,8 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GIT_CMD  # noqa: E402
-from _dispatch_lib import strip_quoted_spans  # noqa: E402
+from _shell_text import GIT_CMD  # noqa: E402
+from _shell_text import strip_quoted_spans  # noqa: E402
 
 # Total wall time for every `git status` this hook runs on one call, shared
 # across them. `status` walks the working tree, so it gets the 4 s that

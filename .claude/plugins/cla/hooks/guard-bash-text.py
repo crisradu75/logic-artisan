@@ -85,7 +85,7 @@ them. Every character is visited a bounded number of times, so the pass is
 linear on hostile input. It yields simple commands (words and redirects); the
 command name is found behind assignments, `env`, `command`, `sudo`, `nohup`,
 `time`, `exec`, `builtin`, `!`, `{` and the compound keywords. `git` is matched
-by `_dispatch_lib.GIT_CMD` on the word's basename, and its global options are
+by `_shell_text.GIT_CMD` on the word's basename, and its global options are
 walked as tokens (linear, as in `ask-broad-git-add.py`).
 
 Bash quoting is used for PowerShell too. Its single quotes are literal and its
@@ -116,7 +116,7 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GIT_CMD  # noqa: E402
+from _shell_text import GIT_CMD  # noqa: E402
 
 _TAG = "(hook: guard-bash-text.py)"
 

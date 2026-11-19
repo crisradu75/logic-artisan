@@ -42,14 +42,19 @@ def _load():
 
 hook = _load()
 
-# The hook is four files (`ask-destructive-git.py` re-exports what it uses). The
-# git probes look `_run_git`, `time` and their helpers up in their own module,
-# and the shell reading its caps in its own, so a test that REPLACES one patches
-# it there: patching the hook's copy of a name would change nothing they call.
-# Both are on `sys.path` once the hook has loaded, and are the same module
-# objects the hook imported.
+# The hook is four files, and `ask-destructive-git.py` imports only the names
+# its decision uses. A test reads every other name in the module that defines
+# it: the shell reading and its caps in `_shell_read`, the rule tables and
+# reasons in `_destructive_git_rules`, the git probes in
+# `_destructive_git_probes`. The probes look `_run_git`, `time` and their
+# helpers up in their own module, so a test that REPLACES one patches it there:
+# patching the hook's copy of a name would change nothing they call. All are on
+# `sys.path` once the hook has loaded, and are the same module objects the hook
+# imported.
 import _destructive_git_probes as gitprobes  # noqa: E402
+import _destructive_git_rules as rules  # noqa: E402
 import _shell_read as shell  # noqa: E402
+import _shell_text as shell_text  # noqa: E402
 
 
 def _run(command: str, monkeypatch, capsys, cwd: str | None = None) -> dict | None:
@@ -960,7 +965,7 @@ def test_a_mirror_push_asks(command, monkeypatch, capsys):
     """A mirror push deletes every remote branch and tag the clone lacks, the
     default branch included, and git never asks the pre-push guard about them."""
     reason = _reason(_run(command, monkeypatch, capsys))
-    assert hook.MIRROR_REASON in reason, command
+    assert rules.MIRROR_REASON in reason, command
     assert "force-push" not in reason, command
 
 
@@ -978,7 +983,7 @@ def test_a_mirror_clone_or_an_ordinary_push_does_not_ask_about_a_mirror(command,
     """Non-vacuity partner: `--mirror` on a clone, prose naming it, and a word
     that only starts like it."""
     payload = _run(command, monkeypatch, capsys)
-    assert payload is None or hook.MIRROR_REASON not in _reason(payload), command
+    assert payload is None or rules.MIRROR_REASON not in _reason(payload), command
 
 
 # requirement: git-guards / One override silences every git prompt
@@ -1570,7 +1575,7 @@ def _completed(returncode: int, stdout: str):
 
 def test_a_refusal_is_not_read_as_an_answer(repo, monkeypatch):
     monkeypatch.setattr(gitprobes, "_run_git", lambda cwd, args, timeout=None: _completed(128, "?? x\n"))
-    assert hook._holds_work(
+    assert gitprobes._holds_work(
         str(repo), ["x"], {"untracked"}, False, lambda: []
     ) is False
 
@@ -1579,7 +1584,7 @@ def test_the_same_output_with_a_zero_return_is_read_as_an_answer(repo, monkeypat
     """Non-vacuity partner: without it, the test above passes against a probe
     that returns False for everything."""
     monkeypatch.setattr(gitprobes, "_run_git", lambda cwd, args, timeout=None: _completed(0, "?? x\n"))
-    assert hook._holds_work(
+    assert gitprobes._holds_work(
         str(repo), ["x"], {"untracked"}, False, lambda: []
     ) is True
 
@@ -1706,7 +1711,7 @@ def test_the_abbreviation_generator_bottoms_out_at_the_floor():
     stop running."""
     import re as _re
 
-    pattern = _re.compile(hook._abbrev("worktree", 1) + "$")
+    pattern = _re.compile(shell._abbrev("worktree", 1) + "$")
     assert pattern.match("worktree") and pattern.match("w") and pattern.match("work")
     assert not pattern.match("") and not pattern.match("worktrees")
 
@@ -1805,7 +1810,7 @@ def test_the_porcelain_classification(porcelain, expected):
     """The table, so a change to one state cannot silently move another. `MD`
     is the one worth reading twice: deleted in the worktree (so a pathed
     checkout restores it) but STAGED-modified, so a forced one loses that."""
-    assert hook._line_kind(porcelain) == expected
+    assert rules._line_kind(porcelain) == expected
 
 
 # --- git switch is matched only in its forced form --------------------------- #
@@ -2348,7 +2353,7 @@ def test_stashes_in_two_directories_ask_without_probing_each(
     payload = _run(f"git stash && git -C {other} stash", monkeypatch, capsys, cwd=str(repo))
     assert payload is not None
     reason = _reason(payload)
-    assert hook.STASH_MULTI_DIR_REASON in reason
+    assert rules.STASH_MULTI_DIR_REASON in reason
     # Issue #438: the skip is deliberate, so the prompt must not report a fault.
     assert "COULD NOT BE RUN" not in reason
     assert calls == []
@@ -2377,9 +2382,9 @@ def test_a_raising_stash_check_still_runs_the_discard_and_clean_checks(
     assert hook.main() == 0
     captured = capsys.readouterr()
     reason = _reason(json.loads(captured.out))
-    assert reason.count(hook.STASH_UNCHECKED_REASON) == 1
-    assert hook.DISCARD_REASON in reason
-    assert hook.CLEAN_REASON in reason
+    assert reason.count(rules.STASH_UNCHECKED_REASON) == 1
+    assert rules.DISCARD_REASON in reason
+    assert rules.CLEAN_REASON in reason
     assert "the stash check raised ValueError: embedded null byte" in captured.err
     assert "discard check raised" not in captured.err
 
@@ -2401,8 +2406,8 @@ def test_a_nul_in_a_stash_dash_c_path_asks_and_keeps_the_discard_check(
     assert hook.main() == 0
     captured = capsys.readouterr()
     reason = _reason(json.loads(captured.out))
-    assert reason.count(hook.STASH_UNCHECKED_REASON) == 1
-    assert hook.DISCARD_REASON in reason
+    assert reason.count(rules.STASH_UNCHECKED_REASON) == 1
+    assert rules.DISCARD_REASON in reason
     assert "the stash check raised ValueError" in captured.err
 
 
@@ -2608,7 +2613,7 @@ def test_a_rebase_asks_from_another_directory_through_dash_c(
     elsewhere.mkdir()
     payload = _run(f"git -C {history} rebase main", monkeypatch, capsys, cwd=str(elsewhere))
     assert payload is not None
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 def test_a_rebase_of_a_branch_pushed_without_an_upstream_asks(
@@ -2619,7 +2624,7 @@ def test_a_rebase_of_a_branch_pushed_without_an_upstream_asks(
     _git(history, "branch", "-q", "--unset-upstream", "feat")
     payload = _run("git rebase main", monkeypatch, capsys, cwd=str(history))
     assert payload is not None
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 # requirement: git-guards / A rebase of pushed commits asks first
@@ -2906,7 +2911,7 @@ def test_all_three_reasons_are_reported_together(staged, monkeypatch, capsys):
         "git rebase main && git switch -C uniq && git switch -m main",
         monkeypatch, capsys, cwd=str(staged),
     ))
-    for expected in (hook.REBASE_REASON, hook.BRANCH_RESET_REASON, hook.MERGE_SWITCH_REASON):
+    for expected in (rules.REBASE_REASON, rules.BRANCH_RESET_REASON, rules.MERGE_SWITCH_REASON):
         assert reason.count(expected) == 1, expected
 
 
@@ -2916,7 +2921,7 @@ def test_each_history_reason_is_reported_once(staged, monkeypatch, capsys):
         " && git checkout -B uniq && git switch -m main && git checkout -m main",
         monkeypatch, capsys, cwd=str(staged),
     ))
-    for expected in (hook.REBASE_REASON, hook.BRANCH_RESET_REASON, hook.MERGE_SWITCH_REASON):
+    for expected in (rules.REBASE_REASON, rules.BRANCH_RESET_REASON, rules.MERGE_SWITCH_REASON):
         assert reason.count(expected) == 1, expected
 
 
@@ -2924,7 +2929,7 @@ def test_a_history_reason_adds_to_the_earlier_ones(history, monkeypatch, capsys)
     reason = _reason(_run(
         "git push --force origin x && git rebase main", monkeypatch, capsys, cwd=str(history)
     ))
-    assert "force-push" in reason and hook.REBASE_REASON in reason
+    assert "force-push" in reason and rules.REBASE_REASON in reason
 
 
 @pytest.mark.parametrize(
@@ -2941,7 +2946,7 @@ def test_an_unnamed_repository_skips_only_its_own_invocation(
 ):
     payload = _run(command, monkeypatch, capsys, cwd=str(history))
     assert payload is not None, command
-    assert getattr(hook, expected) in _reason(payload)
+    assert getattr(rules, expected) in _reason(payload)
 
 
 def test_run_git_passes_a_shorter_timeout_through(monkeypatch):
@@ -2961,7 +2966,7 @@ def test_run_git_passes_a_shorter_timeout_through(monkeypatch):
 def test_a_history_reason_keeps_the_merge_prompt_last(history, monkeypatch, capsys):
     """`main()` relies on the merge reason being appended last."""
     found = hook._reasons("gh pr merge 3 && git rebase main", str(history))
-    assert found == [hook.REBASE_REASON, hook.MERGE_REASON]
+    assert found == [rules.REBASE_REASON, rules.MERGE_REASON]
 
 
 @pytest.mark.parametrize(
@@ -3018,7 +3023,7 @@ def test_a_raise_in_the_history_check_keeps_the_other_guards_and_says_so(
     captured = capsys.readouterr()
     reason = _reason(json.loads(captured.out))
     assert "force-push" in reason
-    assert hook.REBASE_REASON not in reason
+    assert rules.REBASE_REASON not in reason
     assert "the rebase and branch-change check raised RuntimeError" in captured.err
 
 
@@ -3223,7 +3228,7 @@ def test_an_option_that_replays_an_up_to_date_branch_asks(
     todo list, a command or a new base the chance to)."""
     payload = _run(command, monkeypatch, capsys, cwd=str(history))
     assert payload is not None, command
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 # --- git pull with rebase ------------------------------------------------------
@@ -3257,7 +3262,7 @@ def test_an_option_that_replays_an_up_to_date_branch_asks(
 def test_a_rebasing_pull_of_a_pushed_commit_asks(command, history, monkeypatch, capsys):
     payload = _run(command, monkeypatch, capsys, cwd=str(history))
     assert payload is not None, f"expected an ask for: {command!r}"
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 # requirement: git-guards / A rebasing pull of pushed commits asks first
@@ -3293,7 +3298,7 @@ def test_a_pull_rebased_by_the_pull_setting_asks(history, monkeypatch, capsys):
     _git(history, "config", "pull.rebase", "true")
     payload = _run("git pull origin main", monkeypatch, capsys, cwd=str(history))
     assert payload is not None
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 def test_the_branch_setting_overrides_the_pull_setting(history, monkeypatch, capsys):
@@ -3311,7 +3316,7 @@ def test_a_rebasing_pull_ignores_up_to_date(history, monkeypatch, capsys):
     _git(history, "update-ref", "refs/remotes/origin/base", "main~1")
     payload = _run("git pull --rebase origin base", monkeypatch, capsys, cwd=str(history))
     assert payload is not None
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 # --- branch reset: what counts as reachable elsewhere ---------------------------
@@ -3361,7 +3366,7 @@ def test_a_probe_that_runs_leaves_no_note(history, monkeypatch, capsys):
 
 def test_a_revision_starting_with_a_dash_is_never_probed(history, monkeypatch):
     calls = _history_probe(monkeypatch)
-    probes = hook._Probes(hook.time.monotonic())
+    probes = gitprobes._Probes(hook.time.monotonic())
     assert probes.commit(str(history), "--output=x") is None
     assert probes.commit(str(history), "") is None
     assert calls == []
@@ -3372,7 +3377,7 @@ def test_only_a_sha_comes_back_from_a_revision_probe(history, monkeypatch):
     monkeypatch.setattr(
         gitprobes, "_run_git", lambda cwd, args, timeout=None: _completed(0, "--output=x\n")
     )
-    probes = hook._Probes(hook.time.monotonic())
+    probes = gitprobes._Probes(hook.time.monotonic())
     assert probes.commit(str(history), "main") is None
 
 
@@ -3392,7 +3397,7 @@ def test_a_refused_revision_probe_yields_nothing(history, monkeypatch):
     monkeypatch.setattr(
         gitprobes, "_run_git", lambda cwd, args, timeout=None: _completed(1, "a" * 40 + "\n")
     )
-    probes = hook._Probes(hook.time.monotonic())
+    probes = gitprobes._Probes(hook.time.monotonic())
     assert probes.commit(str(history), "main") is None
 
 
@@ -3464,7 +3469,7 @@ def test_a_fork_point_rebase_that_drops_a_pushed_commit_asks(
 ):
     payload = _run(command, monkeypatch, capsys, cwd=str(rewound))
     assert payload is not None, command
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 @pytest.mark.parametrize(
@@ -3518,7 +3523,7 @@ def test_an_unmeasured_option_turns_the_up_to_date_shortcut_off(
     f1 is pushed. Anything outside the measured set is treated the same."""
     payload = _run(command, monkeypatch, capsys, cwd=str(history))
     assert payload is not None, command
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 @pytest.mark.parametrize(
@@ -3568,7 +3573,7 @@ def test_a_measured_no_replay_option_keeps_the_shortcut(
 def test_a_dash_c_setting_makes_a_pull_rebase(command, history, monkeypatch, capsys):
     payload = _run(command, monkeypatch, capsys, cwd=str(history))
     assert payload is not None, command
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 def test_a_dash_c_setting_outranks_the_repository(history, monkeypatch, capsys):
@@ -3582,9 +3587,9 @@ def test_a_dash_c_setting_outranks_the_repository(history, monkeypatch, capsys):
 
 
 def test_config_keys_compare_as_git_does():
-    assert hook._config_key("Pull.Rebase") == "pull.rebase"
-    assert hook._config_key("BRANCH.Feat.REBASE") == "branch.Feat.rebase"
-    assert hook._config_overrides("-c a.b=1 -c 'x.y=two words' -c z.w ") == {
+    assert rules._config_key("Pull.Rebase") == "pull.rebase"
+    assert rules._config_key("BRANCH.Feat.REBASE") == "branch.Feat.rebase"
+    assert rules._config_overrides("-c a.b=1 -c 'x.y=two words' -c z.w ") == {
         "a.b": "1", "x.y": "two words", "z.w": "true",
     }
 
@@ -3613,7 +3618,7 @@ def test_config_keys_compare_as_git_does():
     ],
 )
 def test_unquote_reads_a_word_as_the_shell_does(word, expected):
-    assert hook._unquote(word) == expected
+    assert shell._unquote(word) == expected
 
 
 # requirement: git-guards / A rebase of pushed commits asks first
@@ -3633,7 +3638,7 @@ def test_a_quoted_or_searched_upstream_still_asks(command, history, monkeypatch,
     repository, so `pull --rebase . main` is `git rebase main`."""
     payload = _run(command, monkeypatch, capsys, cwd=str(history))
     assert payload is not None, command
-    assert hook.REBASE_REASON in _reason(payload)
+    assert rules.REBASE_REASON in _reason(payload)
 
 
 @pytest.mark.parametrize(
@@ -3723,7 +3728,7 @@ def test_a_wrapped_destructive_command_asks_like_the_bare_one(command, expected,
     # Both of these name a force-push in their own text, so `expected` alone
     # would pass on either: the body must have been read, not given up on.
     assert "cannot resolve" not in reason, reason
-    assert hook.WRAP_DEPTH_REASON not in reason, reason
+    assert shell.WRAP_DEPTH_REASON not in reason, reason
 
 
 # requirement: git-guards / A destructive git command run through a shell wrapper asks first
@@ -3788,10 +3793,10 @@ def test_the_depth_cap_ignores_bodies_that_only_contain_git_or_gh_inside_a_word(
 @pytest.mark.parametrize("name", ["git", "GIT", "gh", "/usr/bin/git", "git.exe"])
 def test_the_depth_cap_still_asks_when_the_unread_body_names_git(monkeypatch, capsys, name):
     inner = f"{name} status"
-    for _ in range(hook._WRAP_DEPTH + 1):
+    for _ in range(shell._WRAP_DEPTH + 1):
         inner = "eval " + json.dumps(inner)
     payload = _run(inner, monkeypatch, capsys)
-    assert payload is not None and hook.WRAP_DEPTH_REASON in _reason(payload)
+    assert payload is not None and shell.WRAP_DEPTH_REASON in _reason(payload)
 
 
 # requirement: git-guards / A destructive git command run through a shell wrapper asks first
@@ -3799,13 +3804,13 @@ def test_wrappers_nested_past_the_depth_cap_ask_rather_than_pass(monkeypatch, ca
     """Three levels are read. A fourth is not, and asks instead of being allowed:
     the body there was never read."""
     inner = "git status"
-    for _ in range(hook._WRAP_DEPTH):
+    for _ in range(shell._WRAP_DEPTH):
         inner = "eval " + json.dumps(inner)
     assert _run(inner, monkeypatch, capsys) is None
     payload = _run("eval " + json.dumps(inner), monkeypatch, capsys)
     assert payload is not None
-    assert hook.WRAP_DEPTH_REASON in _reason(payload)
-    assert hook.UNRESOLVED_REASON not in _reason(payload)
+    assert shell.WRAP_DEPTH_REASON in _reason(payload)
+    assert shell.UNRESOLVED_REASON not in _reason(payload)
 
 
 def test_a_command_with_nothing_to_expand_is_read_as_itself():
@@ -3814,7 +3819,7 @@ def test_a_command_with_nothing_to_expand_is_read_as_itself():
     for command in ("git push origin main", "echo hi", "git commit -m 'bash -c x'"):
         text, scanned, unread = hook._scan(command)
         assert text == command and unread is None
-        assert scanned == hook._strip_quoted_spans(command)
+        assert scanned == shell_text.strip_quoted_spans(command)
 
 
 def test_each_part_is_quote_stripped_on_its_own():
@@ -3822,8 +3827,8 @@ def test_each_part_is_quote_stripped_on_its_own():
     command = "echo \"it's\" ; bash -c 'git push -f origin x' ; echo '"
     text, scanned, _ = hook._scan(command)
     assert len(text) == len(scanned)
-    parts = text.split(hook._PART_SEP)
-    assert scanned.split(hook._PART_SEP) == [hook._strip_quoted_spans(p) for p in parts]
+    parts = text.split(shell._PART_SEP)
+    assert scanned.split(shell._PART_SEP) == [shell_text.strip_quoted_spans(p) for p in parts]
 
 
 # requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
@@ -3857,7 +3862,7 @@ def test_a_resolved_expansion_asks_like_the_literal(command, expected, monkeypat
     assert payload is not None, f"expected an ask for: {command!r}"
     reason = _reason(payload)
     assert expected in reason, reason
-    assert hook.UNRESOLVED_REASON not in reason, reason
+    assert shell.UNRESOLVED_REASON not in reason, reason
 
 
 # requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
@@ -3892,7 +3897,7 @@ def test_a_resolved_expansion_asks_like_the_literal(command, expected, monkeypat
 def test_an_unresolved_expansion_asks(command, monkeypatch, capsys):
     payload = _run(command, monkeypatch, capsys)
     assert payload is not None, f"expected an ask for: {command!r}"
-    assert hook.UNRESOLVED_REASON in _reason(payload)
+    assert shell.UNRESOLVED_REASON in _reason(payload)
 
 
 # requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
@@ -3927,16 +3932,16 @@ def test_an_expansion_that_cannot_change_the_decision_stays_silent(command, monk
 def test_rewrites_past_their_cap_ask_rather_than_pass(monkeypatch, capsys):
     """Each value is tried, up to `_EXPAND_MAX_LINES` lines; past that the
     command asks rather than being read in part."""
-    values = "; ".join(f"X=v{i}" for i in range(hook._EXPAND_MAX_LINES + 1))
+    values = "; ".join(f"X=v{i}" for i in range(shell._EXPAND_MAX_LINES + 1))
     payload = _run(values + "; git $X", monkeypatch, capsys)
     assert payload is not None
-    assert hook.UNRESOLVED_REASON in _reason(payload)
+    assert shell.UNRESOLVED_REASON in _reason(payload)
     assert _run("X=v1; X=v2; git $X", monkeypatch, capsys) is None
     # The cap is 64 lines, stated here as a number: the lines above follow the
     # constant, so they would pass on any cap.
     values = "; ".join(f"X=v{i}" for i in range(65))
     payload = _run(values + "; git $X", monkeypatch, capsys)
-    assert payload is not None and hook.UNRESOLVED_REASON in _reason(payload)
+    assert payload is not None and shell.UNRESOLVED_REASON in _reason(payload)
 
 
 def test_a_merge_through_a_wrapper_still_honours_the_merge_override(monkeypatch, capsys):
@@ -3991,7 +3996,7 @@ def test_a_wrapper_body_without_git_is_not_read_further(monkeypatch, capsys):
     """Only a body that holds `git` or `gh` is read: nesting past the depth cap
     with nothing a guard reads is no reason to ask."""
     inner = "echo hi"
-    for _ in range(hook._WRAP_DEPTH + 2):
+    for _ in range(shell._WRAP_DEPTH + 2):
         inner = "eval " + json.dumps(inner)
     assert _run(inner, monkeypatch, capsys) is None
 
@@ -4001,22 +4006,22 @@ def test_wrapped_text_past_its_cap_asks(monkeypatch, capsys):
     command whose bodies outgrow that asks rather than being read in part."""
     small = "git status; " * 10
     assert _run("bash -c \"sh -c '" + small + "'\"", monkeypatch, capsys) is None
-    big = "git status; " * (hook._EXPAND_SLACK // 8)
+    big = "git status; " * (shell._EXPAND_SLACK // 8)
     payload = _run("bash -c \"sh -c '" + big + "'\"", monkeypatch, capsys)
     assert payload is not None
-    assert hook.UNRESOLVED_REASON in _reason(payload)
+    assert shell.UNRESOLVED_REASON in _reason(payload)
 
 
 def test_expansions_past_the_round_cap_ask(monkeypatch, capsys):
     """Each round fills in one expansion per git line, and a round that still
     produced a new line leaves the next unread: `_EXPAND_ROUNDS` names in one
     line ask, one fewer is read to the end."""
-    names = "ABCDEFGHIJ"[: hook._EXPAND_ROUNDS]
+    names = "ABCDEFGHIJ"[: shell._EXPAND_ROUNDS]
     assigns = "; ".join(f"{n}=v" for n in names)
     refs = " ".join(f"${n}" for n in names)
     payload = _run(f"{assigns}; git push {refs}", monkeypatch, capsys)
     assert payload is not None
-    assert hook.UNRESOLVED_REASON in _reason(payload)
+    assert shell.UNRESOLVED_REASON in _reason(payload)
     fewer = "; ".join(f"{n}=v" for n in names[:-1])
     refs = " ".join(f"${n}" for n in names[:-1])
     assert _run(f"{fewer}; git push {refs}", monkeypatch, capsys) is None
@@ -4040,18 +4045,18 @@ def test_appended_text_never_joins_a_continued_last_line(monkeypatch, capsys):
     ("command", "expected"),
     [
         # a flag's literal start is `-`, and the rest cannot be known
-        ("git push --force$X origin x", hook.UNRESOLVED_REASON),
-        ("git push -f$X origin x", hook.UNRESOLVED_REASON),
-        ("git reset --hard$X", hook.UNRESOLVED_REASON),
-        ("git branch -D$X foo", hook.UNRESOLVED_REASON),
-        ("git push origin x --force$X", hook.UNRESOLVED_REASON),
-        ('git push "-f"$X origin x', hook.UNRESOLVED_REASON),
-        ("git push ${F} origin x", hook.UNRESOLVED_REASON),
+        ("git push --force$X origin x", shell.UNRESOLVED_REASON),
+        ("git push -f$X origin x", shell.UNRESOLVED_REASON),
+        ("git reset --hard$X", shell.UNRESOLVED_REASON),
+        ("git branch -D$X foo", shell.UNRESOLVED_REASON),
+        ("git push origin x --force$X", shell.UNRESOLVED_REASON),
+        ('git push "-f"$X origin x', shell.UNRESOLVED_REASON),
+        ("git push ${F} origin x", shell.UNRESOLVED_REASON),
         # the value of `X` runs to its own closing `)`, past the one inside it,
         # so `Y` is assigned inside a computed value and is not known
-        ("X=$( (a) Y=push ); git $Y -f origin x", hook.UNRESOLVED_REASON),
+        ("X=$( (a) Y=push ); git $Y -f origin x", shell.UNRESOLVED_REASON),
         # a subcommand with an expansion inside it
-        ('git pu$X"sh" -f origin x', hook.UNRESOLVED_REASON),
+        ('git pu$X"sh" -f origin x', shell.UNRESOLVED_REASON),
         # quoted or escaped flags and subcommands read as their value
         ('git push "-f" origin x', _FORCE),
         ("git push '--force' origin x", _FORCE),
@@ -4074,8 +4079,8 @@ def test_a_quoted_or_partly_expanded_flag_asks(command, expected, monkeypatch, c
     assert payload is not None, f"expected an ask for: {command!r}"
     reason = _reason(payload)
     assert expected in reason, reason
-    if expected != hook.UNRESOLVED_REASON:
-        assert hook.UNRESOLVED_REASON not in reason, reason
+    if expected != shell.UNRESOLVED_REASON:
+        assert shell.UNRESOLVED_REASON not in reason, reason
 
 
 # requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
@@ -4147,7 +4152,7 @@ def test_a_command_at_the_scan_cap_is_read_in_time(command, expected, unread, mo
         return
     reason = _reason(payload)
     assert expected in reason
-    assert (hook.UNRESOLVED_REASON in reason) is unread, reason
+    assert (shell.UNRESOLVED_REASON in reason) is unread, reason
 
 
 # requirement: git-guards / A long command is read within the guard's time
@@ -4166,7 +4171,7 @@ def test_reading_past_the_work_cap_asks_rather_than_reading_in_part(monkeypatch,
         hook._scan.cache_clear()
         shell.expand.cache_clear()
     assert payload is not None
-    assert hook.UNRESOLVED_REASON in _reason(payload)
+    assert shell.UNRESOLVED_REASON in _reason(payload)
 
 
 def test_a_long_wrapped_command_is_read_inside_the_work_cap(monkeypatch, capsys):
@@ -4177,7 +4182,7 @@ def test_a_long_wrapped_command_is_read_inside_the_work_cap(monkeypatch, capsys)
     payload = _run(f"bash -c '{body}{_PUSH_F}'", monkeypatch, capsys)
     assert payload is not None
     reason = _reason(payload)
-    assert _FORCE in reason and hook.UNRESOLVED_REASON not in reason, reason
+    assert _FORCE in reason and shell.UNRESOLVED_REASON not in reason, reason
     # A long value is walked twice, where it is assigned and in the line it fills:
     # more than the command's own length plus the slack, and inside the cap.
     assert _run("X=" + "a" * 20000 + "; git push origin $X", monkeypatch, capsys) is None
@@ -4218,30 +4223,30 @@ def test_a_backtick_after_a_quoted_git_command_stays_silent(command, monkeypatch
 @pytest.mark.parametrize(
     ("command", "expected"),
     [
-        ("git `echo push` -f origin x", hook.UNRESOLVED_REASON),
+        ("git `echo push` -f origin x", shell.UNRESOLVED_REASON),
         ("git push -f`echo` origin x", _FORCE),
         # the flag before a closing backtick is still read
         ("echo `git branch topic -D` here", _DELETE),
         # an even number of backticks before `git`: one in a word opens a
         # substitution, whose output cannot be known
-        ("git push -`echo f` origin x", hook.UNRESOLVED_REASON),
-        ("git push --`echo force` origin x", hook.UNRESOLVED_REASON),
-        ("git reset --`echo hard`", hook.UNRESOLVED_REASON),
-        ("git branch -`echo D` foo", hook.UNRESOLVED_REASON),
-        ("git pu`echo sh` -f origin x", hook.UNRESOLVED_REASON),
-        ("git re`echo set` --hard", hook.UNRESOLVED_REASON),
-        ('git push "-`echo f`" origin x', hook.UNRESOLVED_REASON),
-        ("bash -c 'git push -`echo f` origin x'", hook.UNRESOLVED_REASON),
-        ("X=f; git push -`echo $X` origin x", hook.UNRESOLVED_REASON),
+        ("git push -`echo f` origin x", shell.UNRESOLVED_REASON),
+        ("git push --`echo force` origin x", shell.UNRESOLVED_REASON),
+        ("git reset --`echo hard`", shell.UNRESOLVED_REASON),
+        ("git branch -`echo D` foo", shell.UNRESOLVED_REASON),
+        ("git pu`echo sh` -f origin x", shell.UNRESOLVED_REASON),
+        ("git re`echo set` --hard", shell.UNRESOLVED_REASON),
+        ('git push "-`echo f`" origin x', shell.UNRESOLVED_REASON),
+        ("bash -c 'git push -`echo f` origin x'", shell.UNRESOLVED_REASON),
+        ("X=f; git push -`echo $X` origin x", shell.UNRESOLVED_REASON),
         # inside a span, an escaped backtick still opens one a level down
-        ("echo `git push -\\`echo f\\` origin x`", hook.UNRESOLVED_REASON),
+        ("echo `git push -\\`echo f\\` origin x`", shell.UNRESOLVED_REASON),
         # a backtick on an earlier line, in a comment or a heredoc body, or
         # after an escaped backslash, opens no span around this git
-        ("true # `\ngit push -`echo f` origin x", hook.UNRESOLVED_REASON),
-        ("cat <<'EOF'\nsee `\nEOF\ngit reset --`echo hard`", hook.UNRESOLVED_REASON),
-        ("echo \\\\`echo x`; git push -`echo f` origin x", hook.UNRESOLVED_REASON),
-        ("cat <<'EOF'\nsee `\nEOF\ngit pu`echo sh` -f origin x", hook.UNRESOLVED_REASON),
-        ("# it's a `test\ngit branch -`echo D` foo", hook.UNRESOLVED_REASON),
+        ("true # `\ngit push -`echo f` origin x", shell.UNRESOLVED_REASON),
+        ("cat <<'EOF'\nsee `\nEOF\ngit reset --`echo hard`", shell.UNRESOLVED_REASON),
+        ("echo \\\\`echo x`; git push -`echo f` origin x", shell.UNRESOLVED_REASON),
+        ("cat <<'EOF'\nsee `\nEOF\ngit pu`echo sh` -f origin x", shell.UNRESOLVED_REASON),
+        ("# it's a `test\ngit branch -`echo D` foo", shell.UNRESOLVED_REASON),
         # a span closed before the next command leaves that command whole
         ('echo "`git status`" && git push -f origin x', _FORCE),
         ("echo `git status` && git push -f origin x", _FORCE),
@@ -4256,7 +4261,7 @@ def test_a_backtick_that_opens_a_substitution_still_counts(command, expected, mo
 def test_many_quoted_git_commands_add_nothing_to_read():
     """A git word whose only backtick closes it is not an expansion, so it adds
     no rewritten line; were each mention rewritten, the line cap would ask."""
-    command = "echo " + "`git status` " * (hook._EXPAND_MAX_LINES + 16)
+    command = "echo " + "`git status` " * (shell._EXPAND_MAX_LINES + 16)
     text, _, unread = hook._scan(command)
     assert unread is None and text == command
 
@@ -4312,14 +4317,14 @@ def _fake_git(monkeypatch, answers: dict):
 
 
 def test_a_ref_probe_reads_only_a_ref_that_git_confirmed(monkeypatch, tmp_path):
-    probes = hook._Probes(time.monotonic())
+    probes = gitprobes._Probes(time.monotonic())
     asked = _fake_git(monkeypatch, {("rev-parse", "--verify"): (0, "refs/heads/x\n")})
     assert probes.ref(str(tmp_path), "--output=x") is None
     assert asked == [], "a revision that starts with `-` is never handed to git"
     assert probes.ref(str(tmp_path), "x") == "refs/heads/x"
     for answer in ((1, "refs/heads/y\n"), (0, "HEAD\n"), (0, "deadbeef\n")):
         _fake_git(monkeypatch, {("rev-parse", "--verify"): answer})
-        assert hook._Probes(time.monotonic()).ref(str(tmp_path), "y") is None, answer
+        assert gitprobes._Probes(time.monotonic()).ref(str(tmp_path), "y") is None, answer
 
 
 class _Answers:
@@ -4343,10 +4348,10 @@ def test_a_probe_that_cannot_run_counts_as_up_to_date():
     """`_replays_nothing` fails open, as its docstring says: no ancestry answer,
     or no fork-point answer, reads as up to date, never as a replay."""
     base, tip = "a" * 40, "b" * 40
-    assert hook._replays_nothing("d", "origin/main", base, tip, False, _Answers({}))
+    assert gitprobes._replays_nothing("d", "origin/main", base, tip, False, _Answers({}))
     ancestor = {("merge-base", "--is-ancestor"): (0, "")}
-    assert hook._replays_nothing("d", "origin/main", base, tip, True, _Answers(ancestor))
-    assert not hook._replays_nothing(
+    assert gitprobes._replays_nothing("d", "origin/main", base, tip, True, _Answers(ancestor))
+    assert not gitprobes._replays_nothing(
         "d", "origin/main", base, tip, False, _Answers({("merge-base", "--is-ancestor"): (1, "")})
     )
 
@@ -4357,14 +4362,14 @@ def test_a_refused_fork_point_probe_finds_no_fork_point():
     base, tip = "a" * 40, "b" * 40
     answers = {("merge-base", "--is-ancestor"): (0, "")}
     refused = {**answers, ("merge-base", "--fork-point"): (1, "c" * 40 + "\n")}
-    assert hook._replays_nothing("d", "origin/main", base, tip, True, _Answers(refused))
+    assert gitprobes._replays_nothing("d", "origin/main", base, tip, True, _Answers(refused))
     other = {**answers, ("merge-base", "--fork-point"): (0, "c" * 40 + "\n")}
-    assert not hook._replays_nothing("d", "origin/main", base, tip, True, _Answers(other))
+    assert not gitprobes._replays_nothing("d", "origin/main", base, tip, True, _Answers(other))
 
 
 def test_an_empty_setting_does_not_rebase():
-    assert hook._is_true("true") and hook._is_true("merges")
-    assert not hook._is_true("") and not hook._is_true("  ")
+    assert gitprobes._is_true("true") and gitprobes._is_true("merges")
+    assert not gitprobes._is_true("") and not gitprobes._is_true("  ")
 
 
 def test_a_line_found_twice_is_read_once(monkeypatch, capsys):
@@ -4410,7 +4415,7 @@ def test_a_fail_closed_probe_past_the_shared_deadline_asks(command, reason, repo
     """Clean tree, no merge: with time left each of these is silent."""
     assert _run(command, monkeypatch, capsys, cwd=str(repo)) is None, "non-vacuity"
     _clock_past_the_deadline(monkeypatch)
-    assert getattr(hook, reason) in _reason(_run(command, monkeypatch, capsys, cwd=str(repo)))
+    assert getattr(rules, reason) in _reason(_run(command, monkeypatch, capsys, cwd=str(repo)))
 
 
 def test_a_refused_working_tree_probe_is_not_reported_as_a_history_one(repo, monkeypatch, capsys):
@@ -4422,5 +4427,5 @@ def test_a_refused_working_tree_probe_is_not_reported_as_a_history_one(repo, mon
     )))
     assert hook.main() == 0
     captured = capsys.readouterr()
-    assert hook.DISCARD_REASON in _reason(json.loads(captured.out))
+    assert rules.DISCARD_REASON in _reason(json.loads(captured.out))
     assert "probe did not run" not in captured.err

@@ -15,7 +15,7 @@ Two shipped rules keep a commit's record honest, and both lived in prose only:
 
 Decision
 --------
-On each `git commit` in the command (found with `_dispatch_lib.GitInvocation`
+On each `git commit` in the command (found with `_shell_text.GitInvocation`
 behind any global options, in any `&&` / `;` / `|` / newline / subshell
 segment; arguments read by `_git_commit_args`):
 
@@ -63,7 +63,7 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GitInvocation, strip_quoted_spans  # noqa: E402
+from _shell_text import GitInvocation, strip_quoted_spans  # noqa: E402
 from _git_commit_args import COMMIT_OR_ADD, Commit, find_invocations  # noqa: E402
 
 _MATCHER = GitInvocation(COMMIT_OR_ADD, capture_opts=True)

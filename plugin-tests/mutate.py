@@ -45,7 +45,7 @@ plugin while its tests live here, so a batch commonly needs both roots:
     HOOKS = PLUGIN / "hooks"
     MUTANTS = [
         ("the git matcher stops case-folding the command name",
-         HOOKS / "_dispatch_lib.py",
+         HOOKS / "_shell_text.py",
          r'GIT_CMD = r"\\b(?i:git)(?:\\.(?i:exe|cmd|bat|com|ps1))?"',
          r'GIT_CMD = r"\\bgit(?:\\.(?i:exe|cmd|bat|com|ps1))?"',
          [DEV / "tests" / "hooks"]),
