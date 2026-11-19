@@ -24,7 +24,7 @@ run a script.
 
 from __future__ import annotations
 
-import re
+import subprocess
 from collections import Counter
 from pathlib import Path
 
@@ -77,10 +77,11 @@ SCANNED_SUFFIXES = (".md", ".py", ".json")
 #
 # Against the tautological version that column was `[]` in every row — which is
 # what "it could not react" means, measured. A `.mjs` row used to be the
-# load-bearing one (one file, so dropping it cleared the floor and only this
-# assertion was left); `.mjs` went with the one Node script on 2026-10-08, and
-# today every row is under the floor too. This assertion stays because a floor
-# is lowered on every deliberate deletion, and it is not.
+# load-bearing one (one file, so dropping it cleared the old count floor and
+# only this assertion was left). The floor is gone: `test_the_scan_is_not_vacuous`
+# now compares the scan with `git ls-files`, filtered by this list, so dropping
+# any suffix also leaves tracked files unscanned there. This assertion stays
+# because it names the cause in one line.
 REQUIRED_SUFFIXES = frozenset({".md", ".py", ".json"})
 
 # The same independent-list argument, for the OTHER axis of the scan. Five roots
@@ -101,9 +102,17 @@ REQUIRED_SUFFIXES = frozenset({".md", ".py", ".json"})
 # comparison in one edit and the assertion stays green — the exact tautology
 # `REQUIRED_SUFFIXES` above was added to replace, three reviewers deep. This list
 # is the independent source: removing a root from the scan now fails here.
+# (The measurements above are against the count floor that the `git ls-files`
+# comparison in `test_the_scan_is_not_vacuous` replaced; that comparison, filtered
+# by this list, also fails on either drop.)
 REQUIRED_ROOTS = frozenset({"skills", "agents", "output-styles", "hooks", "lib"})
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
+
+# A floor on `_tracked_files_the_scan_must_reach`, not on the scan: 155 tracked files
+# when it was set, so it sits far below them and no ordinary addition or deletion
+# moves it. It only has to tell "the enumeration works" from "it matches nothing".
+_MIN_TRACKED_FILES = 50
 
 
 def _scanned_files_by_root():
@@ -154,65 +163,74 @@ def test_synced_core_does_not_hardcode_the_plugin_install_path():
         )
 
 
+def _tracked_files_the_scan_must_reach() -> set[Path]:
+    """What the scan is required to reach, enumerated WITHOUT the scanner.
+
+    `git ls-files` under the plugin, kept to `REQUIRED_ROOTS` and
+    `REQUIRED_SUFFIXES` (the independent lists above, not `SCANNED_ROOTS` and
+    `SCANNED_SUFFIXES`), and to files present on disk, since an unstaged
+    deletion is not there to scan. Tracked files only: the plugin ships what git
+    tracks, and the scanner's `rglob` also reaches untracked files, which is why
+    the test below asks for containment rather than equality.
+
+    A git failure fails the test rather than skipping it. `plugin-tests/` never
+    ships, so it always runs in a git checkout, and a skip here would be the
+    vacuous pass this test exists to prevent.
+    """
+    try:
+        listing = subprocess.run(
+            ["git", "-C", str(_PLUGIN_ROOT), "ls-files", "-z", "--", "."],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        pytest.fail(f"cannot list the plugin's tracked files with git: {exc}")
+    if listing.returncode != 0:
+        pytest.fail(f"`git ls-files` failed under {_PLUGIN_ROOT}: {listing.stderr.strip()}")
+    tracked = set()
+    for rel in filter(None, listing.stdout.split("\0")):
+        path = _PLUGIN_ROOT / rel
+        if (
+            Path(rel).parts[0] in REQUIRED_ROOTS
+            and path.suffix in REQUIRED_SUFFIXES
+            and path.is_file()
+        ):
+            tracked.add(path)
+    return tracked
+
+
 def test_the_scan_is_not_vacuous():
     """A guard that scans nothing passes forever, and two guards in this repo
-    already did once."""
+    already did once.
+
+    WHY THERE IS NO PINNED COUNT. This test used to assert `len(files) >= N`,
+    with N pinned one below the real count and the printer's output line quoted
+    beside it and checked by a second test. So every change that added or
+    deleted a shipped file had to edit the same two lines, and parallel pull
+    requests conflicted on them: five merges on 2026-11-19 alone. The pin was
+    never the protection, only a proxy for it. The protection is that a
+    narrowed scan fails, and this compares the scan with an enumeration that
+    does not go through the scanner (`_tracked_files_the_scan_must_reach`), so
+    a dropped root, a dropped suffix, or a pruning rule that skips a folder
+    each leaves tracked files unscanned and fails here, whatever the count.
+
+    The one number left is a floor on the enumeration itself, far below the
+    real count, so an enumeration that matches nothing (a broken filter, a git
+    that lists nothing) cannot make the comparison pass over an empty set. A
+    deliberate addition or deletion never needs to touch it.
+    """
     files = list(_scanned_files())
-    # Re-measured with this file's own `__main__`, which is why it has one::
-    #
-    #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 155  .json 3  .md 87  .py 65  placeholder-refs 338 in 69 files
-    #
-    # The real count is 155. Pinned near it, not
-    # comfortably below it, matching the rule `test_subprocess_encoding.py`
-    # states for its own floor: move it to the new real count when something is
-    # deliberately added or deleted, never to a number chosen to be safe from
-    # future deletions. That leaves a margin of exactly one, which is the
-    # philosophy working as intended rather than a defect to pad out: the next
-    # deliberate deletion is EXPECTED to trip this floor and get it lowered
-    # along with it, so a false sense of headroom is exactly what "pinned near
-    # it" is for this guard to not have.
-    #
-    # IT HAS DRIFTED TWICE, and only the first was ever written down.
-    #
-    #   * floor 95 against a comment claiming 96, while the real count had risen
-    #     to 99 — four files of headroom, which is precisely the decorative floor
-    #     the rule above forbids.
-    #   * floor 98 against a comment claiming 99, while the real count had risen
-    #     to 103 — FIVE files of headroom, the drift issue #246 reported. It was
-    #     corrected without leaving a trace, so this file's own record made the
-    #     problem look like it had happened once.
-    #
-    # Both were found by someone running the printer for an unrelated reason.
-    # The printer has been here the whole time: a printer nobody runs is not a
-    # defence, and `test_the_recorded_counts_are_the_real_ones` is the one that
-    # runs it. The floor above stays hand-pinned deliberately — a floor that
-    # re-derives itself moves to meet any collapse and asserts nothing — so what
-    # is checked automatically is the RECORD, not the bound.
-    # It moved from 102 to 101 when retire-unread-ledgers deleted
-    # `lib/ledger_summary.py`, the deliberate deletion the rule above expects,
-    # and from 101 to 100 when slim-spec-to-pr merged `archive-preflight.md`
-    # into `archive.md`, and from 100 to 99 when cla-setup-and-optional-overlays
-    # merged two skills' `SKILL.md` files into one, and from 99 to 100 when
-    # cla-setup-review-fixes added `_shared/references/terminology-format.md`,
-    # and from 100 to 99 when delete-mechanical-checks deleted the one `.mjs`,
-    # and from 99 to 100 when chain-merge-shared added
-    # `_shared/references/chain-merge.md`, and from 100 to 101 when
-    # cla-economy-rules-file added `_shared/references/economy-rules-file.md`, and from 101 to 106 when
-    # lite-pr-lazy-load added three `lite-pr/references/` files, and from 106 to 109 when
-    # reviewer-agents added three `agents/` files, and from 109 to 110 when #272 added
-    # `multi-pr/scripts/check_cite_drift.py`, and from 110 to 111 when #368 added
-    # `_shared/references/retiring-specs.md`, and from 111 to 112 when #417 added
-    # `shape-decision/references/question-form.md`, and from 112 to 114 when agents-md-support
-    # added `_shared/references/instruction-files.md` (real count 114 to 115), and from 114 to 111
-    # when use-toolkit-reviewers deleted three `agents/` files (real count 112, margin one), and
-    # from 111 to 113 when the Copilot CLI guard hooks added `hooks/copilot-pretooluse.py` and
-    # `hooks/copilot-posttooluse.py` (real count 114, measured with this file's `__main__`, margin
-    # one), and from 113 to 133 after the principle-3 guard hooks and scripts (#527 to #542) took
-    # the real count to 134, and from 133 to 135 when skill-scripts-and-specs added
-    # `save-permissions/scripts/merge_permissions.py` and `cla-setup/scripts/render_economy_rules.py`
-    # (real count 136, margin one).
-    assert len(files) >= 154, f"scan set collapsed to {len(files)} files"
+    required = _tracked_files_the_scan_must_reach()
+    assert len(required) > _MIN_TRACKED_FILES, (
+        f"`git ls-files` found only {len(required)} tracked file(s) the scan must reach, "
+        f"expected more than {_MIN_TRACKED_FILES}: the enumeration has stopped matching, "
+        "and the comparison below would pass over nothing"
+    )
+    unscanned = sorted(p.relative_to(_PLUGIN_ROOT).as_posix() for p in required - set(files))
+    assert not unscanned, (
+        f"{len(unscanned)} tracked file(s) under the required roots and suffixes are not "
+        f"scanned, so a hardcoded path in them would go unseen: {unscanned[:20]}"
+    )
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
@@ -220,24 +238,16 @@ def test_the_scan_is_not_vacuous():
     # and `REQUIRED_SUFFIXES` above explains why the expectation is a separate
     # list rather than `SCANNED_SUFFIXES` itself.
     #
-    # Direction one: a suffix removed from `SCANNED_SUFFIXES`. This is why the
-    # floor cannot be the whole defence — a suffix contributing fewer files than
-    # the floor's margin drops out without moving the count below it (`.mjs`,
-    # one file, did exactly that until it was deleted). `hooks/hooks.json` is the sharper case: it was
-    # covered here and nowhere else until issue #190 widened the token scanner
-    # to `.json`; once a second scanner reached it, losing it HERE became
-    # invisible to anything but this assertion. Today the floor happens to
-    # catch a `.json` drop (100 - 3 = 97 < 99),
-    # but that is arithmetic, not a guarantee: the comment above prescribes
-    # lowering the floor on a deliberate deletion, and a floor lowered to 96
-    # hands the `.json` narrowing a green run. And this is not hypothetical:
-    # the parenthetical was left unre-run through a widening and INVERTED —
-    # it read `99 - 3 = 96 < 98` while the real drop left 100 against a floor
-    # of 98, i.e. the arithmetic it cited had stopped holding and the suffix
-    # assertion was carrying the case alone. This assertion does not move.
+    # Direction one: a suffix removed from `SCANNED_SUFFIXES`. The tracked-file
+    # comparison above fails on that too, since the enumeration filters on
+    # `REQUIRED_SUFFIXES`; this assertion names the cause. It was once the only
+    # defence: under the old count floor a suffix with fewer files than the
+    # floor's margin dropped out unseen (`.mjs`, one file, did exactly that
+    # until it was deleted), and `hooks/hooks.json` was covered here and nowhere
+    # else until issue #190 widened the token scanner to `.json`.
     #
     # Direction two: the last file of a declared suffix leaving the TREE, which
-    # is a real loss the floor's margin can also absorb.
+    # the comparison above cannot see, since the file has left both sides.
     reached = {p.suffix for p in files}
     missing = sorted(REQUIRED_SUFFIXES - reached)
     assert not missing, (
@@ -270,9 +280,9 @@ def test_the_scan_is_not_vacuous():
     # moved yet. Revisit the moment that grep returns non-zero, or the moment any
     # second `.sh` ships.
     #
-    # Should it ever be added, it is one file against a floor margin of one — so
-    # the count could not see it dropped again, and only this assertion plus a
-    # `REQUIRED_SUFFIXES` entry would.
+    # Should it ever be added, it goes in `REQUIRED_SUFFIXES` too: that entry is
+    # what makes the tracked-file comparison above, and this assertion, see it
+    # dropped again.
     #
     # Containment, not equality of the reached set — so this stays independent of
     # the filesystem and does not re-introduce the tautology.
@@ -289,9 +299,10 @@ def test_every_required_root_is_actually_reached():
     `agents/` was pinned by name and the other four were not, so dropping
     `output-styles` (1 file) or `lib` (2 files, then) left 102 or 101 files
     against a floor of `>= 98`, and both drops passed every assertion in this
-    file. Today `lib` holds one file, and either drop lands exactly on the floor
-    of `>= 99` and passes it. Same two
-    directions as the suffix pair directly above, for the same reasons."""
+    file. The count floor is gone; the tracked-file comparison in
+    `test_the_scan_is_not_vacuous` now fails on either drop too, and this test
+    names the root. Same two directions as the suffix pair directly above, for
+    the same reasons."""
     by_root: dict[str, int] = {}
     for root_name, _path in _scanned_files_by_root():
         by_root[root_name] = by_root.get(root_name, 0) + 1
@@ -318,51 +329,38 @@ def test_the_replacement_is_actually_in_use():
 
     Counts REFERENCES, not files carrying at least one. The file count is the
     wrong unit for the sentence above, and by a wide margin: there are several
-    times more references than carrying files (the printer line quoted below
-    reports both). So a change deleting all but one reference per file would
+    times more references than carrying files (this file's `__main__` prints
+    both). So a change deleting all but one reference per file would
     hold a file-count assertion green while the great majority of references
     vanished — a floor measuring something adjacent to what its docstring
     claims, which reads as coverage and is not.
 
-    THE RATIO IS THE ARGUMENT, so the figures are not restated here. They live
-    in the quoted printer line, which `test_the_recorded_counts_are_the_real_
-    ones` checks against the tree; prose restating them is a second copy that
-    nothing pins, and this exact pair has already drifted once.
+    THE RATIO IS THE ARGUMENT, so the figures are not restated here: run the
+    printer for them. A copy written into this file is a second record that
+    every prose edit moves, and this exact pair has already drifted once.
     """
     occurrences = sum(
         p.read_text(encoding="utf-8", errors="replace").count("${CLAUDE_PLUGIN_ROOT}")
         for p in _scanned_files()
     )
-    # The real count comes from the same printer as the floor above, and is
-    # QUOTED rather than restated — a number written out in prose beside this
-    # line would be a second copy that `_PRINTER_LINE` cannot see:
-    #
-    #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 155  .json 3  .md 87  .py 65  placeholder-refs 338 in 69 files
+    # The real count comes from the printer (`python
+    # plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py`). It is
+    # not quoted here: a quoted printer line, checked by a test, used to sit
+    # beside this floor and the scan floor, and every change that added a
+    # shipped file or edited a reference had to re-paste it, so parallel pull
+    # requests conflicted on it (five merges on 2026-11-19). The scan floor was
+    # replaced by a comparison with `git ls-files`; this floor stays a number,
+    # because nothing independent enumerates references.
     #
     # The file-count version sat at 34 under a comment claiming 36 while the real
     # figure was 48 — fourteen of headroom, found by running that printer for the
-    # first time. Same decorative-floor defect as the scan floor above, in the
-    # neighbouring function, which is the argument for the printer existing
-    # rather than the numbers being re-derived by hand.
+    # first time.
     #
-    # A one-below margin would be noise here: unlike the scan floor, this count
-    # moves whenever prose is edited, and a doc consolidation legitimately
-    # deletes several references at once. Pinned at 178 — close enough to catch
-    # the wholesale deletion the docstring names, loose enough that ordinary
-    # editing does not red the gate. That is a different rule from the scan
-    # floor's, deliberately, because it counts a different kind of thing.
-    #
-    # 210 WAS EXAMINED WITH THE SCAN FLOOR AND DELIBERATELY NOT MOVED, which is
-    # worth recording because the two rows want opposite treatment and the next
-    # reader will see them side by side. When issue #246 re-derived the scan
-    # floor from 98 to 102, this one stayed: its gap to the real count is the
-    # rule rather than drift. Only the RECORD beside it was stale — it read 217
-    # against a count that had long since moved past it — and that is the half
-    # now pinned by
-    # `test_the_recorded_counts_are_the_real_ones`. A stale record here misleads
-    # whoever next decides whether 210 is still the right bound, which is the
-    # only thing about this floor that was ever wrong.
+    # A one-below margin would be noise here: this count moves whenever prose is
+    # edited, and a doc consolidation legitimately deletes several references at
+    # once. The floor is set to catch the wholesale deletion the docstring names
+    # and loose enough that ordinary editing does not red the gate, so it moves
+    # only on a consolidation, never on an ordinary addition.
     #
     # It MOVED, to 204, when slim-spec-to-pr-retro deleted `retro-skeleton.md` and
     # cut the retro's SKILL.md to a fifth: exactly the doc consolidation the rule
@@ -381,20 +379,8 @@ def test_the_replacement_is_actually_in_use():
     )
 
 
-# The shape `__main__` prints, as a pattern, so the comments that QUOTE that
-# output can be found and checked. Keep the two in step: widening the printer
-# without widening this turns the check below off for the new field, and
-# `test_the_recorded_counts_are_the_real_ones`'s non-vacuity assertion is what
-# catches the cruder version of that mistake.
-_PRINTER_LINE = re.compile(
-    r"scanned (?P<scanned>\d+)\s+"
-    r"\.json (?P<json>\d+)\s+\.md (?P<md>\d+)\s+\.py (?P<py>\d+)\s+"
-    r"placeholder-refs (?P<refs>\d+) in (?P<ref_files>\d+) files"
-)
-
-
 def _live_printer_numbers() -> dict[str, int]:
-    """What `__main__` prints, as a dict. ONE source for both."""
+    """What `__main__` prints, as a dict."""
     files = list(_scanned_files())
     by_suffix = Counter(p.suffix for p in files)
     texts = [p.read_text(encoding="utf-8", errors="replace") for p in files]
@@ -403,23 +389,16 @@ def _live_printer_numbers() -> dict[str, int]:
         "json": by_suffix[".json"],
         "md": by_suffix[".md"],
         "py": by_suffix[".py"],
-        # Both numbers, because both are cited: the floor pins occurrences, and
-        # the file count is what makes the gap between them legible.
+        # Both numbers: the reference floor pins occurrences, and the file
+        # count is what makes the gap between them legible.
         "refs": sum(t.count("${CLAUDE_PLUGIN_ROOT}") for t in texts),
         "ref_files": sum(1 for t in texts if "${CLAUDE_PLUGIN_ROOT}" in t),
     }
 
 
 def _printer_line() -> str:
-    """The one place the printed line is FORMATTED.
-
-    `__main__` calls this rather than recomputing, so the string a developer
-    pastes into a comment and the numbers the test compares it against cannot
-    come from two different computations. They could before: the printer built
-    its own `Counter` and its own sums, so the checker could have agreed with
-    the tree while disagreeing with the printer — a stale-record guard whose two
-    halves are allowed to drift is the defect it exists to catch, one level up.
-    """
+    """The line `__main__` prints. Not quoted anywhere in this file, on purpose:
+    see `test_the_scan_is_not_vacuous` for why the recorded copies were removed."""
     n = _live_printer_numbers()
     return (
         f"scanned {n['scanned']}  "
@@ -428,86 +407,8 @@ def _printer_line() -> str:
     )
 
 
-def test_the_recorded_counts_are_the_real_ones():
-    """The floors are hand-pinned; the RECORDED counts beside them are derived.
-
-    WHY NOT DERIVE THE FLOORS TOO — the question this test's shape answers. A
-    floor that re-derives itself asserts nothing: it moves to meet any collapse
-    and passes. The floors must stay hand-pinned to mean anything. What decays is
-    the *record* of what was measured, and the record is what misleads the next
-    person deciding whether a floor is still right.
-
-    THIS FILE IS THE WORKED EXAMPLE OF THAT DECAY, TWICE, and both times it was
-    found by accident rather than by a check:
-
-      * the scan floor sat at 95 under a comment claiming 96, against a real 99;
-      * then at 98 under a comment claiming 99, against a real 103 — five files
-        of headroom, in a file whose own rule calls a four-file margin "precisely
-        the decorative floor the rule above forbids". That is what issue #246
-        reported.
-
-    The file has had a `__main__` throughout, precisely so the numbers could be
-    re-derived. A printer nobody runs is not a defence; a test that runs it is.
-
-    A deliberate addition trips this, and the fix is to paste the new printer
-    output over the old — which is exactly the moment to ask whether the floor
-    beside it should move too.
-    """
-    source = Path(__file__).read_text(encoding="utf-8")
-    quoted = list(_PRINTER_LINE.finditer(source))
-    # Non-vacuity: if the printer's output format changes and the regex stops
-    # matching, this test must fail rather than pass over zero lines.
-    assert len(quoted) >= 2, (
-        f"expected the printer's output quoted beside each floor, found "
-        f"{len(quoted)}. If `__main__`'s format changed, update _PRINTER_LINE "
-        f"and the quoted lines together — a regex that matches nothing turns "
-        f"this guard off silently."
-    )
-    live = _live_printer_numbers()
-    # THE PRINTER MUST ACCOUNT FOR EVERY FILE IT COUNTED. `_live_printer_numbers`
-    # names its suffix keys by hand, where the `__main__` it replaced derived
-    # them from `sorted(by_suffix.items())` — so a FIFTH scanned suffix would be
-    # counted in `scanned` and reported nowhere.
-    #
-    # Measured by adding `.sh` to SCANNED_SUFFIXES: the line becomes
-    # `scanned 104  .json 3  .md 69  .mjs 1  .py 30 …`, whose suffix fields still
-    # sum to 103. This test would go red on the moved total, someone would paste
-    # the new line, and it would go green again with the `.sh` count never
-    # recorded and never pinned — the silent narrowing `REQUIRED_SUFFIXES` exists
-    # to prevent, reintroduced on the printer axis by the test meant to stop
-    # records decaying.
-    #
-    # One assertion closes it, and it is a real check rather than a restatement:
-    # both sides come from the same scan, but only the left is enumerated by hand.
-    counted = live["json"] + live["md"] + live["py"]
-    assert counted == live["scanned"], (
-        f"the printer counted {live['scanned']} files but reports only {counted} "
-        f"across its named suffixes — {live['scanned'] - counted} file(s) are "
-        "scanned and shown nowhere. SCANNED_SUFFIXES has almost certainly grown: "
-        "add the new suffix to `_live_printer_numbers`, `_printer_line` and "
-        "`_PRINTER_LINE` together, then re-paste the quoted lines."
-    )
-    stale = []
-    for match in quoted:
-        recorded = {k: int(v) for k, v in match.groupdict().items()}
-        if recorded != live:
-            wrong = {k: (v, live[k]) for k, v in recorded.items() if v != live[k]}
-            stale.append(
-                f"  line {source[:match.start()].count(chr(10)) + 1}: "
-                + ", ".join(f"{k} says {r} but is {a}" for k, (r, a) in wrong.items())
-            )
-    assert not stale, (
-        "recorded measurement(s) in this file no longer match the tree. Re-run "
-        "`python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py` "
-        "and paste its line over each stale one — then decide whether the floor "
-        "beside it should move too:\n" + "\n".join(stale)
-    )
-
-
 if __name__ == "__main__":
-    # The command this file's floors cite. It exists for the same reason the
-    # sibling guard's does: `pytest <this file>` prints a pass count and nothing
-    # else, so a floor whose stated measuring command emits no measurement
-    # cannot be re-derived — and this file is the worked example of that decay,
-    # twice over (see `test_the_recorded_counts_are_the_real_ones`).
+    # The measuring command for the reference floor. `pytest <this file>`
+    # prints a pass count and nothing else, so a floor whose measuring command
+    # emits no measurement cannot be re-derived.
     print(_printer_line())

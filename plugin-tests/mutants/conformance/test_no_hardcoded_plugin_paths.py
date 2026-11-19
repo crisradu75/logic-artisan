@@ -5,12 +5,14 @@ The guard claims that no file in synced core can carry the literal install path
 because here that path resolves, and fatal in every repo that installs the plugin
 from a marketplace.
 
-**Ten mutants, and the split between them is the point.** THREE mutate the INPUT
-(mutants 1–2 and 10) and seven mutate the guard (3–9).
+**Eleven mutants, and the split between them is the point.** TWO mutate the INPUT
+(mutants 1–2) and nine mutate the guard (3–11).
 
-Mutant 10 is the input-side one for a different guard in the same file:
-`test_the_recorded_counts_are_the_real_ones` reads this file's own comments, so
-the recorded measurements ARE its input.
+The old mutant 10 (a recorded printer line going stale) is gone with the test it
+proved, `test_the_recorded_counts_are_the_real_ones`: the pinned scan floor and
+the quoted printer lines were replaced by a comparison of the scan with
+`git ls-files`, because every PR that added a shipped file had to edit them and
+parallel PRs conflicted there. Mutants 10–11 now prove that comparison.
 
 **Why two of them mutate the input rather than the guard.** The obvious mutant —
 break `BAD` so it matches nothing — cannot be killed. In a correct tree there are
@@ -34,7 +36,7 @@ Dropping `lib` or `output-styles` left 101 or 102 files against a floor of
 the DELIBERATELY-NOT-A-MUTANT block below as known survivors. `REQUIRED_ROOTS`
 and `test_every_required_root_is_actually_reached` are the fix, and mutants 7–8
 are the two former survivors promoted to real mutants. Only `hooks` (14 files)
-was ever large enough for the floor to notice, and that is mutant 5.
+was ever large enough for the old count floor to notice, and that is mutant 5.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/conformance/test_no_hardcoded_plugin_paths.py
 """
@@ -52,39 +54,14 @@ OUTPUT_STYLE = PLUGIN / "output-styles" / "CLA.md"
 # mutant "killed" and proves nothing.
 TARGETS = [GUARD]
 
-# THREE MUTANTS ARE SCOPED FINER STILL, to a single test each, and the reason is
-# the same argument one level down.
-#
-# `test_the_recorded_counts_are_the_real_ones` reads the printer's quoted output,
-# so it fails on ANY mutant that moves a counted number — which is most of the
-# interesting ones here. Measured, applying each mutant to a scratch copy and
-# recording which tests go red:
-#
-#     mutant 3 (.json dropped)         scan_is_not_vacuous + recorded_counts
-#                                      + replacement_is_actually_in_use
-#     (re-measured 2026-10-08, after the one `.mjs` was deleted)
-#     mutant 7 (output-styles dropped) required_root_is_reached + recorded_counts
-#     mutant 8 (lib dropped)           required_root_is_reached + recorded_counts
-#                                      + scan_is_not_vacuous
-#
-# A kill against the whole file therefore stopped saying WHICH assertion did the
-# work — and for mutants 3 and 7 that assertion was the entire evidence that
-# `REQUIRED_SUFFIXES` and `REQUIRED_ROOTS` have teeth. This is exactly the
-# non-attributing kill the guard's own comment refuses to accept from the
-# neighbouring batch, reintroduced here by a test added in the same PR.
-#
-# `mutate.py` takes a `::`-qualified node id, so the fix is to name the test each
-# mutant is meant to prove. The kill then attributes again, and the comments
-# below are true as written rather than true-as-of-when-they-were-written.
+# SOME MUTANTS ARE SCOPED FINER STILL, to a single test each, so a kill says
+# WHICH assertion did the work. Several tests in the guard react to the same
+# narrowed scan (a dropped root fails both the root check and the tracked-file
+# comparison), and a kill against the whole file would not say which one proved
+# the mutant. `mutate.py` takes a `::`-qualified node id, so each such mutant
+# names the test it is meant to prove.
 _SCAN_VACUITY = [f"{GUARD}::test_the_scan_is_not_vacuous"]
 _ROOTS_REACHED = [f"{GUARD}::test_every_required_root_is_actually_reached"]
-
-# Derived, not spelled. Only the recorded-count mutant spans lines, and it must:
-# the printer's output is quoted TWICE in the guard, so the line alone is an
-# ambiguous anchor and `mutate.py` refuses it. The surrounding prose is what
-# makes it unique — and a bare `\n` there would match nothing on this CRLF
-# checkout, aborting the whole batch in preflight.
-_NL = "\r\n" if b"\r\n" in GUARD.read_bytes() else "\n"
 
 MUTANTS = [
     (
@@ -113,17 +90,14 @@ MUTANTS = [
     (
         # A declared suffix dropped from the scan. This was the near-miss the
         # guard's comment works through while `.mjs` existed: ONE file, so
-        # dropping it landed on the floor rather than under it and only the
-        # REQUIRED_SUFFIXES comparison could catch it. `.mjs` went with the one
-        # Node script on 2026-10-08, and the smallest suffix left, `.json`
-        # (3 files), takes the count to 97 against `>= 99` — so this kill now
-        # comes from the floor AND REQUIRED_SUFFIXES, and attributes to
-        # neither alone. The guard records the command that shows the suffix
-        # assertion firing by itself (its `missing` column); a batch cannot
-        # isolate it with one edit.
+        # dropping it landed on the old count floor rather than under it and
+        # only the REQUIRED_SUFFIXES comparison could catch it. Today the kill
+        # comes from REQUIRED_SUFFIXES AND the tracked-file comparison (three
+        # tracked `.json` files go unscanned), and attributes to neither alone;
+        # mutant 10 isolates the comparison. The guard records the command that
+        # shows the suffix assertion firing by itself (its `missing` column).
         #
-        # SCOPED TO `test_the_scan_is_not_vacuous`, so the recorded-counts
-        # test, which also reacts to any moved count, is not what kills it.
+        # SCOPED TO `test_the_scan_is_not_vacuous`.
         "a declared suffix is dropped from the scan",
         GUARD,
         'SCANNED_SUFFIXES = (".md", ".py", ".json")',
@@ -145,9 +119,10 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The root list narrowed. `hooks/` is 13 of 102 files, so this one IS
-        # visible to the floor (89 < 101) — unlike `lib` and `output-styles`,
-        # which are not, and which mutants 1-2 cover a different way.
+        # The root list narrowed. `hooks/` was 13 of 102 files, so this one WAS
+        # visible to the old count floor (89 < 101) — unlike `lib` and
+        # `output-styles`, which were not, and which mutants 1-2 cover a
+        # different way.
         #
         # THE ASYMMETRY IS NO LONGER LEFT STANDING. This comment used to end
         # `the docstring says why that asymmetry is left standing rather than
@@ -166,7 +141,8 @@ MUTANTS = [
         # its own docstring records the measurement: 51 files carry 235
         # occurrences, so a change deleting most of them while leaving one per
         # file held the old assertion green. This restores the file-count form;
-        # 53 is far below the floor of 204, so it dies loudly.
+        # 69 files carry a reference today, far below the floor of 172, so it
+        # dies loudly.
         #
         # (This pair read 50/234 until a cross-branch comparison caught it —
         # the same drift the rest of this block is about, in the sentence that
@@ -187,8 +163,8 @@ MUTANTS = [
     # ---- 7-8: the two former survivors, promoted (issue #246) ----
     #
     # These are the exact edits the block at the bottom of this file used to
-    # record as unkillable. `REQUIRED_ROOTS` is what kills them; the floor is
-    # not, and both show it. Measured against the floor of `>= 101` (since
+    # record as unkillable. `REQUIRED_ROOTS` is what kills them; the old count
+    # floor was not, and both showed it. Measured against the floor of `>= 101` (since
     # slim-spec-to-pr, `>= 100` against a real 101: each drop leaves 100, still
     # exactly on the floor):
     #
@@ -204,9 +180,9 @@ MUTANTS = [
     # BOTH ARE SCOPED TO `test_every_required_root_is_actually_reached`, so each
     # kill attributes to `REQUIRED_ROOTS` and to nothing else. This paragraph
     # used to end "mutant 7 is killed by REQUIRED_ROOTS alone, and mutant 8
-    # currently dies twice over" — measured against the whole file that is now
-    # false: measured against the whole file, each dies twice (the root check
-    # and the recorded counts), and neither reaches the floor.
+    # currently dies twice over". Against the whole file each now dies twice,
+    # by the root check and by the tracked-file comparison that replaced the
+    # floor; the scoping keeps the kill on `REQUIRED_ROOTS`.
     (
         "the one-file root is dropped from the scan, which no count can see",
         GUARD,
@@ -235,29 +211,28 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # MUTATE THE INPUT, NOT THE GUARD. `test_the_recorded_counts_are_the_real_
-        # ones` reads this file's own comments, so the PROSE is its input. A
-        # recorded count that no longer matches the tree is exactly the decay it
-        # exists to catch, and this repo has shipped that decay twice —
-        # 95/96/99, then 98/99/103 — both times found by someone running the
-        # printer for an unrelated reason rather than by a check.
-        #
-        # Reverting one quoted line to the pre-#246 figures is the historical
-        # defect verbatim, the same way mutant 1 is for the hardcoded path. It is
-        # the only mutant here that proves the RECORD is pinned rather than the
-        # bound: every other one moves code, and the floors are deliberately
-        # hand-pinned because a floor that re-derives itself asserts nothing.
-        "a recorded measurement in the guard's own comments goes stale again",
+        # THE TRACKED-FILE COMPARISON, ALONE. A pruning rule that skips every
+        # `references/` folder narrows the scan by dozens of files while every
+        # root and every suffix is still reached (`SKILL.md` keeps `.md` alive
+        # in `skills/`), so REQUIRED_ROOTS and REQUIRED_SUFFIXES both pass. The
+        # old count floor would have caught it; with the floor gone, the only
+        # thing that can is the comparison with `git ls-files`.
+        "the scanner stops opening references/ folders",
         GUARD,
-        "    #     scanned 155  .json 3  .md 87  .py 65  placeholder-refs 338 in 69 files"
-        + _NL
-        + "    #" + _NL
-        + "    # The real count is 155. Pinned near it, not",
-        "    #     scanned 152  .json 3  .md 82  .py 66  placeholder-refs 350 in 60 files"
-        + _NL
-        + "    #" + _NL
-        + "    # The real count is 152. Pinned near it, not",
-        TARGETS,
+        'if "__pycache__" in parts or ".pytest_cache" in parts:',
+        'if "__pycache__" in parts or "references" in parts:',
+        _SCAN_VACUITY,
+    ),
+    (
+        # THE ENUMERATION'S OWN FLOOR. Filtering the `git ls-files` listing on a
+        # set that holds no root name leaves the expected set empty, and an
+        # empty set is contained in any scan: the comparison passes over
+        # nothing. `_MIN_TRACKED_FILES` is what refuses that.
+        "the independent enumeration matches nothing, so the comparison is vacuous",
+        GUARD,
+        "            Path(rel).parts[0] in REQUIRED_ROOTS",
+        "            Path(rel).parts[0] in REQUIRED_SUFFIXES",
+        _SCAN_VACUITY,
     ),
 ]
 
@@ -289,20 +264,15 @@ MUTANTS = [
 #
 # Where each one landed, re-derived rather than remembered:
 #
-#   * the scan floor is `>= 100` against a real 101, a margin of one, which is
-#     what that file's own rule asks for. It has moved with every file the
-#     plugin gained or lost; `git log -p` on the guard has each step.
-#   * `>= 172` against a real 176 is the placeholder floor; its gap is the rule,
-#     not drift.
-#   * there is no longer a suffix whose loss clears the scan floor. The `.mjs`
-#     row did, which is why `REQUIRED_SUFFIXES` was added; the one `.mjs` was
-#     deleted on 2026-10-08, so dropping any declared suffix now also breaks
-#     the floor, and mutant 3 is no longer attributable to `REQUIRED_SUFFIXES`
-#     alone.
+#   * the scan floor is gone: `test_the_scan_is_not_vacuous` compares the scan
+#     with `git ls-files`, so no number moves when the plugin gains or loses a
+#     file. `git log -p` on the guard has every step of the floor it replaced.
+#   * `>= 172` is the placeholder floor; its gap to the real count is the rule,
+#     not drift. The real count comes from the guard's printer, not from here.
+#   * no suffix's loss is left to one assertion: dropping any declared suffix
+#     fails `REQUIRED_SUFFIXES` and the tracked-file comparison together, so
+#     mutant 3 attributes to neither alone.
 #
-# THE RECORDS ABOVE ARE NOW CHECKED, not trusted. The guard carries
-# `test_the_recorded_counts_are_the_real_ones`, which re-runs its printer and
-# compares every quoted line against the tree. This block's numbers are still
-# hand-written and still not covered by it — a batch is not a test — so they
-# remain the kind of thing that decays. Re-derive them rather than trusting
-# them; the commands are in the guard.
+# This block's numbers are hand-written and not covered by any test — a batch is
+# not a test — so they remain the kind of thing that decays. Re-derive them
+# rather than trusting them; the commands are in the guard.

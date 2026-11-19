@@ -98,7 +98,9 @@ eight skills that had none, so every shipped skill now has a spec (#549); mutati
 Copilot adapter, and full branch coverage of `sweep_changes.py` and `setup_guard.py` (#552, #554).
 The PR gate now runs `mutate.py`'s preflight over every mutation batch
 (`test_mutation_batches_preflight.py`), so a refactor that leaves a mutant's anchor stale fails the
-gate instead of waiting for the next opt-in mutation run.
+gate instead of waiting for the next opt-in mutation run. The hardcoded-path guard no longer pins its scan count:
+it checks that the scan reaches every tracked plugin file of the suffixes and roots it must cover
+(from `git ls-files`), so adding a shipped file no longer edits the same test lines in every PR.
 
 ## [2.4.0] — 2026-11-18
 
