@@ -138,9 +138,10 @@ Until you run that, nothing stops a direct push.
 **What the guards are, and what they are not.** They catch an agent's mistakes; they are not a
 sandbox, and a determined or confused command can get past them:
 
-- **They read command text.** `ask-destructive-git` also reads the body of a shell wrapper
-  (`bash -c` or `eval`, and their sh, zsh, PowerShell and cmd forms), three levels deep, and asks
-  when a git subcommand or flag comes from a variable it cannot resolve. A command that reaches git some other way still
+- **They read command text.** Every Bash guard but `block-cd-in-bash` also checks the body of a
+  shell wrapper (`bash -c` or `eval`, and their sh, zsh, PowerShell and cmd forms) as if it were
+  typed bare; `ask-destructive-git` reads it three levels deep and asks when a git subcommand or
+  flag comes from a variable it cannot resolve. A command that reaches git some other way still
   gets past it: a git alias (`git -c alias.p='push -f' p`), another program that runs git
   (`python3 -c "os.system('git push -f')"`, `ssh host "..."`), git itself named through a variable
   (`G=git; $G push -f`), or `git push "$@"`.

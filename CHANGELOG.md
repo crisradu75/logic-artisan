@@ -27,6 +27,15 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 - **`/release` tags the release PR's head, then merges it with a merge commit,** after checking the
   PR can merge, so the catalogs never name a tag that is not yet published (#556).
 
+- **Every Bash guard checks a shell wrapper's body as if it were typed bare** (all but
+  `block-cd-in-bash`, since a child shell does not move the session's directory):
+  `bash -c "echo hi > ../../outside.txt"` now asks and a wrapped `Measured-by: none` commit is
+  blocked, as their bare forms were. The reading lives in `hooks/_shell_read.py`, and
+  `ask-destructive-git` is split into three files; its history probes share one 6 s deadline, down
+  from 12 s, which frees budget for another enforcing guard (#560).
+- **`ask-destructive-git` asks before `ALLOW_TAG_REWRITE=1` and before `git push --mirror`,** whose
+  deletions git never reports to `pre-push` (#560).
+
 ### Added
 
 - **`pre-push` refuses deleting or moving a tag the remote already has,** for any tag name;
