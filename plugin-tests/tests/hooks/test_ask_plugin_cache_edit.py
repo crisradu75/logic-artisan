@@ -238,11 +238,16 @@ def test_other_plugins_copies_under_synced_ask(home, monkeypatch):
 
 def test_a_path_in_another_case_asks_on_macos_and_windows_only(home, monkeypatch):
     target = _plugins(home).parent / "Plugins" / "Cache" / "mkt" / "x.md"
-    monkeypatch.setattr(sys, "platform", "linux")
-    _silent(monkeypatch, _payload(str(target).replace("/plugins/", "/PLUGINS/")))
+    # The hook also folds case through os.path.normcase, which is ntpath on a real
+    # Windows host whatever sys.platform says, so "linux" can only be simulated on a
+    # host whose os.path is POSIX. The case is changed on the path parts, not by
+    # swapping a "/" string: a Windows path has backslashes.
+    if os.name != "nt":
+        monkeypatch.setattr(sys, "platform", "linux")
+        _silent(monkeypatch, _payload(target))
     for platform in ("darwin", "win32"):
         monkeypatch.setattr(sys, "platform", platform)
-        _asks(monkeypatch, _payload(str(target).replace("/Plugins/", "/PLUGINS/")))
+        _asks(monkeypatch, _payload(_plugins(home).parent / "PLUGINS" / "CACHE" / "mkt" / "x.md"))
 
 
 # --------------------------------------------------------------------------- #
@@ -296,7 +301,9 @@ def test_a_tilde_in_the_config_dir_is_expanded(home, monkeypatch):
         '{"tool_input": {"file_path": 5}}',
         '{"tool_input": {"file_path": ""}}',
         '{"tool_input": {"file_path": "a\\u0000b"}}',
-        "[" * 100_000 + "]" * 100_000,
+        # Explicit id: pytest copies the test id into an environment variable, and
+        # Windows refuses a value over 32767 characters.
+        pytest.param("[" * 100_000 + "]" * 100_000, id="deeply-nested-brackets"),
     ],
 )
 def test_malformed_input_fails_open_silently(home, monkeypatch, raw):

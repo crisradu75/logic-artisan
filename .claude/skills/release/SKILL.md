@@ -1,6 +1,6 @@
 ---
 name: release
-description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the two plugin manifests, the two marketplace catalog refs, and the CLAUDE.md release line in one commit, then cut the tag with `claude plugin tag`. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /release or natural language like 'cut a release', 'publish a new version', 'tag a version', 'ship the plugin', 'bump the plugin version'."
+description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the two plugin manifests, the two marketplace catalog refs, and the CLAUDE.md release line in one commit on a release PR, cut the tag on that PR's head commit with `claude plugin tag`, then merge the PR with a merge commit. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /release or natural language like 'cut a release', 'publish a new version', 'tag a version', 'ship the plugin', 'bump the plugin version'."
 argument-hint: "[major|minor|patch|<explicit version>] (default: ask)"
 allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 ---
@@ -19,8 +19,12 @@ answer is always the next version, never the same one again.
 
 Two consequences this skill enforces rather than advises:
 
-- Cut only from the default branch, and only from work that has been reviewed and
-  merged. A tag on unreviewed work cannot be withdrawn.
+- Start only from the default branch, and only from work that has been reviewed and
+  merged. A tag on unreviewed work cannot be withdrawn. The tag goes on the release
+  commit, whose only change over that reviewed branch is the version bump, and the
+  release PR is merged with a merge commit so the tagged commit itself lands on it.
+- Tag before merging. The merge is what makes the catalogs name the new tag, so the tag
+  is on `origin` first and the catalogs never name a tag that is missing.
 - Never publish from a local-directory marketplace. The catalog is then read from a
   working tree, so a locally-bumped `ref` advertises a tag that may never have been
   pushed — the install fails with nothing visibly wrong in the manifest.
@@ -40,11 +44,12 @@ pytest plugin-tests -q -n 4 --dist loadfile
 openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 python3 .claude/skills/release/scripts/check_copilot_models.py
+python3 .claude/skills/release/scripts/check_catalog_tags.py
 ```
 
 | Precondition | Why it is not negotiable |
 |---|---|
-| On the repo's default branch | A tag cut from a feature branch pins commits that may never merge. |
+| On the repo's default branch | The release branch starts here. A tag on any other branch pins commits that may never merge; the release commit's only parent is this reviewed branch. |
 | Working tree clean (`git status --porcelain` prints nothing) | An uncommitted edit is either in the release or it isn't; a dirty tree means nobody knows which. **Nothing is excluded, and nothing should be:** no pathspec, so the check covers the whole repo from any directory, and a half-resolved merge conflict shows up here too. The run ledgers under `cla.io/retro/` are written at a controlled moment and should be committed, not hidden. |
 | Up to date with `origin` | Tagging a stale local branch publishes a tree that is not what `main` holds. |
 | `pytest plugin-tests -q -n 4 --dist loadfile` fully green | There is no CI. This run, plus the spec validation below, is the whole gate that exists. |
@@ -53,6 +58,7 @@ python3 .claude/skills/release/scripts/check_copilot_models.py
 | The docs match the code since the last tag | Re-check every count and present-tense claim in `README.md`, `DEVELOPER-GUIDE.md` and `.claude/plugins/cla/README.md` against `git log <last-tag>..HEAD`, and fix them in a PR first. A release that ships stale counts needs a docs PR after it. |
 | `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
 | `check_copilot_models.py` exits 0 | It verifies generated Copilot agent copies stay in step with their Claude sources and inherit the session model instead of pinning account-specific IDs. A source model alias without a defined inheritance policy, a stale profile, or an explicit Copilot model refuses the release. It is local-only; exit 2 means the sources could not be checked. Fix the source alias policy and regenerate the copies in a PR first, never as part of the release. |
+| `check_catalog_tags.py` exits 0 | Every `ref` in both catalogs names a tag `origin` has. Exit 1 means an earlier release was merged but its tag never reached `origin`, so every consuming repo's `marketplace update` is failing now: stop, and have the owner push that tag from its merged release commit before any new version. Exit 2 means `origin` could not be asked, which is not a pass. |
 
 Resolve the default branch, never assume it: `git symbolic-ref --quiet refs/remotes/origin/HEAD`
 (take the segment after the last `/`); if unset, use whichever of `main` / `master`
@@ -69,7 +75,7 @@ version, propose that. Otherwise propose the bump the changes call for:
 - **minor** — a skill added or removed, a new guard, a restructure consumers will notice.
 - **major** — a change that breaks a consuming repo's existing usage.
 
-**This is the release's only question.** Call `AskUserQuestion` one time, before any file is
+**This is the release's one `AskUserQuestion`.** Call it one time, before any file is
 edited, any branch is made or anything is pushed. It shows:
 
 - the proposed version, with the patch, minor and major alternatives as the other options, and a
@@ -80,8 +86,10 @@ edited, any branch is made or anything is pushed. It shows:
 
 Choosing a version approves the release at that version. "Don't release", or any other answer,
 stops: nothing is edited,
-branched, pushed, merged or tagged. Once a version is chosen, Step 3 and Step 4 run with no second
-question, including the merge and the tag push.
+branched, pushed, merged or tagged. Once a version is chosen, Step 3 and Step 4 run without another
+`AskUserQuestion`. One more prompt can still come, from a guard: `ask-destructive-git` asks the user
+before Step 4's `gh pr merge` unless `ALLOW_PR_MERGE=1` prefixes it (a `/cla:multi-*` chain sets it).
+Step 4 says what to do on a no.
 
 ## Step 3 — The five-file edit, in one commit
 
@@ -113,7 +121,7 @@ test are what confirm the five copies agree — and commit the five files plus `
 
 **Branch BEFORE committing.** Step 1 put you on the default branch; committing there and
 branching afterwards leaves the local default branch carrying a commit `origin` does not
-have, and the `git pull` at the end of this step then refuses. Branch first and the
+have, and the `git pull` when Step 4 returns to it then refuses. Branch first and the
 default branch never moves:
 
 ```bash
@@ -128,69 +136,121 @@ git commit -m "release: <new>"
 Path-scoped `git add`, never `-A`.
 
 **The release commit reaches the default branch through a PR, not a push.** Push the
-branch, open the PR, merge it, then return:
+branch and open the PR. Do not merge it yet: Step 4 tags its head commit first.
 
 ```bash
 git push -u origin release/<new>
-gh pr create --base <default-branch> --title "release: <new>" \
+gh pr create --base <default-branch> --head release/<new> --title "release: <new>" \
   --body "Version bump: <old> → <new>."
-# merge (Step 2's answer already approved it), then:
-git checkout <default-branch> && git pull --ff-only
 ```
 
 Pass `--body`: without it `gh pr create` opens an interactive editor, which in a
 non-interactive session is a hang two steps before an irreversible action.
-
-**Merge only from a session that can push the tag.** The merge publishes the new `ref`, and
-until Step 4's tag reaches `origin` that `ref` names a tag that does not exist, so
-`/plugin marketplace update` fails in every consuming repo. A cloud session's credentials
-push only its own branch, and a tag push there returns HTTP 403 — which is how 2.0.0 sat
-merged and untagged until the owner pushed the tag by hand. In such a session, Step 2's
-question is asked first, as everywhere. On no, stop before anything is pushed. On a chosen
-version, open the PR and stop: hand the owner the merge and Step 4's commands.
 
 **Why a PR and not `git push`.** `hooks/git/pre-push` refuses a direct push to the default
 branch. The hook's message names an `ALLOW_PUSH_TO_MAIN=1` override, and it is not the
 answer here: that hatch is for a genuine emergency, and a release is a planned act, so
 reaching for it is routing around a guard rather than complying with one.
 
-Confirm the default branch carries the bump before tagging — the tag must point at the
-merged commit, not at the branch.
+## Step 4 — Tag the PR's head, then merge it with a merge commit
 
-## Step 4 — Cut the tag
+**The order is the point: tag first, merge second.** The merge is what makes the
+default branch's catalogs name `cla--v<new>`. With the tag already on `origin`, there is
+no moment when a consumer's `marketplace update` fetches a missing tag. The old order
+(merge, then tag the merged commit) left that window open whenever the tag push failed,
+and 2.0.0 and 2.4.0 both sat merged and untagged until the owner pushed the tag by hand.
 
-**Pass the plugin directory.** Bare `claude plugin tag` looks for a manifest at the repo
-root (`.claude-plugin/plugin.json`) and fails here with `No plugin manifest found` — this
-repo's root `.claude-plugin/` holds `marketplace.json`, and the plugin's own manifest is
-one level down. Dry-run first; it prints the exact git commands it will run, which is the
-last cheap moment before an irreversible step:
+**1. Tag the release commit, the PR's head.** Stay on `release/<new>`. First check the
+PR can merge, because a pushed tag uses up the version: a PR that then cannot merge
+costs a restart at the next patch version. Go on only when `mergeable` is `MERGEABLE`
+and `mergeStateStatus` is `CLEAN`; `UNKNOWN` means GitHub is still computing, so ask
+again after a few seconds. On anything else, stop before tagging. Nothing is published
+yet, so the branch can still take a fix: make it, re-run Step 3's checks, and come back.
+The two shas below must also be equal; if they differ, the branch you are on is not
+what the PR will merge, so stop. Then dry-run, which prints the exact git commands it
+will run, the last cheap moment before an irreversible step:
 
 ```bash
+gh pr view release/<new> --json mergeable,mergeStateStatus
+git rev-parse HEAD
+gh pr view release/<new> --json headRefOid --jq .headRefOid
 claude plugin tag .claude/plugins/cla --dry-run
 claude plugin tag .claude/plugins/cla --push
+python3 .claude/skills/release/scripts/check_catalog_tags.py --expect cla--v<new>
 ```
 
-It uses the shape `<name>--v<version>` and **refuses unless `plugin.json` and the
-marketplace entry already agree** — so a refusal here means step 3 is incomplete, not
-that the tool is wrong. `--push` sends the tag to `origin`; without it, tag and push by
-hand. Then confirm it resolves, and that it points where you think:
+**Pass the plugin directory.** Bare `claude plugin tag` looks for a manifest at the repo
+root (`.claude-plugin/plugin.json`) and fails here with `No plugin manifest found`: this
+repo's root `.claude-plugin/` holds `marketplace.json`, and the plugin's own manifest is
+one level down. It tags `HEAD` with the shape `<name>--v<version>` on any branch, and
+**refuses unless `plugin.json` and the marketplace entry already agree**, which they do
+on the release commit; so a refusal here means Step 3 is incomplete, not that the tool
+is wrong. `--push` sends the tag to `origin`.
+
+On the release branch the working tree's catalogs already name `cla--v<new>`, so
+`check_catalog_tags.py --expect cla--v<new>` passes as soon as the tag is on `origin`,
+and fails before. Do not merge until it exits 0.
+
+**If the tag push fails, stop and do not merge.** A cloud session's credentials push
+only its own branch, so a tag push there returns HTTP 403. Nothing is published: the
+default branch's catalogs still name the previous tag. Leave the PR open, hand the owner
+this step's commands and the merge below, and report the release as not done.
+
+**2. Merge the PR with a merge commit, pinned to the tagged commit.** `ask-destructive-git`
+asks the user before this command unless `ALLOW_PR_MERGE=1` prefixes it. **If the user
+says no, do not merge.** The tag is already published, so this version is used up: close
+the PR, leave the tag, restart at the next patch version as described below, and say so
+in the report.
 
 ```bash
-git ls-remote --tags origin cla--v<new>
+gh pr merge release/<new> --merge --match-head-commit "$(git rev-parse 'cla--v<new>^{commit}')"
+```
+
+**`--merge`, never `--squash` or `--rebase`, for a release PR.** Both write a new commit
+on the default branch, so the tagged commit would never be on it, and the
+`merge-base --is-ancestor` check below fails on a tag that points off the branch.
+`--match-head-commit` makes GitHub refuse the merge if the PR's head is no longer the
+tagged commit.
+
+**If the PR needs another commit after the tag is pushed** (a conflict, a review
+change, a refused merge, a head that moved), the release restarts as a new version.
+Do not add the commit to this PR and do not move the tag: **a published tag is never
+moved**, even one the catalogs never named. Close the PR without merging
+(`gh pr close release/<new>`), leave `cla--v<new>` where it is, and start again at
+Step 1 with the next patch version; that release's changelog entry says `<new>` was
+tagged but never released. `hooks/git/pre-push` refuses a tag delete or move, and its
+`ALLOW_TAG_REWRITE=1` override is not part of a release.
+
+**3. Return to the default branch and confirm.**
+
+```bash
+git checkout <default-branch> && git pull --ff-only
+python3 .claude/skills/release/scripts/check_catalog_tags.py --expect cla--v<new>
 git fetch origin && git merge-base --is-ancestor cla--v<new>^{} origin/<default-branch>
 ```
 
-**An empty result from `git ls-remote` means the tag did not reach the remote**, and
-consumers will get an install failure with nothing visibly wrong in the catalog. Treat
-it as a failed release, not a cosmetic problem.
+**This is the release's postcondition: the release is not done until
+`check_catalog_tags.py` exits 0.** It asks `origin` for its tags and fails on every
+catalog `ref` that names one `origin` lacks. A tag that exists only in the local clone
+counts as missing, because a consumer cannot fetch it. `--expect` also fails a
+catalog still naming the old tag, so a checkout that was not pulled cannot pass on the
+previous release. Exit 1 means the tag did not reach
+the remote, and consumers get an install failure with nothing visibly wrong in the
+catalog: push the tag (never a different commit under the same name) and re-run it.
+Exit 2 means `origin` could not be asked, which proves nothing. Treat either as a failed
+release, not a cosmetic problem, and do not go on to Step 5's success report.
 
-The second command asserts the tag is *on* the default branch — the property that actually
-matters. Do not compare the two shas for equality instead: that breaks the moment any
-unrelated PR merges between the release merge and the tag, turning a correct release into
-an apparent failure. The `git fetch` is not optional, because step 1's fetch predates the
+The last command asserts the tag is *on* the default branch — the property that actually
+matters, and the one a squash merge breaks. Do not compare the tag's sha with the default
+branch's head instead: the merge commit always sits above the tagged commit, and any
+unrelated PR merged since moves the head further, turning a correct release into an
+apparent failure. The `git fetch` is not optional, because Step 1's fetch predates the
 merge being checked.
 
 ## Step 5 — Report
+
+Report success only after Step 4's `check_catalog_tags.py` exited 0. If it did not, report
+the release as not done, with its output and the commands still to run.
 
 State: the version cut, the five files bumped plus `CHANGELOG.md`, the tag pushed and confirmed, and the
 commands a consumer runs to pick it up (`claude plugin marketplace update cris-logic-artisan`, then
@@ -202,7 +262,8 @@ precondition was waived — it should not have been — say so prominently.
 ## When NOT to use
 
 - To fix a release that is already published. Cut the next version instead.
-- To tag work sitting on a feature branch or an open PR.
+- To tag work sitting on a feature branch or an open PR. The one PR this skill tags is
+  its own release PR, whose only change is the version bump.
 - To bump a version without releasing it: the five-file edit exists to be atomic with
   the tag, and splitting them is what leaves the catalog advertising a tag that does
   not exist.
