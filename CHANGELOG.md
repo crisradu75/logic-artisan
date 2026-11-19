@@ -18,6 +18,36 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
   command text, running without Python and the time budget; the Copilot install, update and
   troubleshooting steps live in one place with one set of update commands (#546).
 
+- **`save-permissions` and `cla-setup` run scripts, not copied snippets.** The allowlist merge is
+  `save-permissions/scripts/merge_permissions.py` (the PowerShell form is gone; the hooks already
+  need Python) and the economy-rules file is rendered by `cla-setup/scripts/render_economy_rules.py`;
+  both refuse a symlinked `.claude/`, rules folder or target, and replace atomically (#557).
+- **`ALLOW_PUSH_TO_MAIN=1` lifts only the default-branch refusal** of `pre-push`, no longer the
+  whole hook (#556).
+- **`/release` tags the release PR's head, then merges it with a merge commit,** after checking the
+  PR can merge, so the catalogs never name a tag that is not yet published (#556).
+
+- **Every Bash guard checks a shell wrapper's body as if it were typed bare** (all but
+  `block-cd-in-bash`, since a child shell does not move the session's directory):
+  `bash -c "echo hi > ../../outside.txt"` now asks and a wrapped `Measured-by: none` commit is
+  blocked, as their bare forms were. The reading lives in `hooks/_shell_read.py`, and
+  `ask-destructive-git` is split into three files; its history probes share one 6 s deadline, down
+  from 12 s, which frees budget for another enforcing guard. The wrapper's own options are dropped
+  first (`bash -c 'cp a ../b'` asks like `cp a ../b`); heredoc text is data except its `$(...)`
+  spans; a wrapper behind `docker exec`, `kubectl exec` or `ssh` is not read as local; a body too
+  long to read asks (#560).
+- **`ask-destructive-git` asks before `ALLOW_TAG_REWRITE=1` (and PowerShell's `$env:` form of
+  either override) and before `git push --mirror`,** whose
+  deletions git never reports to `pre-push` (#560).
+
+### Added
+
+- **`pre-push` refuses deleting or moving a tag the remote already has,** for any tag name;
+  override `ALLOW_TAG_REWRITE=1`. Re-copy the hook into each clone to pick it up. A `git push
+  --mirror` deletion is never reported to the hook, which is a git limit (#556).
+- **Specs for `diagnose` and `codify-learnings`** (`failure-diagnosis`, `session-learnings`) (#557).
+- **The conformance check fails a shipped file that cites this repo's issue or PR numbers** (#555).
+
 ### Fixed
 
 - **`save-permissions` merges into any settings file safely.** A `settings.local.json` with no
