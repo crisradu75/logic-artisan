@@ -755,13 +755,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; exit 2 means the guard could not look | and never treat that exit as a pass
 - keep | user's files | 2.0.0 (016203d7), overlays become optional | Does **NOT** create overlays, and never writes a fact into one.
 
-## skills/cla-setup/references/economy-rules-block.md
-- not-a-rule | - | - | the item's replace-whole and never-stops rules are repeated there
-- keep | user's files | #326 (2.1.0), cla-economy-rules-file | ordinary diff; if `.claude/` is ignored it stays local. This skill never touches
-- keep | shipped to other repos | #326 (2.1.0), a rules-file failure stops only its own block | A failure here never stops the
-- not-a-rule | - | - | fail "model-routing.md must hold the review-sizing begin and end comments exactly once each"
-- not-a-rule | - | - | fail "economy-rules-file.md must hold each include marker alone on a line exactly once, and no other comment"
-
 ## skills/cla-setup/references/facts-file.md
 - not-a-rule | - | - | since most skills never read the lessons log
 - keep | user's files | 2.0.0 (016203d7), machine-read lists for guards and branch prefix | **Machine-read `*.local.md` files stay where they are and are never reshaped here:**

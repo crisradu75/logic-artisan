@@ -3,14 +3,17 @@
 `/cla:cla-setup` item 7a renders `skills/_shared/references/economy-rules-file.md` with two sources
 inlined at its include markers (`orchestration-economy.md` whole, and the span of
 `model-routing.md` between its review-sizing markers) into `.claude/rules/cla-economy.md` in a
-consuming repo. The plugin owns that file whole and replaces it on every run. The block is
-extracted from `SKILL.md` and run under bash here, with the plugin root substituted as a literal
-(it is text in the skill, not an environment variable). Every test writes only under `tmp_path`.
+consuming repo. The plugin owns that file whole and replaces it on every run. The work is done by
+`cla-setup/scripts/render_economy_rules.py`; the block that runs it is extracted from
+`references/economy-rules-block.md` and run under bash here, with the plugin root substituted as a
+literal (it is text in the skill, not an environment variable), against a copy of the plugin's
+sources and the script. Every test writes only under `tmp_path`.
 """
 
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import os
 import re
 import shutil
@@ -30,6 +33,9 @@ _ROUTING = _REFS / "model-routing.md"
 _ECONOMY = _REFS / "orchestration-economy.md"
 _FRAME = _REFS / "economy-rules-file.md"
 _SOURCES = ("economy-rules-file.md", "orchestration-economy.md", "model-routing.md")
+_RENDER = _SKILLS / "cla-setup" / "scripts" / "render_economy_rules.py"
+
+
 def _find_bash() -> str | None:
     """Git Bash on Windows, else the first `bash` on PATH that can read a `C:/`-style path.
 
@@ -77,18 +83,19 @@ def _skill_text() -> str:
 
 
 def _block() -> str:
-    match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?cla-economy\.md[^`]*?)```", _skill_text())
+    match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?render_economy_rules\.py[^`]*?)```", _skill_text())
     assert match, "cla-setup/references/economy-rules-block.md: no economy-rules-file block found"
     return match.group(1)
 
 
 def _plugin(dest: Path, crlf: bool = False, edit=None) -> Path:
-    """A copy of the three sources, and the seed script item 5 runs, under `dest`, laid out as the blocks read them."""
+    """A copy of the three sources, and the scripts items 5 and 7a run, under `dest`, laid out as the blocks read them."""
     refs = dest / "skills" / "_shared" / "references"
     refs.mkdir(parents=True)
     scripts = dest / "skills" / "cla-setup" / "scripts"
     scripts.mkdir(parents=True)
     shutil.copyfile(_SKILLS / "cla-setup" / "scripts" / "seed_openspec_rules.py", scripts / "seed_openspec_rules.py")
+    shutil.copyfile(_RENDER, scripts / _RENDER.name)
     for name in _SOURCES:
         text = (_REFS / name).read_bytes().decode("utf-8").replace("\r\n", "\n")
         if edit is not None:
@@ -178,7 +185,7 @@ def test_a_full_part_1_run_changes_no_existing_file_but_the_gitignore_and_the_ru
         (root / name).write_text(body, encoding="utf-8", newline="")
     before = _hashes(root)
     blocks = _part_1_blocks()
-    assert any("cla-economy.md" in b for b in blocks) and len(blocks) >= 7
+    assert any("render_economy_rules.py" in b for b in blocks) and len(blocks) >= 7
     for block in blocks:
         out = _bash(block.replace("${CLAUDE_PLUGIN_ROOT}", plugin.as_posix()), root)
         assert out.returncode == 0, out.stderr
@@ -260,10 +267,10 @@ def test_a_missing_source_or_plugin_root_writes_nothing_and_says_so(tmp_path: Pa
     out = _bash(_block().replace("${CLAUDE_PLUGIN_ROOT}", no_markers.as_posix()), root)
     assert out.returncode != 0 and "NOT written" in out.stdout
     assert not (root / _RULES).exists()
-    # An unsubstituted `${CLAUDE_PLUGIN_ROOT}` expands to nothing in the shell.
+    # An unsubstituted `${CLAUDE_PLUGIN_ROOT}` expands to nothing in the shell: no script is found.
     unresolved = _bash(_block(), root)
-    assert unresolved.returncode != 0 and "plugin root unresolved" in unresolved.stdout
-    assert not (root / _RULES).exists()
+    assert unresolved.returncode != 0 and "render_economy_rules.py" in unresolved.stderr
+    assert not (root / ".claude").exists()
 
 
 # requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
@@ -431,40 +438,98 @@ def test_a_bad_source_writes_nothing_and_leaves_a_good_file_untouched(tmp_path: 
     assert sorted(p.name for p in (root / ".claude" / "rules").iterdir()) == ["cla-economy.md"], "a temp file was left behind"
 
 
+def _load_render(plugin: Path):
+    """The renderer from a plugin copy, imported, so a test can make one step fail."""
+    spec = importlib.util.spec_from_file_location("render_copy", plugin / "skills" / "cla-setup" / "scripts" / _RENDER.name)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 # requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
-def test_a_failed_write_says_not_written_and_keeps_the_existing_file(tmp_path: Path) -> None:
-    """The text is rendered to a temp file first: a failure there never truncates a good file.
-    A read-only directory is unreliable on Windows, so the failures are planted by shape:
-    a directory where the temp file goes, and a plain file where `.claude` goes."""
+def test_a_failed_replace_says_not_written_and_keeps_the_existing_file(tmp_path: Path, monkeypatch, capsys) -> None:
+    """The text goes to a temp file first: a failure never truncates a good file or leaves the temp file."""
     root, plugin, good = _rendered(tmp_path)
-    (root / _RULES.parent / "cla-economy.md.tmp").mkdir()
-    script = _block().replace("${CLAUDE_PLUGIN_ROOT}", plugin.as_posix())
-    out = _bash(script, root)
-    assert out.returncode != 0 and "NOT written" in out.stdout, (out.stdout, out.stderr)
-    assert (root / _RULES).read_bytes() == good
-    shutil.rmtree(root / _RULES.parent / "cla-economy.md.tmp", ignore_errors=True)
-    # A stale temp entry the redirect cannot write through, while something is still there to be
-    # moved: the block must stop at the failed write, not install it. On POSIX it is a symlink into
-    # a missing directory, which fails for root too; read-only bits do not stop root, so a 0o444
-    # file passed there only for non-root users. Windows keeps the read-only file, since a symlink
-    # needs a privilege there.
+    (root / _RULES).write_bytes(good + b"a hand edit\n")
+    render = _load_render(plugin)
+
+    def refuse(src, dst):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(render.os, "replace", refuse)
+    assert render.main(["--root", str(root)]) == 1
+    out = capsys.readouterr().out
+    assert out.startswith(".claude/rules/cla-economy.md: NOT written") and "simulated replace failure" in out
+    assert (root / _RULES).read_bytes() == good + b"a hand edit\n"
+    assert sorted(p.name for p in (root / _RULES.parent).iterdir()) == ["cla-economy.md"]
+
+
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
+@_needs_tools
+def test_the_temp_file_has_a_unique_name_and_spares_an_entry_of_the_old_fixed_name(tmp_path: Path) -> None:
+    root, plugin, good = _rendered(tmp_path)
+    (root / _RULES).write_bytes(b"a stale copy\n")
     stale = root / _RULES.parent / "cla-economy.md.tmp"
-    if os.name == "nt":
-        stale.write_bytes(b"stale text\n")
-        stale.chmod(0o444)
-    else:
-        stale.symlink_to(tmp_path / "missing-dir" / "target")
-    try:
-        out = _bash(script, root)
-        assert out.returncode != 0 and "NOT written" in out.stdout, (out.stdout, out.stderr)
-        assert (root / _RULES).read_bytes() == good
-    finally:
-        if stale.exists() and not stale.is_symlink():  # the block removes its own temp file on failure
-            stale.chmod(0o644)
+    stale.mkdir()
+    (stale / "keep.txt").write_bytes(b"someone else's\n")
+    assert _run(root, plugin).splitlines()[0] == ".claude/rules/cla-economy.md: replaced"
+    assert (root / _RULES).read_bytes() == good
+    assert (stale / "keep.txt").read_bytes() == b"someone else's\n"
+
+
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
+@_needs_tools
+def test_a_rules_path_that_is_not_the_plugin_file_is_refused_and_left_alone(tmp_path: Path) -> None:
+    root, plugin, _good = _rendered(tmp_path)
+    script = _block().replace("${CLAUDE_PLUGIN_ROOT}", plugin.as_posix())
+    rules = root / _RULES
+    rules.unlink()
+    rules.mkdir()
+    out = _bash(script, root)
+    assert out.returncode == 1 and "NOT written" in out.stdout and "not a regular file" in out.stdout, out.stdout
+    assert rules.is_dir() and not any(rules.iterdir())
     blocked = tmp_path / "blocked"
     blocked.mkdir()
     (blocked / ".claude").write_text("not a directory\n", encoding="utf-8")
     out = _bash(script, blocked)
-    assert out.returncode != 0 and "NOT written" in out.stdout, (out.stdout, out.stderr)
+    assert out.returncode == 1 and "NOT written" in out.stdout, (out.stdout, out.stderr)
     assert (blocked / ".claude").read_text(encoding="utf-8") == "not a directory\n"
+    missing = _bash(script.replace('--root "$ROOT"', f'--root "{(tmp_path / "no-such-repo").as_posix()}"'), root)
+    assert missing.returncode == 1 and "is not a directory" in missing.stdout
+    assert not (tmp_path / "no-such-repo").exists()
+
+
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
+@_needs_tools
+@pytest.mark.skipif(os.name == "nt", reason="a symlink needs a privilege on Windows")
+def test_a_symlink_at_the_rules_path_or_out_of_the_repo_is_refused_and_its_target_left_alone(tmp_path: Path) -> None:
+    root, plugin, _good = _rendered(tmp_path)
+    script = _block().replace("${CLAUDE_PLUGIN_ROOT}", plugin.as_posix())
+    shared = tmp_path / "shared-rules.md"
+    shared.write_bytes(b"a file some other tool owns\n")
+    (root / _RULES).unlink()
+    (root / _RULES).symlink_to(shared)
+    out = _bash(script, root)
+    assert out.returncode == 1 and "symbolic link" in out.stdout, out.stdout
+    assert (root / _RULES).is_symlink() and shared.read_bytes() == b"a file some other tool owns\n"
+    linked = tmp_path / "linked-repo"
+    linked.mkdir()
+    outside = tmp_path / "outside-claude"
+    outside.mkdir()
+    (linked / ".claude").symlink_to(outside, target_is_directory=True)
+    out = _bash(script, linked)
+    assert out.returncode == 1 and "resolves outside the repo" in out.stdout, out.stdout
+    assert not any(outside.iterdir()), "a folder or file was made through the link"
+
+
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
+@_needs_tools
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+def test_a_replaced_file_keeps_its_permission_bits(tmp_path: Path) -> None:
+    root, plugin, good = _rendered(tmp_path)
+    (root / _RULES).write_bytes(b"a stale copy\n")
+    (root / _RULES).chmod(0o640)
+    assert _run(root, plugin).splitlines()[0] == ".claude/rules/cla-economy.md: replaced"
+    assert (root / _RULES).read_bytes() == good
+    assert (root / _RULES).stat().st_mode & 0o777 == 0o640
