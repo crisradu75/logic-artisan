@@ -7,15 +7,15 @@ Run:
 
 Every mutant edits the hook, the Edit/Write dispatcher or `_dispatch_lib.py`,
 never a test. The hook mutants re-break one line each: the subtree list, each
-plugins-root candidate and its resolution, path containment, the plugin-root
-rule's three conditions, the target's resolution, the empty-path and cwd
-fallbacks, the fail-open catch and the ask payload. The dispatcher mutants
+plugins-root candidate and its resolution, path containment and its case fold,
+the target's resolution, the empty-path and cwd fallbacks, the fail-open catch
+and the ask payload. The dispatcher mutants
 re-break the ask channel this change added (the hook's place in the list, ask
 extraction, the joined reason) and the hook's enforcing tier and budget entry.
 
 Deliberately absent, because no correct input can tell them from the real code:
-- `_is_inside`'s `except ValueError` branch and its `normcase` calls: both only
-  change a result on Windows (different drives, case folding), so no test run on
+- `_fold`'s `os.path.normcase` call and its `.replace("\\", "/")`: both only
+  change a result on Windows (`ntpath` folding and separators), so no test run on
   Linux could catch a planted bug there.
 - dropping `or not cwd` from the cwd fallback. An empty cwd joins to the bare
   path, which `realpath` resolves against the process cwd: the same directory
@@ -24,7 +24,13 @@ Deliberately absent, because no correct input can tell them from the real code:
   `json.loads("")` raises the `JSONDecodeError` the next line already maps to
   None.
 
-Each anchor occurs once in its file; checked by hand when the batch was written.
+Each anchor occurs once in its file; mutate.py's preflight refuses the batch
+otherwise.
+
+Dropped when #541 removed the `$CLAUDE_PLUGIN_ROOT` rule (a synced copy is now
+caught by the `synced/` subtree): the seven mutants that broke that rule's
+`if plugin_root:`, its `realpath`, its `under_a_root` any/not-equal conditions
+and its target check. The code they broke no longer exists.
 
 Paths resolve from this file's own location, never an absolute developer path.
 """
@@ -49,22 +55,29 @@ MUTANTS = [
     (
         "cache/ is no longer an installed subtree",
         HOOK,
-        '_INSTALLED_SUBTREES = ("cache", "marketplaces")',
-        '_INSTALLED_SUBTREES = ("marketplaces",)',
+        '_INSTALLED_SUBTREES = ("cache", "marketplaces", "synced")',
+        '_INSTALLED_SUBTREES = ("marketplaces", "synced")',
         TARGETS,
     ),
     (
         "marketplaces/ is no longer an installed subtree",
         HOOK,
+        '_INSTALLED_SUBTREES = ("cache", "marketplaces", "synced")',
+        '_INSTALLED_SUBTREES = ("cache", "synced")',
+        TARGETS,
+    ),
+    (
+        "synced/ is no longer an installed subtree",
+        HOOK,
+        '_INSTALLED_SUBTREES = ("cache", "marketplaces", "synced")',
         '_INSTALLED_SUBTREES = ("cache", "marketplaces")',
-        '_INSTALLED_SUBTREES = ("cache",)',
         TARGETS,
     ),
     (
         "the plugin data directory is treated as installed",
         HOOK,
-        '_INSTALLED_SUBTREES = ("cache", "marketplaces")',
-        '_INSTALLED_SUBTREES = ("cache", "marketplaces", "data")',
+        '_INSTALLED_SUBTREES = ("cache", "marketplaces", "synced")',
+        '_INSTALLED_SUBTREES = ("cache", "marketplaces", "synced", "data")',
         TARGETS,
     ),
     # ---- the plugins roots ----------------------------------------------
@@ -121,15 +134,29 @@ MUTANTS = [
     (
         "containment by string prefix: cache-old/ counts as cache/",
         HOOK,
-        "    return common == os.path.normcase(root)",
-        "    return os.path.normcase(path).startswith(os.path.normcase(root))",
+        "    return p[: len(r)] == r",
+        '    return "/".join(p).startswith("/".join(r))',
         TARGETS,
     ),
     (
         "containment answers yes for everything",
         HOOK,
-        "    return common == os.path.normcase(root)",
+        "    return p[: len(r)] == r",
         "    return True",
+        TARGETS,
+    ),
+    (
+        "case is never folded, on macOS and Windows included",
+        HOOK,
+        '    if sys.platform == "darwin" or sys.platform.startswith("win"):',
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "case is folded on Linux too",
+        HOOK,
+        '    if sys.platform == "darwin" or sys.platform.startswith("win"):',
+        "    if True:",
         TARGETS,
     ),
     (
@@ -144,56 +171,6 @@ MUTANTS = [
         HOOK,
         "            if _is_inside(target, subtree):",
         "            if False:",
-        TARGETS,
-    ),
-    # ---- $CLAUDE_PLUGIN_ROOT --------------------------------------------
-    (
-        "the plugin-root rule is dropped",
-        HOOK,
-        "    if plugin_root:",
-        "    if False:",
-        TARGETS,
-    ),
-    (
-        "the plugin root is not resolved through symlinks",
-        HOOK,
-        "        plugin_root = os.path.realpath(plugin_root)",
-        "        plugin_root = os.path.abspath(plugin_root)",
-        TARGETS,
-    ),
-    (
-        "a plugin root anywhere counts, a --plugin-dir working tree included",
-        HOOK,
-        "            _is_inside(plugin_root, r) and os.path.normcase(plugin_root) != os.path.normcase(r)",
-        "            os.path.normcase(plugin_root) != os.path.normcase(r)",
-        TARGETS,
-    ),
-    (
-        "a plugin root equal to the plugins root counts, data/ included",
-        HOOK,
-        "            _is_inside(plugin_root, r) and os.path.normcase(plugin_root) != os.path.normcase(r)",
-        "            _is_inside(plugin_root, r)",
-        TARGETS,
-    ),
-    (
-        "the plugin root has to lie under every plugins root, not any one",
-        HOOK,
-        "        under_a_root = any(",
-        "        under_a_root = all(",
-        TARGETS,
-    ),
-    (
-        "under an installed plugin root, every target asks",
-        HOOK,
-        "        if under_a_root and _is_inside(target, plugin_root):",
-        "        if under_a_root:",
-        TARGETS,
-    ),
-    (
-        "the plugin-root rule forgets where the root lies",
-        HOOK,
-        "        if under_a_root and _is_inside(target, plugin_root):",
-        "        if _is_inside(target, plugin_root):",
         TARGETS,
     ),
     # ---- the target ------------------------------------------------------
@@ -293,8 +270,8 @@ MUTANTS = [
     (
         "the dispatcher no longer runs the hook",
         DISPATCHER,
-        '    "ask-plugin-cache-edit.py",\n    "block-worktree-path-escape.py",\n]',
-        '    "block-worktree-path-escape.py",\n]',
+        '    "ask-plugin-cache-edit.py",',
+        "",
         DISPATCH_TARGETS,
     ),
     (
