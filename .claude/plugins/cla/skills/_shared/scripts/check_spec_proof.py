@@ -155,7 +155,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 # `noqa: F401` names are re-exports: tests and other scripts read them off this module.
-# A part that cannot be imported (a partial or stale install) is "could not run", exit 2, never the
+# A part that cannot be imported (a partial, stale or half-written install) is "could not run", exit 2, never the
 # exit 1 that means "problems found": callers treat exit 1 as a finding list and exit 2 as unchecked.
 try:
     from spec_proof_budget import (  # noqa: E402
@@ -183,7 +183,7 @@ try:
         parse_units,
     )
     from spec_proof_prose import _purpose_paragraphs, _spec_names_in, count_sentences, purpose_notes  # noqa: E402,F401
-except ImportError as _exc:  # pragma: no cover - exercised by a subprocess test
+except Exception as _exc:  # pragma: no cover - a half-written part (SyntaxError) too; subprocess-tested
     print(f"check_spec_proof: cannot load its parts: {_exc}", file=sys.stderr)
     sys.exit(2)
 

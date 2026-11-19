@@ -421,6 +421,13 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "config.yml is not read for the change budget",
+        SCRIPT_BUDGET,
+        'and the output line says so."""\n    cfg = next((p for p in (root / "openspec" / "config.yaml", root / "openspec" / "config.yml")',
+        'and the output line says so."""\n    cfg = next((p for p in (root / "openspec" / "config.yaml",)',
+        TARGETS,
+    ),
+    (
         "config.yml is not read",
         SCRIPT_BUDGET,
         'found nothing wrong."""\n    cfg = next((p for p in (root / "openspec" / "config.yaml", root / "openspec" / "config.yml")',
