@@ -50,7 +50,10 @@ MUTANTS = [
     ("the refusal exits 0, so the tool call runs unguarded and silently",
      PROBE, "guard hooks are NOT running. Set CLA_PYTHON to your interpreter.\" >&2\n  exit 1",
      "guard hooks are NOT running. Set CLA_PYTHON to your interpreter.\" >&2\n  exit 0", TARGETS),
-    # killed by the CRLF and unusable-probe tests
+    # killed by test_probe_refuses_a_python_that_is_not_an_executable_file: a
+    # `python3` shell function passes the version check, and only this `-x`
+    # refuses its bare name (the wiring's own `-x` hides it, so that test
+    # sources the probe directly)
     ("the refusal accepts a set but non-executable PYEXE",
      PROBE, 'if [ -z "$PYEXE" ] || [ ! -x "$PYEXE" ]; then', 'if [ -z "$PYEXE" ]; then', TARGETS),
     # killed by test_an_unusable_cla_python_refuses_loudly

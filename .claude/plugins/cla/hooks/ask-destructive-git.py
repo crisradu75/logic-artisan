@@ -173,8 +173,11 @@ Detection scope
   expansion (`git $X`, `git "$@"`, `git pu$X`), a flag with an unknown
   expansion glued on (`--force$X`), or an unquoted unassigned `$NAME` among a
   push, reset or branch's options (`git push $F origin x`), asks as
-  unresolved. `_expand` has the rules and the named misses; `bash -c "git
-  status"` and `eval "$(ssh-agent)"` stay silent. Its reading is linear and
+  unresolved. `_expand` has the rules and the named misses, among them a
+  backtick span that opens on an earlier line (or across a `\`-newline) and
+  closes on git's line: a substituted flag later on that line is not read,
+  and a git word glued to that closing backtick asks. `bash -c "git status"`
+  and `eval "$(ssh-agent)"` stay silent. Its reading is linear and
   capped, so no command keeps the hook past its handler timeout.
 
 `--force-with-lease` and `--force-if-includes` are deliberately NOT matched:
@@ -1587,9 +1590,12 @@ def _history_reasons(command: str, scanned: str, cwd: str, started: float) -> li
 #   flag from a whole-word expansion after an operand or in double quotes, a
 #   refspec from one (`git push origin $REF` holding `+main`), a command name
 #   from one (`$CMD push -f`), a quoted or escaped `git` (`'git' push -f`), a
-#   subcommand word that starts with a backslash (`git \push -f`), and a prefix
+#   subcommand word that starts with a backslash (`git \push -f`), a prefix
 #   command that takes a value (`timeout 60 git $X`), which hides the
-#   command's start.
+#   command's start, and a backtick span that opens on an earlier line (or
+#   across a `\`-newline) and closes on git's line: a substituted flag later
+#   on that line is not read, and a git word glued to that closing backtick
+#   asks (`_span_close`).
 #
 # Appended text goes after a blank line, so no line continuation or tail joins
 # it to the line before, and each part is quote-stripped on its own, so an odd
@@ -1829,7 +1835,12 @@ def _span_close(scanned: str, at: int) -> int | None:
     backtick in a comment or a heredoc body on an earlier line is no shell
     syntax, and one would flip the count. A backtick right before `at` opens a
     span too: the count goes wrong in prose, where an apostrophe (`user's`)
-    pairs with a later one and blanks the backticks between them."""
+    pairs with a later one and blanks the backticks between them.
+
+    A named miss: a backtick span that opens on an earlier line (or across a
+    `\\`-newline) and closes on git's line. Its closing backtick counts as an
+    opening one there, so a substituted flag later on that line is not read,
+    and a git word glued to that closing backtick asks."""
     ticks, starts = _live_ticks(scanned)
     line = starts[bisect.bisect_right(starts, at) - 1]
     k = bisect.bisect_left(ticks, at)

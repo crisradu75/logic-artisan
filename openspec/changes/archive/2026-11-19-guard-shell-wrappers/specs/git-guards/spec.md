@@ -18,30 +18,20 @@ The guard hooks SHALL ask the user before a git command they would ask about whe
 
 The guard hooks SHALL read a git subcommand, or a push, reset or branch option, that is quoted, or that a variable assigned a plain value in the same command supplies, as its value, and SHALL ask the user when the subcommand, an option whose literal start is `-`, or an unquoted option of a push, reset or branch before its first operand comes from an expansion they cannot resolve.
 
-#### Scenario: A subcommand from a variable set in the command
+#### Scenario: A subcommand from a variable
 
-- **WHEN** an agent runs `X=push; git $X -f origin x`
-- **THEN** the user is asked before it runs, as for a force-push
+- **WHEN** an agent runs `X=push; git $X -f origin x`, or `git $SUB -f origin x` where nothing in the command sets `SUB`
+- **THEN** the user is asked before it runs
 
-#### Scenario: A subcommand from an unknown variable
+#### Scenario: A quoted or partly expanded force flag
 
-- **WHEN** an agent runs `git $SUB -f origin x` and nothing in the command sets `SUB`
+- **WHEN** an agent runs `git push "-f" origin x`, or `git push --force$X origin x` where nothing in the command sets `X`
 - **THEN** the user is asked before it runs
 
 #### Scenario: A branch name from a variable
 
 - **WHEN** an agent runs `git push origin "$BRANCH"`
 - **THEN** no prompt is shown
-
-#### Scenario: A force flag with an unknown expansion glued on
-
-- **WHEN** an agent runs `git push --force$X origin x` and nothing in the command sets `X`
-- **THEN** the user is asked before it runs
-
-#### Scenario: A quoted force flag
-
-- **WHEN** an agent runs `git push "-f" origin x`
-- **THEN** the user is asked before it runs, as for a force-push
 
 ### Requirement: A long command is read within the guard's time
 

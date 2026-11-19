@@ -20,6 +20,7 @@ import ast
 import importlib.util
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -1097,6 +1098,32 @@ def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
     assert "SELECTED:/definitely/not/a/python" not in r.stdout
     assert r.returncode == 1, "must refuse, and non-zero so the notice reaches the transcript"
     assert "NOT running" in r.stderr
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_probe_refuses_a_python_that_is_not_an_executable_file(tmp_path):
+    """`command -v` names a shell function, not a file. A working `python3`
+    function in the calling shell passes the version check, so only the
+    refusal's `-x` stops `$PYEXE` from being a bare name no hook can exec by path.
+    PATH and stage 3 as in the stale-PYEXE test: nothing else to find.
+
+    The probe is sourced directly: every wiring re-checks `[ -x "$PYEXE" ]`
+    after it, which would hide the probe's own check. This holds the probe's
+    stated postcondition, not the wiring's."""
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    env = {
+        "PATH": str(empty),
+        "CLA_PY_SEARCH": "",
+        "CLA_PROBE_NO_CACHE": "1",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
+    real = Path(sys.executable).as_posix()
+    script = f'python3() {{ "{real}" "$@"; }}; . "{_PROBE_SH.as_posix()}"; echo "SELECTED:$PYEXE"'
+    r = _sp.run([_BASH, "-c", script],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert "SELECTED:python3" not in r.stdout
+    assert r.returncode == 1 and "NOT running" in r.stderr
 
 
 @pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")

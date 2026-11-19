@@ -3623,6 +3623,8 @@ def _wrapped_ps(command: str) -> str:
         ("/bin/bash -c 'git push -f origin x'", _FORCE),
         ("bash.exe -c 'git push -f origin x'", _FORCE),
         ("bash \\\n  -c 'git push -f origin x'", _FORCE),
+        # an odd quote after the wrapper must not pair with one in its body
+        ("bash -c \"git push -f origin 'x'\" ; echo '", _FORCE),
         ("bash -c git\\ push\\ -f\\ origin\\ x", _FORCE),
         ("bash -c \"sh -c 'git push -f origin x'\"", _FORCE),
         ("bash -c \"eval 'git push -f origin x'\"", _FORCE),
@@ -3756,6 +3758,10 @@ def test_each_part_is_quote_stripped_on_its_own():
         # a `$(...)` value ends at its own `)`, so the next assignment is read
         ("X=$(date) Y=push; git $Y -f origin x", _FORCE),
         ("echo ); X=$(date) Y=push; git $Y -f origin x", _FORCE),
+        # a comparison is no assignment, so it adds no unknown value
+        ("X=push; [[ $X == push ]] && git $X -f origin x", _FORCE),
+        # each quoted name is filled in unquoted, inside the round cap
+        ('A=-f; B=-u; git push "$A" "$B" origin x', _FORCE),
     ],
 )
 def test_a_resolved_expansion_asks_like_the_literal(command, expected, monkeypatch, capsys):
@@ -3777,6 +3783,8 @@ def test_a_resolved_expansion_asks_like_the_literal(command, expected, monkeypat
         "git $(echo push) -f origin x",
         "git `echo push` -f origin x",
         "X=$(echo push); git $X -f origin x",
+        # an array assignment, not a value
+        "X=(push); git $X -f origin x",
         "for s in push; do git $s -f origin x; done",
         "git -C repo $SUB",
         "sudo git $SUB",
@@ -3818,6 +3826,8 @@ def test_an_unresolved_expansion_asks(command, monkeypatch, capsys):
         'grep -rn git "$ROOT"',
         'ls repo.git "$X"',
         'echo git "$X"',
+        # a word that only ends in `git` is another command
+        "my-git $SUB origin x",
         'git commit -m "$MSG"',
         "git push '$remote' $BRANCH",
     ],
@@ -3967,6 +3977,7 @@ def test_appended_text_never_joins_a_continued_last_line(monkeypatch, capsys):
         # what follows a `+` or a `--name=` cannot change what they are
         ("git push origin '+main'", _FORCE),
         ("git push origin +$B", _FORCE),
+        ('git push origin "+$B"', _FORCE),
         ("git push --force=$X origin x", _FORCE),
     ],
 )
@@ -4260,3 +4271,17 @@ def test_a_refused_fork_point_probe_finds_no_fork_point():
 def test_an_empty_setting_does_not_rebase():
     assert hook._is_true("true") and hook._is_true("merges")
     assert not hook._is_true("") and not hook._is_true("  ")
+
+
+def test_a_line_found_twice_is_read_once(monkeypatch, capsys):
+    """The same rewritten line from the command and from a wrapper body is one
+    line, not two, so repeats cannot reach the line cap."""
+    command = "X=status; " + "git $X; " * 40 + "bash -c '" + "git $X; " * 40 + "'"
+    assert _run(command, monkeypatch, capsys) is None
+
+
+def test_an_inline_merge_authorization_is_read_from_the_stripped_text(monkeypatch, capsys):
+    """`ALLOW_PR_MERGE=1` before the one real merge authorizes it; a merge named
+    inside quotes is text, and must not count as a second, unauthorized one."""
+    command = 'ALLOW_PR_MERGE=1 gh pr merge 27 && echo "gh pr merge 5"'
+    assert _run(command, monkeypatch, capsys) is None
