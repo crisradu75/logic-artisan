@@ -155,6 +155,50 @@ def test_a_settings_file_of_the_wrong_shape_is_refused_and_left_exactly_as_it_wa
 
 
 # requirement: permission-saving / Saving keeps the rest of the settings file
+def test_arguments_are_trimmed_like_stdin_lines(tmp_path):
+    path = _write_settings(tmp_path, '{"permissions": {"allow": ["A"]}}')
+    result = _run(tmp_path, [" A", "B\t", " C "])
+    assert result.returncode == 0, result.stderr
+    assert json.loads(path.read_text(encoding="utf-8")) == {"permissions": {"allow": ["A", "B", "C"]}}
+    assert result.stdout.strip() == "added 2 new permission(s); allowlist now has 3 entries"
+
+
+# requirement: permission-saving / Saving keeps the rest of the settings file
+@pytest.mark.parametrize("step", ["read", "stat", "mkdir"])
+def test_a_failing_read_stat_or_mkdir_is_a_refusal_not_a_traceback(tmp_path, step):
+    cwd = tmp_path / step
+    if step == "mkdir":
+        cwd.mkdir()
+        path = None
+        target, method = "'.claude'", "mkdir"
+    else:
+        path = _write_settings(cwd, '{"permissions": {"allow": ["Read"]}}')
+        target, method = "'settings.local.json'", {"read": "read_bytes", "stat": "stat"}[step]
+    prelude = (
+        "import pathlib, sys\n"
+        f"_real = pathlib.Path.{method}\n"
+        "def _fail(self, *a, **k):\n"
+        # `stat` fails only for the mode lookup: the link and existence checks before it call
+        # `stat` too on some Python versions, and those must still pass.
+        f"    if self.name == {target} and ({method!r} != 'stat' or sys._getframe(1).f_code.co_name == '_mode_for'):\n"
+        "        raise PermissionError('simulated failure')\n"
+        "    return _real(self, *a, **k)\n"
+        f"pathlib.Path.{method} = _fail\n"
+    )
+    result = _run(cwd, ["WebSearch"], prelude=prelude)
+    assert result.returncode == 1, result.stderr
+    assert result.stderr.startswith("stopped, nothing written:") and "simulated failure" in result.stderr
+    assert "Traceback" not in result.stderr
+    said = {"read": "cannot read .claude", "stat": "cannot read the permission bits", "mkdir": "cannot create .claude"}[step]
+    assert said in result.stderr, result.stderr
+    if path is not None:
+        assert path.read_bytes() == b'{"permissions": {"allow": ["Read"]}}'
+        assert _left(path) == ["settings.local.json"]
+    else:
+        assert not (cwd / ".claude").exists()
+
+
+# requirement: permission-saving / Saving keeps the rest of the settings file
 def test_a_failed_replace_leaves_the_original_and_no_temporary_file(tmp_path):
     path = _write_settings(tmp_path, json.dumps({"permissions": {"allow": ["Read"]}}))
     before = path.read_bytes()
@@ -200,6 +244,20 @@ def test_a_symlinked_settings_file_is_refused_and_its_target_left_alone(tmp_path
     result = _run(tmp_path, ["Read"])
     assert result.returncode == 1 and "symbolic link" in result.stderr
     assert (tmp_path / _SETTINGS).is_symlink() and target.read_bytes() == b"{}"
+
+
+# requirement: permission-saving / Saving keeps the rest of the settings file
+@pytest.mark.skipif(os.name == "nt", reason="a symlink needs a privilege on Windows")
+def test_a_symlinked_claude_folder_is_refused_as_a_link(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    cwd = tmp_path / "project"
+    cwd.mkdir()
+    (cwd / ".claude").symlink_to(outside, target_is_directory=True)
+    result = _run(cwd, ["Read"])
+    assert result.returncode == 1
+    assert result.stderr.strip() == "stopped, nothing written: .claude is a symbolic link"
+    assert not any(outside.iterdir())
 
 
 # requirement: permission-saving / Saving keeps the rest of the settings file

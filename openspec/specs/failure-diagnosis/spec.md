@@ -38,7 +38,7 @@ How the diagnose skill reproduces a failure, tests its causes and lands the fix.
 
 ### Requirement: The regression test fails before the fix
 
-`/cla:diagnose` SHALL change one variable at a time while testing a cause, and once a cause is confirmed SHALL write a test that fails for that cause and see it fail before fixing it, and when no test can reach the cause without contorting the code SHALL record a dated finding in the repo's feedback folder that points to shaping a decision instead of forcing or skipping the test.
+`/cla:diagnose` SHALL, once a cause is confirmed, write a test that fails for that cause and see it fail before fixing it, and when no test can reach the cause without contorting the code SHALL record a dated finding in the repo's feedback folder that points to shaping a decision instead of forcing or skipping the test.
 
 #### Scenario: A confirmed cause with a reachable seam
 
@@ -50,11 +50,20 @@ How the diagnose skill reproduces a failure, tests its causes and lands the fix.
 - **WHEN** the cause lives where no test can reach it without contorting the code
 - **THEN** a dated finding naming the cause and the structural change is written to the feedback folder
 
-### Requirement: Clean up and name the cause
+### Requirement: No debug tag is left behind
 
-`/cla:diagnose` SHALL remove every debug tag it added, proving it with a search that finds none, and SHALL write a commit message that states the confirmed cause rather than the symptom or the edit.
+`/cla:diagnose` SHALL remove every debug tag it added before it commits, proving it with a search that finds none.
 
 #### Scenario: A leftover debug tag
 
 - **WHEN** the search still finds a debug tag the run added
 - **THEN** the run halts before committing until the tag is removed
+
+### Requirement: The commit names the confirmed cause
+
+`/cla:diagnose` SHALL write a commit message for its fix that states the confirmed cause rather than the symptom or the edit.
+
+#### Scenario: A fix after a confirmed cause
+
+- **WHEN** the run commits the fix for a cause it confirmed
+- **THEN** the commit message states that cause, not only the failing check or the lines changed

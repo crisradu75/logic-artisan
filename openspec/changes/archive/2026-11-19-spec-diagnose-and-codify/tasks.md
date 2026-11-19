@@ -6,7 +6,7 @@
 
 ## 2. Tests
 
-- [x] 2.1 Test each `failure-diagnosis` requirement: the skill text carries the loop-first stop, the mode rule and written hypotheses, the test-before-fix order with the no-seam finding, and the clean-up grep and cause-naming commit.
+- [x] 2.1 Test each `failure-diagnosis` requirement: the skill text carries the loop-first stop, the mode rule and written hypotheses, the test-before-fix order with the no-seam finding, the clean-up grep, and the cause-naming commit.
 - [x] 2.2 Test each `session-learnings` requirement: the whole-session scan, the three-fix cap with quoted failures, tools before docs, the one-rung escalation, the single prompt before any write, upstream routing when read-only, and the log entry with its archive rule.
 - [x] 2.3 Regression test for the debug-tag mismatch: `/cla:diagnose` and the ship reference both name the guard hook that holds the same tag.
 

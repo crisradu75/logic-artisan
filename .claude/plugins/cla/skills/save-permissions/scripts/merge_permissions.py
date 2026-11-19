@@ -6,7 +6,8 @@
 
 Run from the project root: the file is ``.claude/settings.local.json`` under the working
 directory, and no other path can be named. The entries are the arguments, or, with no argument,
-one entry per line on stdin (surrounding whitespace and blank lines are dropped).
+one entry per line on stdin; either way surrounding whitespace is trimmed from each entry, and
+blank stdin lines are dropped.
 
 WHAT IT DOES, in this order:
   1. Load the file. A missing file counts as ``{}``; a UTF-8 byte order mark is accepted.
@@ -19,9 +20,21 @@ WHAT IT DOES, in this order:
 
 It stops, writing nothing and leaving the file byte-identical, when the file is not UTF-8 or not
 valid JSON, the top level is not an object, ``permissions`` is not an object, ``allow`` is not a
-list or holds anything but strings, the path is a symbolic link or not a regular file, or the
-write fails. Every such message starts ``stopped, nothing written:``. Every other setting in the
-file is kept; the whole file is re-serialised, so its spacing may change.
+list or holds anything but strings, the file cannot be read, or the write fails. Every such
+message starts ``stopped, nothing written:``. Every other setting in the file is kept; the whole
+file is re-serialised, so its spacing may change.
+
+SYMBOLIC LINKS. A symbolic link at ``.claude/`` or at the settings file is refused ("is a symbolic
+link") and nothing is written through it or over it: replacing it would either write outside the
+project or turn a link the user set up into a plain file. ``cla-setup``'s
+``render_economy_rules.py`` follows the same rule for ``.claude/``, ``.claude/rules/`` and its file.
+
+NAMED LIMITS, each the same as the inline snippets this replaced:
+  * A read-only settings file is replaced on POSIX, where renaming over it needs only a writable
+    folder; on Windows the replace fails and the script exits 1 with the file unchanged.
+  * A hard-linked settings file is split: the project gets the new file, and every other name for
+    the old one keeps the old content.
+  * Nothing is fsynced: after a power loss the file is whole, but may be the old version.
 
 This replaced two inline merge snippets (a Python one and a PowerShell one) that the skill told
 the agent to copy; prose that must be copied exactly is fragile, and the guards lived twice.
@@ -29,7 +42,8 @@ the agent to copy; prose that must be copied exactly is fragile, and the guards 
 EXIT CODES:
   0 = written (stdout: how many entries were new, and the allowlist's size)
   1 = stopped, nothing written (stderr says why)
-  2 = usage: no entry given, an empty entry, or stdin unreadable as UTF-8; nothing written
+  2 = usage: no entry given, an entry that is empty once trimmed, or stdin unreadable as UTF-8;
+      nothing written
 """
 
 from __future__ import annotations
@@ -50,9 +64,10 @@ class Stop(Exception):
 
 def _entries(argv: list[str]) -> list[str]:
     if argv:
-        if any(not a.strip() for a in argv):
+        entries = [a.strip() for a in argv]
+        if not all(entries):
             raise ValueError("an entry is empty")
-        return list(argv)
+        return entries
     if sys.stdin is None or sys.stdin.isatty():
         raise ValueError("give the new entries as arguments, or one per line on stdin")
     raw = sys.stdin.buffer.read()
@@ -74,7 +89,11 @@ def _load(p: Path) -> dict:
     if not p.is_file():
         raise Stop(f"{p} is not a regular file")
     try:
-        data = json.loads(p.read_bytes().decode("utf-8-sig"))
+        raw = p.read_bytes()
+    except OSError as exc:
+        raise Stop(f"cannot read {p} ({exc})") from None
+    try:
+        data = json.loads(raw.decode("utf-8-sig"))
     except ValueError as exc:  # UnicodeDecodeError and JSONDecodeError both
         raise Stop(f"{p} is not valid JSON ({exc})") from None
     if not isinstance(data, dict):
@@ -104,6 +123,8 @@ def _mode_for(p: Path) -> int:
         umask = os.umask(0)
         os.umask(umask)
         return 0o666 & ~umask
+    except OSError as exc:
+        raise Stop(f"cannot read the permission bits of {p} ({exc})") from None
 
 
 def write_atomic(p: Path, text: str) -> None:
@@ -134,15 +155,23 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     p = SETTINGS
     try:
-        if p.parent.is_symlink() or (p.parent.exists() and not p.parent.is_dir()):
+        if p.parent.is_symlink():
+            raise Stop(f"{p.parent} is a symbolic link")
+        if p.parent.exists() and not p.parent.is_dir():
             raise Stop(f"{p.parent} is not a directory")
         data = _load(p)
         merged, added = merge(data, new, p)
-        p.parent.mkdir(exist_ok=True)
+        try:
+            p.parent.mkdir(exist_ok=True)
+        except OSError as exc:
+            raise Stop(f"cannot create {p.parent} ({exc})") from None
         try:
             write_atomic(p, json.dumps(data, indent=2) + "\n")
         except OSError as exc:
             raise Stop(f"could not write {p} ({exc})") from None
+    except OSError as exc:  # a check above that touched the disk and failed
+        print(f"{STOPPED}: {exc}", file=sys.stderr)
+        return 1
     except Stop as exc:
         print(f"{STOPPED}: {exc}", file=sys.stderr)
         return 1

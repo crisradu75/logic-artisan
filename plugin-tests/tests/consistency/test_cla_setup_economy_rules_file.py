@@ -503,7 +503,9 @@ def test_a_rules_path_that_is_not_the_plugin_file_is_refused_and_left_alone(tmp_
 # requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 @pytest.mark.skipif(os.name == "nt", reason="a symlink needs a privilege on Windows")
-def test_a_symlink_at_the_rules_path_or_out_of_the_repo_is_refused_and_its_target_left_alone(tmp_path: Path) -> None:
+def test_a_symlink_at_the_file_or_either_folder_is_refused_and_its_target_left_alone(tmp_path: Path) -> None:
+    """One rule, shared with save-permissions' merge script: a link at `.claude/`, at
+    `.claude/rules/` or at the file is refused, even one that points inside the repo."""
     root, plugin, _good = _rendered(tmp_path)
     script = _block().replace("${CLAUDE_PLUGIN_ROOT}", plugin.as_posix())
     shared = tmp_path / "shared-rules.md"
@@ -519,8 +521,46 @@ def test_a_symlink_at_the_rules_path_or_out_of_the_repo_is_refused_and_its_targe
     outside.mkdir()
     (linked / ".claude").symlink_to(outside, target_is_directory=True)
     out = _bash(script, linked)
-    assert out.returncode == 1 and "resolves outside the repo" in out.stdout, out.stdout
+    assert out.returncode == 1 and ".claude is a symbolic link" in out.stdout, out.stdout
     assert not any(outside.iterdir()), "a folder or file was made through the link"
+    inside = tmp_path / "inside-repo"
+    (inside / "shared-rules").mkdir(parents=True)
+    (inside / ".claude").mkdir()
+    (inside / ".claude" / "rules").symlink_to(inside / "shared-rules", target_is_directory=True)
+    out = _bash(script, inside)
+    assert out.returncode == 1 and ".claude/rules is a symbolic link" in out.stdout, out.stdout
+    assert not any((inside / "shared-rules").iterdir())
+
+
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
+@_needs_tools
+def test_an_unreadable_file_or_permission_bits_is_a_not_written_refusal_not_a_traceback(
+        tmp_path: Path, monkeypatch, capsys) -> None:
+    root, plugin, good = _rendered(tmp_path)
+    (root / _RULES).write_bytes(b"a stale copy\n")
+    render = _load_render(plugin)
+    real_stat, real_read = render.Path.stat, render.Path.read_bytes
+
+    def failing_read(self):
+        if self.name == "cla-economy.md":
+            raise PermissionError("simulated read failure")
+        return real_read(self)
+
+    def failing_stat(self, *args, **kwargs):
+        if self.name == "cla-economy.md" and not kwargs and not args:
+            raise PermissionError("simulated stat failure")
+        return real_stat(self, *args, **kwargs)
+
+    said = {"read_bytes": "cannot read the existing file", "stat": "cannot read the permission bits"}
+    for name, patch in (("read_bytes", failing_read), ("stat", failing_stat)):
+        with monkeypatch.context() as m:
+            m.setattr(render.Path, name, patch)
+            assert render.main(["--root", str(root)]) == 1, name
+        out = capsys.readouterr().out
+        assert out.startswith(".claude/rules/cla-economy.md: NOT written") and "simulated" in out, (name, out)
+        assert said[name] in out, (name, out)
+        assert (root / _RULES).read_bytes() == b"a stale copy\n"
+        assert sorted(p.name for p in (root / _RULES.parent).iterdir()) == ["cla-economy.md"]
 
 
 # requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file

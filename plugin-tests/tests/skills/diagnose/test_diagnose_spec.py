@@ -49,9 +49,8 @@ def test_hypotheses_are_ranked_falsifiable_and_pruned_only_by_a_present_user():
 
 
 # requirement: failure-diagnosis / The regression test fails before the fix
-def test_one_variable_at_a_time_and_the_test_fails_before_the_fix_or_a_finding_is_written():
+def test_the_test_fails_before_the_fix_or_a_finding_is_written():
     text = _flat()
-    assert "**Two variables at once forfeits the round.**" in text
     assert "Write a test that fails for the confirmed cause" in text
     assert "Run it, see it fail, and only then fix." in text
     assert '**"There is no correct seam" is a finding, not an obstacle.**' in text
@@ -60,16 +59,23 @@ def test_one_variable_at_a_time_and_the_test_fails_before_the_fix_or_a_finding_i
     _order(text, "## Phase 4 — instrument one variable at a time", "## Phase 5 — the regression test comes before the fix")
 
 
-# requirement: failure-diagnosis / Clean up and name the cause
-def test_every_tag_is_removed_with_a_grep_and_the_commit_names_the_cause():
+# requirement: failure-diagnosis / No debug tag is left behind
+def test_every_tag_is_removed_and_a_grep_proves_it_before_the_commit():
     text = _flat()
     assert "**Every `[DEBUG-xxxx]` tag is removed. Prove it with a grep that returns nothing:**" in text
     assert 'grep -rn "\\[DEBUG-" <the paths this run touched>' in _SKILL.read_text(encoding="utf-8")
     assert "A non-zero hit count is a halt, not a warning." in text
+    _order(text, "A non-zero hit count is a halt", "**The commit message states the confirmed hypothesis**")
+
+
+# requirement: failure-diagnosis / The commit names the confirmed cause
+def test_the_commit_message_states_the_confirmed_cause():
+    text = _flat()
     assert "**The commit message states the confirmed hypothesis**, not the symptom and not the edit" in text
+    assert "the commit message names the cause" in text
 
 
-# requirement: failure-diagnosis / Clean up and name the cause
+# requirement: failure-diagnosis / No debug tag is left behind
 def test_the_skill_and_the_ship_scan_name_every_home_of_the_tag():
     """Regression: both once said the pattern lives in two files, missing the guard hook that also
     searches for it, so a rename following that prose left the hook checking nothing."""

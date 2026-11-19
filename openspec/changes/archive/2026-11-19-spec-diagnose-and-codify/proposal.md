@@ -6,7 +6,7 @@
 
 ## What Changes
 
-- New `failure-diagnosis`: a reproduce loop before any fix, ranked falsifiable hypotheses written before any edit (pruned by the user only when one is present), the regression test before the fix or a recorded finding when no test can reach the cause, and a clean-up that leaves no debug tag and names the cause in the commit.
+- New `failure-diagnosis`: a reproduce loop before any fix, ranked falsifiable hypotheses written before any edit (pruned by the user only when one is present), the regression test before the fix or a recorded finding when no test can reach the cause, no debug tag left behind, and a commit that names the cause.
 - New `session-learnings`: failures from the whole session, at most three fixes each quoting its failure, a tool before a doc, a repeated failure escalated above the rule that missed it, one prompt before any write, a read-only plugin's fix sent upstream, and a dated log entry with the old entries archived.
 - Fix found while writing the spec: `/cla:diagnose` Phase 6 and the shared ship reference say the debug-tag pattern lives in two files; the staged-debug-tag guard hook holds it too. Both now name all three.
 - `openspec/spec-map.md` links both specs.
