@@ -36,9 +36,10 @@ is linked from no workflow step here, or a link points at a spec that does not e
 2. Start in an isolated worktree that is set up and kept inside: [worktree-setup](specs/worktree-setup/spec.md)
 3. Write the specs under the repo's authoring rules and review the plan before building: [change-workflow](specs/change-workflow/spec.md)
 4. Prove each requirement with a test or a manual note: [spec-proof](specs/spec-proof/spec.md)
-5. Keep the repo's docs current: [docs-currency](specs/docs-currency/spec.md)
-6. Review the pull request with reviewers dispatched under a diff file and a no-git-commands brief: [review-agents](specs/review-agents/spec.md)
-7. Record the run: [run-ledgers](specs/run-ledgers/spec.md)
+5. Find a failure's root cause from a reproduce loop, with the regression test before the fix: [failure-diagnosis](specs/failure-diagnosis/spec.md)
+6. Keep the repo's docs current: [docs-currency](specs/docs-currency/spec.md)
+7. Review the pull request with reviewers dispatched under a diff file and a no-git-commands brief: [review-agents](specs/review-agents/spec.md)
+8. Record the run: [run-ledgers](specs/run-ledgers/spec.md)
 
 ### Run a batch of changes
 
@@ -65,6 +66,7 @@ is linked from no workflow step here, or a link points at a spec that does not e
 ### Read the run records
 
 1. Summarise recent runs and suggest a retro: [run-ledgers](specs/run-ledgers/spec.md)
+2. Turn a session's failures into at most three fixes and log them: [session-learnings](specs/session-learnings/spec.md)
 
 ### Assess a project and choose a model
 
