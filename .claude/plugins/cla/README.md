@@ -94,10 +94,10 @@ per item. Reading another skill's reference file is not calling it: `spec-to-pr`
 ## Always-on guardrails (hooks)
 
 The hooks wire themselves from the plugin's own `hooks/hooks.json` when it loads; there is no
-`settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 14 leaf hooks between
+`settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 15 leaf hooks between
 them in one Python process each; `warn-wholesale-rewrite` runs on its own after a Write, and
 `warn-agent-dispatch` and `warn-agent-reply-format` on their own before and after an Agent call:
-17 leaf hooks, active in every phase.
+18 leaf hooks, active in every phase.
 
 | Severity | Hook | Fires on |
 |---|---|---|
@@ -115,6 +115,7 @@ them in one Python process each; `warn-wholesale-rewrite` runs on its own after 
 | | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
 | | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
 | | `warn-heredoc-escape-mangling` | a heredoc body whose backslash escape the shell layers eat |
+| | `warn-lossy-merge-resolution` | a `git commit` or `git merge --continue` while a merge is in progress whose result lacks lines the merged-in side added since the merge base, as after taking one side whole with `git checkout --ours`; it names the files and up to five lost lines each. A line replaced on purpose is named too: say so in the commit message |
 | | `warn-wholesale-rewrite` | a Write that replaces a tracked file with a much shorter one |
 | | `warn-agent-dispatch` | an Agent call that passes no `model` (it runs on an unplanned model), a prompt with a line starting `diff --git ` (pass the diff file's path instead), or a review brief whose protected-areas slot reads `(none recorded)`. A `Workflow` script's `agent()` calls are not Agent calls and are not checked |
 | | `warn-agent-reply-format` | a completed `doc-sweeper` reply with no `Scanned:` footer line, or a reply with no `Fact corrections:` field when the brief asked for one. Presence only: a wrong count or a wrong `(none)` passes. A report handed back through `SubagentHandback` is checked only when the result carries it |
@@ -154,7 +155,9 @@ sandbox, and a determined or confused command can get past them:
   git subcommand or flag comes from a variable it cannot resolve. A command that reaches git some
   other way still gets past it: a git alias (`git -c alias.p='push -f' p`), another program that runs git
   (`python3 -c "os.system('git push -f')"`, `ssh host "..."`), git itself named through a variable
-  (`G=git; $G push -f`), or `git push "$@"`.
+  (`G=git; $G push -f`), or `git push "$@"`. No guard reads a script the command runs: the git
+  commands inside `./merge.sh` are unseen, so `warn-lossy-merge-resolution` cannot warn about a
+  merge such a script commits.
 - **They need Python 3.8+.** Without it each hook prints that the guards are NOT running and lets
   the call through; failing closed would leave no Bash, Edit or Write at all.
 - **They have a time budget.** Advisory and best-effort checks are skipped when it runs out; a hook

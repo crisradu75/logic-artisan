@@ -54,6 +54,13 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ### Added
 
+- **`warn-lossy-merge-resolution` warns before a merge commit that drops the other side's lines.**
+  On a `git commit` or `git merge --continue` while a merge is in progress, it compares the result
+  with what `MERGE_HEAD` added since the merge base and names each file that lacks such lines, with
+  up to five of them, as after a `git checkout --ours`. Advisory: the commit goes ahead, and a line
+  replaced on purpose is named too. It reads shell-wrapper bodies itself, so its git calls run once
+  per command on one 4 s deadline; it cannot see git commands inside a script the command runs.
+  The 18th guard hook.
 - **`pre-push` refuses deleting or moving a tag the remote already has,** for any tag name;
   override `ALLOW_TAG_REWRITE=1`. Re-copy the hook into each clone to pick it up. A `git push
   --mirror` deletion is never reported to the hook, which is a git limit (#556).

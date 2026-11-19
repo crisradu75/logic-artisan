@@ -240,6 +240,14 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # (`GIT_BUDGET_SECONDS` in that hook), however many commits the command
     # chains. Best-effort, so skippable under budget pressure.
     "ask-staged-debug-tag.py": 3.0,
+    # Per directory a commit or `git merge --continue` runs in (at most
+    # `MAX_DIRECTORIES`): a `rev-parse` for `MERGE_HEAD`, a `merge-base`, two
+    # `diff --name-only` and one `cat-file --batch`, ALL sharing one 4s deadline
+    # (`GIT_BUDGET_SECONDS` in that hook), so the total is 4s however many
+    # directories or commits. It reads wrapper bodies itself and is listed in the
+    # Bash dispatcher's `_READS_COMMAND_ONLY`, so it runs once per command, not
+    # once per part. Advisory, so skippable under budget pressure.
+    "warn-lossy-merge-resolution.py": 4.0,
     # 2 x _gh(4s): `pr view` then `pr list` on the explicit-PR-number path. The
     # only hook that leaves the machine, and the reason it stays advisory. Its
     # own docstring is the authority on the call count; the previous entry

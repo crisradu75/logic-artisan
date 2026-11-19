@@ -260,10 +260,10 @@ stale absolute path sneaks into a prompt.
 ## 8. The guardrails you'll meet
 
 The hooks wire themselves from `hooks/hooks.json` when the plugin loads; there is no
-`settings.json` step. Two dispatchers each run several leaf hooks in one Python process (10 on the
+`settings.json` step. Two dispatchers each run several leaf hooks in one Python process (11 on the
 Bash/PowerShell matcher, 4 on Edit/Write); `warn-wholesale-rewrite` runs on its own after a Write,
 and `warn-agent-dispatch` and `warn-agent-reply-format` on their own before and after an Agent call:
-**17 leaf hooks**, in three severities.
+**18 leaf hooks**, in three severities.
 
 | Severity | Hook | Fires on |
 |---|---|---|
@@ -281,6 +281,7 @@ and `warn-agent-dispatch` and `warn-agent-reply-format` on their own before and 
 | | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
 | | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
 | | `warn-heredoc-escape-mangling` | a heredoc body whose backslash escape the shell layers eat (`\n` arrives as a real newline) |
+| | `warn-lossy-merge-resolution` | a `git commit` or `git merge --continue` while a merge is in progress whose result lacks lines the merged-in side (`MERGE_HEAD`) added since the merge base, such as after a `git checkout --ours`; names the files and up to five lost lines each, including a line replaced on purpose (say so in the commit message). Reads wrapper bodies itself, so its git calls run once per command |
 | | `warn-wholesale-rewrite` | a Write that replaces a tracked file with a much shorter one (it asks you to name what you dropped) |
 | | `warn-agent-dispatch` | an Agent call with no `model` (it would run on the agent file's model or the session's), a prompt line starting `diff --git ` (pasted diff text where a diff file's path belongs), or a review brief whose protected-areas slot reads `(none recorded)`; `Workflow` `agent()` calls are not Agent calls, so they are not checked |
 | | `warn-agent-reply-format` | after a completed Agent call: a `doc-sweeper` reply with no `Scanned:` footer line, or a reply with no `Fact corrections:` field when the brief named it. Presence only, not truth; a report handed back through `SubagentHandback` is checked only when the result carries its text |
