@@ -11,7 +11,7 @@
 # and `exit 1`s the CALLING shell.
 #
 # THIS HEADER IS THE ONLY HOME FOR THE WIRING'S RATIONALE. `hooks.json` carried
-# ~37 lines of it in a top-level `_comment` array until issue #254, and the
+# ~37 lines of it in a top-level `_comment` array until it moved here, and the
 # loader does not recognise that key, so every session in every consuming repo
 # printed `unknown key "_comment" ignored` — noise no consumer could fix, since
 # the install cache is read-only. The JSON now carries a one-line `description`

@@ -14,7 +14,7 @@ Why the skill's rules are shaped as they are. **Not read during a run** — read
 
 **`<base-branch>` is resolved, never assumed.** The harness once hardcoded `master`, which broke every `main`-default repo: `master..HEAD` fails with `unknown revision`, and `git checkout master` cannot succeed.
 
-**`<inherits>`** — GitHub issues #98, #100, #102: one chain in which three consecutive changes dropped the same obligation, each internally consistent and silently wrong. Carrying the obligation into the dependent's own Review is the mechanism; the chain's note of it is not — a note nobody re-reads at the right moment is no note, and the right moment is that change's Review, not its Implement. Its resume rule exists because `probe_state.py` has no review state.
+**`<inherits>`** — One chain in which three consecutive changes dropped the same obligation, each internally consistent and silently wrong. Carrying the obligation into the dependent's own Review is the mechanism; the chain's note of it is not — a note nobody re-reads at the right moment is no note, and the right moment is that change's Review, not its Implement. Its resume rule exists because `probe_state.py` has no review state.
 
 ## Continue-on-everything
 
@@ -32,9 +32,9 @@ A phase-boundary confirmation prompt is a regression against the documented cont
 
 ## Implement
 
-- Post-check: issue #111 records three ticked tasks in one chain that asserted false things — including a mutation test that could not have failed — with every mechanical check passing. The box count is a presence check on a glyph; the artifact-ready flag does not read task state at all. Briefs that demanded numbers are the ones that came back with real ones, hence the inline `measured:` value; a sample re-measure, not exhaustive re-verification, because that would cost as much as the implementation.
+- Post-check: one chain had three ticked tasks that asserted false things — including a mutation test that could not have failed — with every mechanical check passing. The box count is a presence check on a glyph; the artifact-ready flag does not read task state at all. Briefs that demanded numbers are the ones that came back with real ones, hence the inline `measured:` value; a sample re-measure, not exhaustive re-verification, because that would cost as much as the implementation.
 - A ticked box with "NOT DONE" beneath it is honest work filed dishonestly, and makes every downstream count wrong.
-- A mechanical scan for ticked-but-open tasks was built and withdrawn: over this repo it reached 6 of 173 ticked tasks with 0 true positives against 4 false (issue #105).
+- A mechanical scan for ticked-but-open tasks was built and withdrawn: over this repo it reached 6 of 173 ticked tasks with 0 true positives against 4 false.
 
 ## Test
 
@@ -45,7 +45,7 @@ A phase-boundary confirmation prompt is a regression against the documented cont
 
 ## Review
 
-- **Sweeps:** a real sweep once returned a silent false-negative over an entire skills tree (`Scanned: 0` on a surface); another reported `No stale references found.` with `Scanned: 121` and `Unresolved: none` while a direct search found 9 hits (GitHub issue #279). Hence the footer check and the zero-count re-search. A stale doc reference can mask a broken key contract in a repo's load-bearing conventions.
+- **Sweeps:** a real sweep once returned a silent false-negative over an entire skills tree (`Scanned: 0` on a surface); another reported `No stale references found.` with `Scanned: 121` and `Unresolved: none` while a direct search found 9 hits. Hence the footer check and the zero-count re-search. A stale doc reference can mask a broken key contract in a repo's load-bearing conventions.
 
 ## Ship
 

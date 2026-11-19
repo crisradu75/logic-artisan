@@ -161,7 +161,8 @@ CLA is portable because it separates *procedure* (generic, synced everywhere) fr
 
 - **The plugin** (`skills/`, `agents/`, `hooks/`, `output-styles/`, `lib/`) holds portable
   procedure only. A conformance guard, `skills/_shared/scripts/check_no_project_tokens.py`, fails
-  if a project-specific word or a developer's absolute path leaks into it. One scanner reads
+  if a project-specific word, a developer's absolute path or a reference to this repo's own issue
+  or pull-request numbers leaks into it. One scanner reads
   `SKILL.md` and reference prose under `skills/`; a second reads source files across all five
   roots (for the file types, read `_iter_scanned_source_files` in the checker; a list copied here
   went stale once). It is a program, not a test, so it runs in your repo too: an installed plugin
@@ -312,7 +313,7 @@ to install.
   never checked, so write example paths with one (`{plugin}/scripts/common.py`); a stale line whose
   path also ends a tracked path elsewhere carries a hint naming where.
 - **`check_no_project_tokens.py` reads a PLUGIN TREE**, and which one depends on how you installed.
-  It scans that tree for leaked project tokens and hardcoded developer paths, using your
+  It scans that tree for leaked project tokens, hardcoded developer paths and this repo's own issue or PR numbers, using your
   `cla.io/project-tokens.local.md` as the vocabulary to scan *with*. `--repo-root` locates that
   token list — and, if the repo you point it at **vendors** a plugin tree at
   `.claude/plugins/cla/`, it scans that tree instead of the installed one. So:
@@ -323,6 +324,8 @@ to install.
     over your own files.
   - **Vendored tree (you keep a plugin tree in the repo and edit it).** Then it really is checking
     files you own, and it belongs in your gate exactly as it does in the authoring checklist.
+    A consumer that vendors its own copy and cites its own tracker in it (an issue or PR number)
+    will see the tracker-reference check fail.
 
 > **Coming from a `0.x` release?** Every release up to and including `cla--v0.10.0` shipped the
 > plugin's own pytest tree, and the guidance of that era told you to wire its

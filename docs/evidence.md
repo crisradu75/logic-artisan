@@ -406,3 +406,27 @@ One more item, mutation batches for the `warn-*` hooks, stays opt-in under the 2
 
 The never-move-a-tag rule, the no-local-marketplace rule, and why a release is a five-file edit
 are each told in [the release and distribution history](history.md).
+
+### Shipped files cite no tracker numbers
+
+`check_no_project_tokens.py` check (e) fails a shipped file that cites this repo's issue or PR
+number: the number opens nothing in the repo that installs the plugin. Measured with that check's
+pattern over the tree before the rewrite (`python3 .claude/plugins/cla/skills/_shared/scripts/check_no_project_tokens.py`,
+2026-11-19): 33 citing lines in 16 files, 20 of them outside the guard hooks. The sentences now state
+the lesson; the numbers they carried, for anyone who needs the tracker entry:
+
+- Chain stalls with nothing in flight (the idle-turn rule in `multi-pr`, `multi-lite`,
+  `multi-spec`): issue 130, a chain that lost about 4.5 hours with 4 of 6 changes unstarted.
+- Blockers filed as issues and bounded retries (`multi-pr`): issues 284 and 287. Prompts for
+  force-style git mid-chain: issue 281.
+- Carried obligations and `--inherits` (`multi-pr`, `spec-to-pr`): issues 98, 100 and 102.
+  Cite-drift recheck: issue 272.
+- Post-check and the withdrawn ticked-task scan (`spec-to-pr`): issues 111 and 105. Sweep that
+  reported zero stale references over 9 real hits: issue 279.
+- Review-fix weight worked case (`lite-pr`): PR 186. Stale cross-references between sibling
+  changes (`multi-spec`): PR 119.
+- Annotate server connection-reset race: issue 187. Fact-path checker anchoring: issues 52 and 53,
+  PR 158. Hook wiring rationale moved into `probe-python.sh`: issue 254.
+- Still cited in the guard hooks, to be rewritten there: issues 123, 184, 218, 220, 221, 236, 398,
+  PR 64, PR 231 and the regex-cost fix 526.
+

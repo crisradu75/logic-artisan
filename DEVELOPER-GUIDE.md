@@ -704,8 +704,7 @@ what enforces it; read that code rather than a copy of it here.
    (git calls times their timeout; `0.0` for pure text inspection), with the arithmetic in a comment
    on that entry. `test_the_budget_table_covers_every_dispatched_hook` and
    `test_enforcing_hooks_fit_inside_the_handler_budget` fail on a missing entry or a sum over the
-   budget, and `test_per_part_enforcing_hooks_spawn_nothing` fails when an enforcing Bash hook outside
-   `_READS_COMMAND_ONLY` (which runs once per wrapper part) has an entry above `0.0`. They cannot tell whether the figure is right, so state it per entry. Room is left:
+   budget. They cannot tell whether the figure is right, so state it per entry. Room is left:
    `ask-destructive-git`'s history probes share one 6 s deadline, so 6 s of the 12 s enforcing
    budget is free for a new enforcing guard.
 4. **Wire a new dispatcher or event, if you added one.** A new hook inside an existing dispatcher
