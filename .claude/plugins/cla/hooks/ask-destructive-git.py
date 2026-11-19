@@ -176,7 +176,10 @@ Detection scope
   unresolved. `_expand` has the rules and the named misses, among them a
   backtick span that opens on an earlier line (or across a `\`-newline) and
   closes on git's line: a substituted flag later on that line is not read,
-  and a git word glued to that closing backtick asks. `bash -c "git status"`
+  and a git word glued to that closing backtick asks. One named false ask:
+  prose (a heredoc commit message, say) that lists four or more wrapper names
+  in code spans, with the word git somewhere after them, can read as wrappers
+  nested past the cap and ask. `bash -c "git status"`
   and `eval "$(ssh-agent)"` stay silent. Its reading is linear and
   capped, so no command keeps the hook past its handler timeout.
 
