@@ -161,9 +161,9 @@ def test_the_scan_is_not_vacuous():
     # Re-measured with this file's own `__main__`, which is why it has one::
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 149  .json 3  .md 87  .py 59  placeholder-refs 331 in 66 files
+    #     scanned 151  .json 3  .md 87  .py 61  placeholder-refs 336 in 69 files
     #
-    # The real count is 149. Pinned near it, not
+    # The real count is 151. Pinned near it, not
     # comfortably below it, matching the rule `test_subprocess_encoding.py`
     # states for its own floor: move it to the new real count when something is
     # deliberately added or deleted, never to a number chosen to be safe from
@@ -209,9 +209,10 @@ def test_the_scan_is_not_vacuous():
     # from 111 to 113 when the Copilot CLI guard hooks added `hooks/copilot-pretooluse.py` and
     # `hooks/copilot-posttooluse.py` (real count 114, measured with this file's `__main__`, margin
     # one), and from 113 to 133 after the principle-3 guard hooks and scripts (#527 to #542) took
-    # the real count to 134, and from 133 to 148 when the four largest scripts were split by concern
-    # into fifteen modules (real count 149, margin one).
-    assert len(files) >= 148, f"scan set collapsed to {len(files)} files"
+    # the real count to 134, and from 133 to 135 when skill-scripts-and-specs added
+    # `save-permissions/scripts/merge_permissions.py` and `cla-setup/scripts/render_economy_rules.py`
+    # (real count 136, margin one).
+    assert len(files) >= 150, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
@@ -337,7 +338,7 @@ def test_the_replacement_is_actually_in_use():
     # line would be a second copy that `_PRINTER_LINE` cannot see:
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 149  .json 3  .md 87  .py 59  placeholder-refs 331 in 66 files
+    #     scanned 151  .json 3  .md 87  .py 61  placeholder-refs 336 in 69 files
     #
     # The file-count version sat at 34 under a comment claiming 36 while the real
     # figure was 48 — fourteen of headroom, found by running that printer for the
