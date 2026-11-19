@@ -567,8 +567,10 @@ for _what, _args in (
      ("if left > 0 else None", "left > 0", "left > -1")),
     ("a probe that did not run is not noted",
      ("self.missed = self.missed or self.asked[key] is None", "is None", "is False")),
-    ("a missed probe is noted from the start",
-     ("        self.missed = False", "False", "True")),
+    # Not planted: "a missed probe is noted from the start" (`self.missed = True`
+    # in `_Probes.__init__`) SURVIVED as equivalent once every probe shared one
+    # `_Probes`: `_history_reasons` resets `missed` before its first probe, so
+    # the constructor's value is never read.
     ("the memo returns nothing",
      ("        return self.asked[key]", "self.asked[key]", "None")),
     ("a revision starting with a dash is probed",
