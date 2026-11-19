@@ -1028,9 +1028,9 @@ for _what, _args in (
     ("text past the cap is read anyway",
      ("        budget -= sum(len(b) for b in frontier)", "len(b)", "0 * len(b)")),
     ("a wrapper past the depth cap is allowed",
-     ("        if any(_wrapper_bodies(p) for p in frontier):", "if any", "if False and any")),
+     ("        if any(_NAMES_GIT.search(b) for p in frontier", "if any", "if False and any")),
     ("a wrapper past the depth cap gives the unresolved reason",
-     ("        if any(_wrapper_bodies(p) for p in frontier):", "WRAP_DEPTH_REASON", "UNRESOLVED_REASON", 2, 1)),
+     ("        if any(_NAMES_GIT.search(b) for p in frontier", "WRAP_DEPTH_REASON", "UNRESOLVED_REASON", 2, 1)),
     ("assignments in a wrapper body are not read", ("    names = _assignments(parts)", "(parts)", "([command])")),
     ("every round re-adds every line", ("                if line not in seen:", "line not in seen", "True")),
     ("a line still changing after the last round is allowed",
@@ -1043,5 +1043,13 @@ for _what, _args in (
     ("a measured handler deadline is ignored", ("        if handler.measured:", "if handler", "if False and handler")),
     ("the history probes take the later of the two deadlines",
      ("            budget = min(budget, handler.remaining())", "min(", "max(")),
+    # The depth cap asks only for an unread body that names git or gh as a word.
+    ("the depth cap asks on any body `_HAS_GIT` keeps (\"through\" holds gh)",
+     ("        if any(_NAMES_GIT.search(b)", "_NAMES_GIT.search(b) for p in frontier for b in _wrapper_bodies(p)",
+      "_wrapper_bodies(p) for p in frontier")),
+    ("the depth cap matches git at the end of a word", ('_NAMES_GIT = re.compile(', "(?<![\\w-])", "")),
+    ("the depth cap matches git at the start of a word", ('_NAMES_GIT = re.compile(', "(?![\\w-])", "")),
+    ("the depth cap's git word is case-sensitive", ('_NAMES_GIT = re.compile(', '(?i)(?<!', '(?<!')),
+    ("the depth cap forgets gh", ('_NAMES_GIT = re.compile(', "(?:git|gh)", "(?:git)")),
 ):
     _mut(_what, *_args)

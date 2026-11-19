@@ -1628,6 +1628,11 @@ _WRAPPER = re.compile(
 # `-EncodedCommand` and its PowerShell spellings: `-e`, `-ec`, `-en` onward.
 _PS_ENCODED = re.compile(r"(?i)-(?:ec|" + _abbrev("encodedcommand", 1) + ")")
 _HAS_GIT = re.compile(r"(?i)git|gh")
+# The depth cap asks only when the body it will not read names git or gh as a word.
+# `_HAS_GIT` is a cheap substring test that decides which bodies are worth reading
+# ("through" holds `gh`); a prompt needs the stronger test, or prose that lists
+# wrapper names before such a word asks for a command nobody wrote.
+_NAMES_GIT = re.compile(r"(?i)(?<![\w-])(?:git|gh)(?![\w-])")
 # A `$NAME` or `${NAME}`, optionally inside double quotes: the whole-word
 # expansion shape that asks while it comes before an operand.
 _SINGLE_VAR = re.compile(r'"?\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})"?')
@@ -2064,7 +2069,7 @@ def _expand_into(parts: list[str]) -> tuple[list[str], str | None]:
         if budget < 0:
             return parts, UNRESOLVED_REASON
     else:
-        if any(_wrapper_bodies(p) for p in frontier):
+        if any(_NAMES_GIT.search(b) for p in frontier for b in _wrapper_bodies(p)):
             return parts, WRAP_DEPTH_REASON
     names = _assignments(parts)
     unresolved = False

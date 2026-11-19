@@ -3707,6 +3707,28 @@ def test_a_wrapped_discard_probes_the_tree_like_the_bare_one(dirty, monkeypatch,
 
 
 # requirement: git-guards / A destructive git command run through a shell wrapper asks first
+@pytest.mark.parametrize("word", ["through", "right", "digit", "fight", "gitignore", "github-cli"])
+def test_the_depth_cap_ignores_bodies_that_only_contain_git_or_gh_inside_a_word(monkeypatch, capsys, word):
+    """Prose listing four wrapper names in code spans, followed by an apostrophe,
+    reads as wrappers nested four deep. The cap asks only when the unread body
+    names git or gh as a word; `through` (holds `gh`) or `gitignore` is not one.
+    Found when this repo's own README row about wrappers asked in a heredoc."""
+    prose = ("git commit -F - <<'EOF'\nAlso inside a `bash -c`, `sh -c`, `pwsh -Command` "
+             f"or `cmd /c` body |\nresolved {word} symlinks, or the plugin's own root\nEOF")
+    assert _run(prose, monkeypatch, capsys) is None
+
+
+# requirement: git-guards / A destructive git command run through a shell wrapper asks first
+@pytest.mark.parametrize("name", ["git", "GIT", "gh", "/usr/bin/git", "git.exe"])
+def test_the_depth_cap_still_asks_when_the_unread_body_names_git(monkeypatch, capsys, name):
+    inner = f"{name} status"
+    for _ in range(hook._WRAP_DEPTH + 1):
+        inner = "eval " + json.dumps(inner)
+    payload = _run(inner, monkeypatch, capsys)
+    assert payload is not None and hook.WRAP_DEPTH_REASON in _reason(payload)
+
+
+# requirement: git-guards / A destructive git command run through a shell wrapper asks first
 def test_wrappers_nested_past_the_depth_cap_ask_rather_than_pass(monkeypatch, capsys):
     """Three levels are read. A fourth is not, and asks instead of being allowed:
     the body there was never read."""
