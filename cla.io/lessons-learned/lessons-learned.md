@@ -2,6 +2,14 @@
 
 <!-- Rolling log written by /cla:codify-learnings, which prepends each report. Newest entries at the top. -->
 
+## 2026-11-19 — codify-learnings
+- APPLIED 1. Gate every mutation batch's preflight (`plugin-tests/tests/consistency/test_mutation_batches_preflight.py`, script)
+- APPLIED 2. Derive the scan set instead of pinning a count (`plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py`, script)
+- APPLIED 3. Warn on a merge resolution that drops the other side's lines (`hooks/warn-lossy-merge-resolution.py`, hook)
+- Re-offense: `skills/_shared/references/conflict-resolution.md` → hook
+
+---
+
 ## 2026-10-26 — codify-learnings
 - APPLIED 1. Make the closing [y/n] the turn's only question (`.claude/plugins/cla/output-styles/CLA.md`, doc)
 - APPLIED 2. Name the matched inputs and judge when comparing scores (`CLAUDE.md`, doc)

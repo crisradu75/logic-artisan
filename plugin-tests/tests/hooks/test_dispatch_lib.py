@@ -516,6 +516,7 @@ _GIT_HOOK_FILES = [
     "_destructive_git_rules.py",
     "block-dishonest-commit.py",
     "ask-staged-debug-tag.py",
+    "warn-lossy-merge-resolution.py",
 ]
 
 # A matcher table that strips nothing itself, mapped to the file that strips

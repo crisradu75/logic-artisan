@@ -142,8 +142,8 @@ MUTANTS = [
     (
         "the git-probing enforcing hook is read per part as well",
         BASH_DISPATCHER,
-        '_READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py", "ask-destructive-git.py"})',
-        '_READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py"})',
+        '_READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py", "ask-destructive-git.py", "warn-lossy-merge-resolution.py"})',
+        '_READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py", "warn-lossy-merge-resolution.py"})',
         TARGETS,
     ),
 ]

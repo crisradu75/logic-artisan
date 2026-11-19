@@ -10,10 +10,10 @@ issued through it bypassed every git guard in the tree.
 
 Runs block-cd-in-bash, ask-destructive-git, block-unsafe-recursive-delete,
 block-dishonest-commit, guard-bash-text, ask-broad-git-add, ask-staged-debug-tag,
-warn-stacked-pr-merge, warn-stray-scratch-artifact, and
-warn-heredoc-escape-mangling in ONE Python process instead of ten, reading the
-tool-call JSON from stdin once and handing it to each in turn via
-`_dispatch_lib`. Cuts per-Bash-call hook overhead from 10 interpreter spawns to
+warn-stacked-pr-merge, warn-stray-scratch-artifact, warn-heredoc-escape-mangling
+and warn-lossy-merge-resolution in ONE Python process instead of eleven, reading
+the tool-call JSON from stdin once and handing it to each in turn via
+`_dispatch_lib`. Cuts per-Bash-call hook overhead from 11 interpreter spawns to
 1 — commonly cited as ~100-200ms of process-start cost each on Windows, though
 not independently benchmarked for this repo.
 
@@ -148,13 +148,14 @@ _HOOK_FILES = [
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",
     "warn-heredoc-escape-mangling.py",
+    "warn-lossy-merge-resolution.py",
 ]
 
 # Hooks that can only ever warn, and so may be dropped when too little handler
 # budget remains for them. Every hook that changes the OUTCOME of the call — one
 # that can return 2, plus `ask-destructive-git.py`, which returns 0 but escalates
 # to a permission prompt via stdout — is deliberately absent from this set AND
-# ordered ahead of these three in `_HOOK_FILES`, so budget pressure costs warnings
+# ordered ahead of them in `_HOOK_FILES`, so budget pressure costs warnings
 # before it can cost enforcement. Note the ask hook is why the wiring test cannot
 # key on `return 2` alone: skipping it would silently downgrade an ask to an
 # allow, an enforcement loss no exit code would reveal. The one named exception
@@ -163,6 +164,7 @@ _ADVISORY_HOOKS = frozenset({
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",
     "warn-heredoc-escape-mangling.py",
+    "warn-lossy-merge-resolution.py",
 })
 
 # Hooks that CAN escalate to an ask but are best-effort by their own design: each
@@ -201,8 +203,11 @@ _SKIPPABLE_HOOKS = _ADVISORY_HOOKS | _BEST_EFFORT_HOOKS
 # itself (`_scan`), joined so its checks see every part at once, and owns the
 # asks for what could not be read. Being listed here is also what lets an
 # enforcing hook spend from the budget: one that is not runs per part, and must
-# cost 0.0 in `HOOK_WORST_CASE_SECONDS`.
-_READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py", "ask-destructive-git.py"})
+# cost 0.0 in `HOOK_WORST_CASE_SECONDS`. `warn-lossy-merge-resolution.py` is
+# advisory and reads the wrapper bodies itself (`guard_parts`, cached), so its
+# git calls run once per command on one shared deadline rather than once per
+# part.
+_READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py", "ask-destructive-git.py", "warn-lossy-merge-resolution.py"})
 
 
 def _oversize_ask(stdin_text: str) -> str | None:

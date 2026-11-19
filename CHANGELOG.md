@@ -56,6 +56,13 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ### Added
 
+- **`warn-lossy-merge-resolution` warns before a merge commit that drops the other side's lines.**
+  On a `git commit` or `git merge --continue` while a merge is in progress, it compares the result
+  with what `MERGE_HEAD` added since the merge base and names each file that lacks such lines, with
+  up to five of them, as after a `git checkout --ours`. Advisory: the commit goes ahead, and a line
+  replaced on purpose is named too. It reads shell-wrapper bodies itself, so its git calls run once
+  per command on one 4 s deadline; it cannot see git commands inside a script the command runs.
+  The 18th guard hook.
 - **`pre-push` refuses deleting or moving a tag the remote already has,** for any tag name;
   override `ALLOW_TAG_REWRITE=1`. Re-copy the hook into each clone to pick it up. A `git push
   --mirror` deletion is never reported to the hook, which is a git limit (#556).
@@ -98,6 +105,11 @@ release done only once `check_catalog_tags.py --expect cla--v<new>` passes (#548
 eight skills that had none, so every shipped skill now has a spec (#549); mutation batches for
 `guard-bash-text`, `warn-stacked-pr-merge`, `warn-wholesale-rewrite`, `probe-python.sh` and the
 Copilot adapter, and full branch coverage of `sweep_changes.py` and `setup_guard.py` (#552, #554).
+The PR gate now runs `mutate.py`'s preflight over every mutation batch
+(`test_mutation_batches_preflight.py`), so a refactor that leaves a mutant's anchor stale fails the
+gate instead of waiting for the next opt-in mutation run. The hardcoded-path guard no longer pins its scan count:
+it checks that the scan reaches every tracked plugin file of the suffixes and roots it must cover
+(from `git ls-files`), so adding a shipped file no longer edits the same test lines in every PR.
 
 ## [2.4.0] — 2026-11-18
 
