@@ -596,8 +596,8 @@ def test_the_block_detector_is_silent_on_an_ask_hook():
 def test_skippable_hooks_run_after_every_enforcing_hook_in_the_bash_dispatcher():
     """Order is the Bash dispatcher's backstop: a skippable hook that runs before
     an enforcing one spends budget the enforcing one may need. Moving the 4 s
-    broad-add probe ahead of the 12 s destructive-git hook adds up to more than
-    the handler timeout, and a killed handler lets the call through."""
+    broad-add probe ahead of the destructive-git hook spends budget that hook's
+    probes may need, and a killed handler lets the call through."""
     dispatcher_path = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
     order = _hook_files_list(dispatcher_path)
     skippable = _named_collection(dispatcher_path, "_ADVISORY_HOOKS") | _best_effort(dispatcher_path)
@@ -610,8 +610,9 @@ def test_skippable_hooks_run_after_every_enforcing_hook_in_the_bash_dispatcher()
 
 
 def test_the_bash_dispatcher_declares_the_git_probing_ask_hooks_best_effort():
-    # Non-vacuity for the test above, and the budget arithmetic: the enforcing
-    # hooks already spend the whole budget, so these hooks fit only as skippable.
+    # Non-vacuity for the test above. These hooks were declared best-effort when
+    # the enforcing hooks spent the whole budget; 6s is free since
+    # `ask-destructive-git.py`'s probes share one deadline, room for one of them.
     assert _best_effort(_HOOKS_DIR / "dispatch-bash-pretooluse.py") == {
         "ask-broad-git-add.py", "ask-staged-debug-tag.py",
     }

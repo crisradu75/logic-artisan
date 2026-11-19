@@ -498,12 +498,26 @@ def test_ensure_hooks_dir_importable_is_idempotent_and_adds_the_hooks_dir():
         sys.path[:] = original
 
 
+# The files that DEFINE git matchers. `ask-destructive-git.py` defines none of
+# its own any more: its matchers live in `_shell_read.py` (the ones the shell
+# reading rewrites) and `_destructive_git_rules.py` (the rest), and it imports
+# them.
 _GIT_HOOK_FILES = [
     "warn-stray-scratch-artifact.py",
-    "ask-destructive-git.py",
+    "_shell_read.py",
+    "_destructive_git_rules.py",
     "block-dishonest-commit.py",
     "ask-staged-debug-tag.py",
 ]
+
+# A matcher table that strips nothing itself, mapped to the file that strips
+# every text before the table's matchers read it. `ask-destructive-git.py`'s
+# `_scan` hands its checks only `_shell_read._stripped` text, part by part.
+_STRIPPED_BY = {"_destructive_git_rules.py": "ask-destructive-git.py"}
+
+# Every file that imports `_dispatch_lib` (or a sibling that does) at module
+# level, and so must put the hooks dir on `sys.path` first.
+_BOOTSTRAPPED_FILES = _GIT_HOOK_FILES + ["ask-destructive-git.py", "_destructive_git_probes.py"]
 
 
 @pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
@@ -870,7 +884,7 @@ def test_compose_output_with_nothing_to_say_is_empty():
     assert lib.compose_output([]) == ""
 
 
-@pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
+@pytest.mark.parametrize("filename", _BOOTSTRAPPED_FILES)
 def test_git_hooks_bootstrap_their_own_sys_path_for_standalone_runs(filename):
     # These are loaded two ways — in-process by a dispatcher, and directly by
     # pytest — and hooks.json invokes a few of them standalone. In a standalone
@@ -1036,6 +1050,14 @@ def test_every_git_global_opts_consumer_strips_quoted_spans(filename):
     source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
     if "GitInvocation" not in source and "GIT_GLOBAL_OPTS" not in source:
         pytest.skip(f"{filename} does not match git global options")
+    if filename in _STRIPPED_BY:
+        # A table: the scanner that feeds it must strip, through the shell
+        # reading's cached `_stripped`, which must call the real helper.
+        scanner = (_HOOKS_DIR / _STRIPPED_BY[filename]).read_text(encoding="utf-8")
+        assert re.search(r"^    _stripped,$", scanner, re.MULTILINE) and "_stripped(" in scanner, (
+            f"{_STRIPPED_BY[filename]} no longer strips the text {filename}'s matchers read"
+        )
+        filename, source = "_shell_read.py", (_HOOKS_DIR / "_shell_read.py").read_text(encoding="utf-8")
     assert re.search(
         r"^from _dispatch_lib import [^\n]*\bstrip_quoted_spans\b", source, re.MULTILINE
     ), (

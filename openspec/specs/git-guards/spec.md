@@ -80,7 +80,7 @@ Setting `ALLOW_DESTRUCTIVE_GIT=1` SHALL drop every prompt the guard hooks raise 
 
 ### Requirement: A push that skips the pre-push guard asks first
 
-The guard hooks SHALL ask the user before a `git push` that skips the default-branch `pre-push` guard, by `--no-verify`, a different `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1` typed into the command.
+The guard hooks SHALL ask the user before a `git push` that skips the `pre-push` guard, by `--no-verify`, a different `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1` or `ALLOW_TAG_REWRITE=1` typed into the command, in shell or PowerShell `$env:` form.
 
 #### Scenario: A push with no-verify
 
@@ -91,6 +91,11 @@ The guard hooks SHALL ask the user before a `git push` that skips the default-br
 
 - **WHEN** an agent runs `git push origin feature/x`
 - **THEN** no prompt about the pre-push guard is shown
+
+#### Scenario: A push carrying the tag override
+
+- **WHEN** an agent runs `ALLOW_TAG_REWRITE=1 git push origin :refs/tags/v1` or `$env:ALLOW_TAG_REWRITE='1'; git push origin v1`
+- **THEN** the user is asked before it runs
 
 ### Requirement: Direct pushes to main are refused
 
@@ -288,6 +293,20 @@ The guard hooks SHALL finish reading any command up to the dispatcher's scan lim
 
 - **WHEN** an agent runs a command of hundreds of thousands of characters of repeated `eval` words followed by `git push -f origin x`
 - **THEN** the user is asked before it runs, within two seconds of the guard's processing time
+
+### Requirement: A mirror push asks first
+
+The guard hooks SHALL ask the user before a `git push --mirror`, which can delete remote branches and tags that the `pre-push` guard is never asked about, and SHALL NOT ask about `--mirror` on any other git command.
+
+#### Scenario: A mirror push
+
+- **WHEN** an agent runs `git push --mirror origin` or `bash -c "git push --mirror"`
+- **THEN** the user is asked before it runs
+
+#### Scenario: A mirror clone
+
+- **WHEN** an agent runs `git clone --mirror https://example.com/x.git`
+- **THEN** no prompt is shown
 
 ### Requirement: A push that deletes or moves a tag on the remote is refused
 

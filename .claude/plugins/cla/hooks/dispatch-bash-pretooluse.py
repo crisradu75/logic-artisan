@@ -26,10 +26,31 @@ Each sibling hook file is untouched and still independently runnable/importable
 exactly as before (loaded here via the same importlib technique the test suite
 uses) — this file only orchestrates them; it holds no hook logic of its own.
 
-Order and semantics preserved exactly, except one new behaviour: an oversize command
-asks before any guard runs.
+Order and semantics preserved exactly, except two behaviours: an oversize command
+asks before any guard runs, and a guard sees what a shell wrapper hands on.
   - A command longer than `MAX_SCANNED_COMMAND_CHARS` runs NO guard: the dispatcher
     answers with one `ask` naming its size and the cap, before the first hook.
+  - WRAPPED FORMS. Before the first hook, `_shell_read.guard_parts` reads the
+    command once: each shell wrapper's body (`bash -c "..."`, `sh -c`, `eval
+    "..."`, `pwsh -Command`, `Invoke-Expression`, `cmd /c`, nested up to three
+    deep) becomes an extra PART: the command the wrapper's shell runs, its own
+    option words dropped (`bash -c 'cp a ../b'` is `cp a ../b`). Heredoc text is
+    data but for an unquoted body's `$(...)` and backticks, and a wrapper behind
+    a remote runner (`docker exec`, `ssh <host>`, ...) is not read, since its
+    body does not run here; `_shell_read.py` names the rules. Every guard
+    except those in `_READS_COMMAND_ONLY` then runs on the command and again on
+    each part, as if the part had been typed bare, so `bash -c "echo hi > ../x"`
+    asks and `eval 'git commit -m "Measured-by: none"'` blocks like their bare
+    forms. The parts are handed on whole, one run
+    each, not joined: a quote left open in one part cannot pair with one in the
+    next. Same order, same precedence: the first block wins, asks and warnings
+    from every run merge (a repeated text once). A skippable hook's runs each
+    need room in the budget, like its first. When the reading raises, stops at
+    a cap, or the command plus its parts would pass `MAX_SCANNED_COMMAND_CHARS`,
+    the call asks (`_unread_parts_ask`) on top of what the guards decide, since
+    part of what the wrapper runs went unchecked. `ask-destructive-git.py`
+    reads its own cached expansion and keeps its own asks for what it could
+    not read, with reasons unchanged.
   - Any hook returning 2 blocks: its stderr message is shown, prefixed with any
     non-blocking warning text already produced by an earlier hook in this same
     run (not silently dropped), then this process exits 2.
@@ -78,14 +99,22 @@ try:
         Deadline,
         compose_output,
         fit_json_payload,
-        run_hook_file,
     )
+    from _dispatch_lib import run_hook_file_each
     # One definition for both dispatchers; the name stays for their callers.
     from _dispatch_lib import extract_ask as _extract_ask
 except Exception as _exc:  # noqa: BLE001 -- any load failure must fail closed
     _LIB_ERROR: Exception | None = _exc
 else:
     _LIB_ERROR = None
+
+# Guarded on its own: when the shell reading cannot load, the guards still run
+# on the command alone, and `ask-destructive-git.py`, which imports the same
+# module, fails to load and asks as an enforcing hook that could not run.
+try:
+    from _shell_read import guard_parts as _guard_parts
+except Exception:  # noqa: BLE001 -- see above
+    _guard_parts = None
 
 # True after `main()` or `_fail_closed` asked because a guard could NOT run on
 # this call (an enforcing hook that failed to load or crashed, or the library
@@ -146,16 +175,26 @@ _ADVISORY_HOOKS = frozenset({
 # hook not named here, and ordered ahead of the advisory hooks so warnings are
 # what budget pressure costs first.
 #
-# `ask-broad-git-add.py` and `ask-staged-debug-tag.py` are here because the
-# enforcing hooks above already spend the whole budget (`HOOK_WORST_CASE_SECONDS`),
-# so neither can be enforcing without raising the handler timeout for every
-# consuming repo. (The text-only half of the commit checks,
-# `block-dishonest-commit.py`, costs nothing and is enforcing.)
+# `ask-broad-git-add.py` and `ask-staged-debug-tag.py` are here because, when
+# they were added, the enforcing hooks above spent the whole budget
+# (`HOOK_WORST_CASE_SECONDS`). Since `ask-destructive-git.py`'s probes share one
+# 6s deadline, 6s of it is free: room for ONE more enforcing hook with git
+# calls (either of these fits), not yet spent. (The text-only half of the
+# commit checks, `block-dishonest-commit.py`, costs nothing and is enforcing.)
 _BEST_EFFORT_HOOKS = frozenset({
     "ask-broad-git-add.py",
     "ask-staged-debug-tag.py",
 })
 _SKIPPABLE_HOOKS = _ADVISORY_HOOKS | _BEST_EFFORT_HOOKS
+
+# Guards that read the command alone, not the parts `_shell_read.guard_parts` finds.
+# `block-cd-in-bash.py` polices the SESSION shell's directory, which a wrapper's
+# child shell (`bash -c "cd sub && make"`) does not change; its own docstring
+# allows a subshell for the same reason. Named miss: `eval "cd x"` does change
+# it, and is not read. `ask-destructive-git.py` reads the same cached expansion
+# itself (`_scan`), joined so its checks see every part at once, and owns the
+# asks for what could not be read.
+_READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py", "ask-destructive-git.py"})
 
 
 def _oversize_ask(stdin_text: str) -> str | None:
@@ -180,6 +219,54 @@ def _oversize_ask(stdin_text: str) -> str | None:
     )
 
 
+def _unread_parts_ask(why: str) -> str:
+    """The ask reason when the guards could not read every wrapper body."""
+    return (
+        "this command hands text to a shell wrapper (`bash -c`, `eval`, `pwsh -Command`, "
+        f"...) and {why}, so the cla guards checked the command itself but not all of what "
+        "the wrapper runs. Confirm only if you know it is safe, or split it into smaller "
+        "commands. (hook: dispatch-bash-pretooluse.py)"
+    )
+
+
+def _part_inputs(stdin_text: str) -> tuple[list[str], str | None]:
+    """The hook input for each extra part of the command, in order (the same
+    payload with `tool_input.command` replaced by the part), and the reason to
+    ask when the guards cannot read all of them, else None.
+
+    No parts and no reason when there is no command or nothing to add. A reason
+    when the reading stopped at a cap (the parts it found are still read), when
+    the command and its parts together are longer than
+    `MAX_SCANNED_COMMAND_CHARS`, the length the guards are timed for (none is
+    read), or when the reading raised (none is read). Each of those asks rather
+    than allowing what no guard checked."""
+    if _guard_parts is None:
+        return [], None  # `ask-destructive-git.py` fails to load on the same import and asks
+    try:
+        payload = json.loads(stdin_text)
+        tool_input = payload["tool_input"]
+        command = tool_input["command"]
+    except (ValueError, RecursionError, TypeError, KeyError):
+        return [], None  # no command to read: the guards handle the input as it is
+    if not isinstance(command, str) or not command:
+        return [], None
+    try:
+        extra, complete = _guard_parts(command)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring
+        return [], _unread_parts_ask(f"reading those bodies failed ({type(exc).__name__}: {exc})")
+    if len(command) + sum(len(p) for p in extra) > MAX_SCANNED_COMMAND_CHARS:
+        return [], _unread_parts_ask(
+            f"the command and those bodies together are over the {MAX_SCANNED_COMMAND_CHARS:,}-character "
+            "limit the guards scan"
+        )
+    inputs = [
+        json.dumps({**payload, "tool_input": {**tool_input, "command": part}})
+        for part in extra
+    ]
+    return inputs, None if complete else _unread_parts_ask(
+        "its bodies are longer than the guards read within their time"
+    )
+
 def main() -> int:
     global GUARD_NOT_RUN
     GUARD_NOT_RUN = False
@@ -195,8 +282,9 @@ def main() -> int:
         }}))
         return 0
     deadline = Deadline()
+    part_inputs, unread_parts = _part_inputs(stdin_text)
     warnings: list[str] = []
-    asks: list[str] = []
+    asks: list[str] = [unread_parts] if unread_parts else []
     skipped: list[str] = []
     errored = False
     errored_enforcing: list[str] = []
@@ -207,32 +295,47 @@ def main() -> int:
             skipped.append(filename)
             continue
 
-        result = run_hook_file(filename, stdin_text)
-        errored = errored or result.errored
-        # An ENFORCING hook that failed to load did not run its check, and from
-        # the outside that is indistinguishable from one that ran and allowed.
-        # Tracked separately from `errored` so the escalation below fires only
-        # for guards whose absence actually matters.
-        if result.errored and filename not in _SKIPPABLE_HOOKS:
-            errored_enforcing.append(filename)
+        inputs = [stdin_text] + ([] if filename in _READS_COMMAND_ONLY else part_inputs)
+        # This hook's own texts, so a warning or ask it repeats on several parts
+        # is kept once; another hook's identical text is still its own.
+        said: set[str] = set()
+        for run, result in enumerate(run_hook_file_each(filename, inputs)):
+            errored = errored or result.errored
+            # An ENFORCING hook that failed to load did not run its check, and from
+            # the outside that is indistinguishable from one that ran and allowed.
+            # Tracked separately from `errored` so the escalation below fires only
+            # for guards whose absence actually matters.
+            if result.errored and filename not in _SKIPPABLE_HOOKS and filename not in errored_enforcing:
+                errored_enforcing.append(filename)
 
-        # Precedence is deny > ask > allow, matching the documented permission
-        # evaluation order: a block short-circuits, and any pending `ask` is
-        # moot once the call is refused outright.
-        if result.code == 2:
-            # A guard has already blocked: a failure while formatting the message must
-            # not turn that block into the crash path's ask, so fall back to the raw text.
-            try:
-                sys.stderr.write(compose_output(warnings, must_keep=result.stderr))
-            except Exception:  # noqa: BLE001
-                sys.stderr.write(result.stderr)
-            return 2
+            # Precedence is deny > ask > allow, matching the documented permission
+            # evaluation order: a block short-circuits, and any pending `ask` is
+            # moot once the call is refused outright.
+            if result.code == 2:
+                # A guard has already blocked: a failure while formatting the message must
+                # not turn that block into the crash path's ask, so fall back to the raw text.
+                try:
+                    sys.stderr.write(compose_output(warnings, must_keep=result.stderr))
+                except Exception:  # noqa: BLE001
+                    sys.stderr.write(result.stderr)
+                return 2
 
-        if result.stderr.strip():
-            warnings.append(result.stderr.rstrip("\n"))
-        ask = _extract_ask(result.stdout)
-        if ask:
-            asks.append(ask)
+            warning = result.stderr.rstrip("\n")
+            if warning.strip() and warning not in said:
+                said.add(warning)
+                warnings.append(warning)
+            ask = _extract_ask(result.stdout)
+            if ask and ask not in said:
+                said.add(ask)
+                asks.append(ask)
+            # The next run is on a part: a skippable hook needs room for it too.
+            if (
+                filename in _SKIPPABLE_HOOKS
+                and run + 1 < len(inputs)
+                and not deadline.has_room(cost)
+            ):
+                skipped.append(filename)
+                break
 
     # Skips go to stderr (the debug log) ONLY, deliberately, and are not added
     # to `warnings` — which is what becomes additionalContext below.

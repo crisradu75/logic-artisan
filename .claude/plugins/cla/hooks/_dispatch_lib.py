@@ -134,12 +134,15 @@ HANDLER_TIMEOUT_SECONDS = 15.0
 # handler timeout (a stale value exported into the environment). The fallback
 # is load-bearing, not decorative.
 #
-# NOTE the resulting tightness, which is deliberate: the FALLBACK budget is
-# exactly the enforcing sum both dispatchers carry (12.0). Those sums are
-# worst-case bounds assuming every hook's git call times out, so real runs sit
-# far below them -- but the next hook added, or the next timeout raised, will
-# fail `test_enforcing_hooks_fit_inside_the_handler_budget` immediately rather
-# than silently overrunning. That test keeps using this constant: it is the
+# The FALLBACK budget (12.0) is twice the enforcing sum each dispatcher carries
+# (6.0: `ask-destructive-git.py` in the Bash one, `block-worktree-path-escape.py`
+# in the Edit/Write one). The Bash sum was 12.0, the whole fallback, until that
+# hook's probes moved onto one shared deadline; the 6s it freed is room for one
+# more enforcing guard with git calls. Those sums are worst-case bounds assuming
+# every git call times out, so real runs sit far below them -- and a hook added
+# past the budget, or a timeout raised past it, fails
+# `test_enforcing_hooks_fit_inside_the_handler_budget` immediately rather than
+# silently overrunning. That test keeps using this constant: it is the
 # worst case, the budget a run gets when nothing was measured. On a quiet
 # machine the measured budget is larger (15 - ~0.7 - 1.0), which is what frees
 # room for the advisory hooks after the enforcing ones; on a loaded one it is
@@ -210,20 +213,17 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # Regex scan of the new text of a write under `cla.io/<briefing dir>/`; no
     # subprocess and no file I/O, so it is enforcing in the Edit/Write dispatcher.
     "ask-secret-in-checkpoint.py": 0.0,
-    # 3 x run_git(3s): one `git status --porcelain` for the checkout/restore/
-    # switch paths, one for the `git clean` paths, and one memoised pathless
-    # fallback both fall back to when git refuses a merged pathspec batch. Every
-    # other check in that hook is pure text inspection, and the probes are
-    # collected across all matching invocations rather than run per invocation,
-    # so a `&&` chain of six `git checkout`s is still one process. Plus one
-    # `git rev-parse --absolute-git-dir` for a saving `git stash` (4 x 3s): a
-    # command whose stashes span several directories is asked about, not probed.
-    # The history checks (a rebase of pushed commits, `switch -C`/`checkout -B`
-    # over unique commits, a merging switch over staged work) run AFTER those
-    # four and only spend what they left of this same 12s: each of their calls
-    # gets `min(3s, time left)` and none starts once it is gone
-    # (`_PROBE_BUDGET_SECONDS` in that hook). They add calls, never time.
-    "ask-destructive-git.py": 12.0,
+    # 2 x run_git(3s), as ONE deadline every git call of that hook shares
+    # (`_PROBE_BUDGET_SECONDS` in `_destructive_git_probes.py`): each call gets
+    # `min(3s, time left)` and none starts once it is gone, so this figure holds
+    # however many call sites there are. Those are up to four fail-closed ones
+    # (a `git status --porcelain` for the checkout/restore/switch paths, one for
+    # the `git clean` paths, a memoised pathless fallback, a `rev-parse
+    # --absolute-git-dir` for a saving `git stash`), then the fail-open history
+    # checks (a rebase of pushed commits, `switch -C`/`checkout -B` over unique
+    # commits, a merging switch over staged work), which spend what the first
+    # four left. Before the deadline was shared this entry was 12.0 (4 x 3s).
+    "ask-destructive-git.py": 6.0,
     # 2 x _run_git(3s): combined `rev-parse` + `--show-toplevel`.
     "block-worktree-path-escape.py": 6.0,
     # 1 x `git status --porcelain`(4s) — walks the working tree, so it gets more
@@ -871,7 +871,7 @@ _GIT_OPT_SHORT = r"-[A-Za-z]"
 _GIT_OPT_LONG = r"--[A-Za-z][\w-]*(?:=\S+)?"
 # The grammar as one regex. Kept as the reference definition and for repos
 # whose own hooks import it, but no guard here composes it into a search
-# any more: see `GitInvocation` for why (#526).
+# any more: see `GitInvocation` for why (it took 25 s on a 28 KB command).
 GIT_GLOBAL_OPTS = (
     r"(?:"  # outer repetition group — zero or more options, each followed by whitespace
     r"(?:"  # inner alternation — exactly one option-shape per repetition
@@ -931,7 +931,7 @@ class GitInvocation:
     """Finds `GIT_CMD + GIT_SEP + GIT_GLOBAL_OPTS + after` in linear time.
 
     Same matches, groups and spans as `re.compile(<that>).finditer` and
-    `.search`, but without the regex's re-walks (#526). The regex walks the
+    `.search`, but without the regex's re-walks. The regex walks the
     option run again from every `git` inside it, quadratic on `git -c git
     -c git ... status`; and `-c`/`-C` and the named long options each parse
     two ways (with a value, or as a bare flag), so on `git -c -c -c ... x` it
@@ -1100,3 +1100,21 @@ def run_hook_file(filename: str, stdin_text: str, argv: list[str] | None = None)
         traceback.print_exc(file=err)
         return HookResult(0, "", err.getvalue(), errored=True)
     return run_hook(mod, stdin_text, argv=argv)
+
+
+def run_hook_file_each(filename: str, stdin_texts: list[str]):
+    """`run_hook_file` over several inputs, loading the file once: yields one
+    `HookResult` per text, in order, so the caller can stop early (on a block,
+    or when the budget runs out) and nothing after that runs. A load failure
+    yields its one errored result and stops, as `run_hook_file` reports it.
+
+    The Bash dispatcher runs a guard on the command and then on each part
+    `_shell_read.guard_parts` found in it; loading the file once per part would
+    cost a module execution per part."""
+    try:
+        mod = load_hook(filename)
+    except Exception:
+        yield run_hook_file(filename, stdin_texts[0] if stdin_texts else "")
+        return
+    for text in stdin_texts:
+        yield run_hook(mod, text)
