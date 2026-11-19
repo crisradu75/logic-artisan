@@ -56,8 +56,10 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
 
 - **A git hook, not a parser, guards `main`.** A Claude Code hook would have to parse each push
   command, and every spelling it missed was a hole. The `pre-push` hook reads the refspec git has
-  already resolved, so no way of naming the target branch gets past it; only `--no-verify` or the
-  documented `ALLOW_PUSH_TO_MAIN=1` emergency override skips it, and a session is asked first
+  already resolved, so no way of naming the target branch gets past it; it also refuses deleting
+  or moving a tag the remote already has, so a published release tag stays put. `--no-verify`
+  skips it, and the documented overrides `ALLOW_PUSH_TO_MAIN=1` and `ALLOW_TAG_REWRITE=1` each lift
+  one refusal; a session is asked first. A `git push --mirror` deletion never reaches the hook
   ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet)).
 - **An allowlist decides what ships.** The obvious denylist was measured to miss 7 of 72 dev-only
   files, including the release skill itself. An 18-pattern allowlist is checked before every tag
