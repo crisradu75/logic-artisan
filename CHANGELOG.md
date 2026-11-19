@@ -8,6 +8,8 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-11-19
+
 ### Changed
 
 - **An implementer's model is stated once.** `model-routing.md` holds one implementer table, inside
