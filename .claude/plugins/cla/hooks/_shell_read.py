@@ -742,9 +742,10 @@ _SEGMENT_STOP = "\n;&|(){}`!"
 _ASSIGNMENT_WORD = re.compile(r"[A-Za-z_]\w*=")
 _RUNNER_PREFIXES = frozenset({"sudo", "env", "nohup", "time", "command", "nice", "stdbuf", "timeout"})
 # The last letter of a prefix's short option that takes the next word as its value
-# (`sudo -u USER`, `-g GROUP`, `env -C DIR`, `-S STRING`, `nice -n N`, `timeout -s SIG`, `-k T`).
+# (`sudo -u USER`, `-g GROUP`, `-D DIR`, `-h HOST`, `-p PROMPT`, `-r`/`-t`/`-T`/`-R`/`-U`, `env -C DIR`,
+# `-S STRING`, `nice -n N`, `timeout -s SIG`, `-k T`).
 # An option outside what this knows makes `_remote` read the body: checking is the safe side.
-_PREFIX_VALUE_LETTERS = frozenset("ugCSnsk")
+_PREFIX_VALUE_LETTERS = frozenset("ugCSnskDhprtTRU")
 _DURATION = re.compile(r"\d+(?:\.\d+)?[smhd]?$")
 _NAME_USE = re.compile(r"\$\{?([A-Za-z_]\w*)")
 # PowerShell parameters that take the next word as a value, as prefixes of

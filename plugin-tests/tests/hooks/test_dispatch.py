@@ -1457,6 +1457,10 @@ def test_prose_naming_a_link_delete_in_an_unquoted_heredoc_is_not_blocked(tmp_pa
         "sudo -iu docker bash -c 'cp a ../../b'",
         "sudo -Hu ssh bash -c 'cp a ../../b'",
         "env --chdir oc bash -c 'cp a ../../b'",
+        # review round 4: sudo's other value-taking options
+        "sudo -D docker bash -c 'cp a ../../b'",
+        "sudo -h ssh bash -c 'cp a ../../b'",
+        "sudo -p docker bash -c 'cp a ../../b'",
     ],
 )
 def test_a_runner_name_that_is_not_the_command_word_hides_nothing(tmp_path, command):
