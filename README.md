@@ -48,7 +48,7 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 
 ## Engineering highlights
 
-**19 skills · 17 guard hooks · 4,865 tests · 67 mutation batches · 17 live OpenSpec specs ·
+**19 skills · 17 guard hooks · ~4,900 tests · 67 mutation batches · 17 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
@@ -149,6 +149,13 @@ copilot plugin install cla@cris-logic-artisan
 Update, troubleshooting and a Copilot-side writing-style stand-in are in the "GitHub Copilot CLI"
 subsection of the [plugin README](.claude/plugins/cla/README.md).
 
+Guard hooks are wired for Copilot CLI since `cla--v2.3.0`; their limits (fail-open timeout,
+autopilot denies confirmations, untested PowerShell wiring) are in the
+[plugin README hook-caveats section](.claude/plugins/cla/README.md#copilot-cli-hook-caveats).
+
+<details>
+<summary>What was live-tested, and how (Copilot CLI 1.0.105 and 1.0.109)</summary>
+
 Validated in that run:
 
 - Marketplace registration and browsing succeeded, and installation listed 19 skills.
@@ -188,6 +195,8 @@ was present. This confirms that a timed-out hook does not block the tool call. E
 behavior is adapter-tested but was not live-tested; Windows PowerShell wiring is also untested.
 The hook wiring first ships in `cla--v2.3.0`; the smoke test above predates it. Follow-up work is
 tracked from issue #302.
+
+</details>
 
 The Claude Code install above is unchanged by any of this.
 

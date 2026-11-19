@@ -665,9 +665,10 @@ A guard is a script in `.claude/plugins/cla/hooks/` that a dispatcher runs. Each
 what enforces it; read that code rather than a copy of it here.
 
 1. **Name it by what it does to the call.** `block-<what>.py` can refuse (exit 2), `ask-<what>.py`
-   escalates to a permission prompt, `warn-<what>.py` only adds advice. The README's recount
-   command (`ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn)-.*\.py$'`) counts guards by
-   this prefix, so a guard with another name is not counted.
+   escalates to a permission prompt, `warn-<what>.py` only adds advice, and `guard-<what>.py` runs
+   several checks that each block, ask or warn (`guard-bash-text.py`). The README's recount command
+   (`ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn|guard)-.*\.py$'`) counts guards by
+   these four prefixes, so a guard with another name is not counted.
 2. **Put it in a dispatcher.** Add the file name to `_HOOK_FILES` in
    `hooks/dispatch-bash-pretooluse.py` (Bash and PowerShell) or
    `hooks/dispatch-edit-write-pretooluse.py` (Edit and Write). A guard that can change the outcome

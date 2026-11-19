@@ -133,6 +133,19 @@ cp "<plugin>/hooks/git/pre-push" .git/hooks/pre-push && chmod +x .git/hooks/pre-
 
 Until you run that, nothing stops a direct push.
 
+**What the guards are, and what they are not.** They catch an agent's mistakes; they are not a
+sandbox, and a determined or confused command can get past them:
+
+- **They read command text.** A command hidden inside another layer of shell text is not parsed,
+  so its destructive form runs with no prompt: `bash -c "git push -f ..."`, `sh -c '...'`,
+  `eval "..."`, or a git subcommand held in a variable (`X=push; git $X -f`).
+- **They need Python 3.8+.** Without it each hook prints that the guards are NOT running and lets
+  the call through; failing closed would leave no Bash, Edit or Write at all.
+- **They have a time budget.** Advisory and best-effort checks are skipped when it runs out; a hook
+  the agent's runtime kills at its own timeout lets the call through.
+- **The `pre-push` hook is the exception.** It reads the ref git has already resolved, so no
+  spelling of the command gets past it, short of the overrides named above.
+
 ## Architecture — the fact/procedure split
 
 CLA is portable because it separates *procedure* (generic, synced everywhere) from *facts*
@@ -188,20 +201,22 @@ Scope is Copilot CLI only; the Copilot app and cloud agent are not supported. Co
 locations below are from GitHub's Copilot CLI documentation, read 2026-11-11
 (*Adding custom instructions for GitHub Copilot CLI*, *Finding and installing plugins for GitHub
 Copilot CLI*, *GitHub Copilot CLI plugin reference*, all on docs.github.com). What was live-tested
-is under *Layout* below (install and both helper agents validated with Copilot CLI 1.0.105 and
-release `cla--v2.2.3`); the instructions file below was not.
+is under *Copilot CLI hook caveats* below (install and both helper agents validated with Copilot
+CLI 1.0.105 and release `cla--v2.2.3`); the instructions file below was not.
 
 ```bash
 copilot plugin marketplace add crisradu75/logic-artisan
 copilot plugin install cla@cris-logic-artisan
-copilot plugin marketplace update    # re-fetch the catalog
-copilot plugin update cla            # takes the plugin name
+copilot plugin marketplace update cris-logic-artisan   # re-fetch the catalog
+copilot plugin update cla@cris-logic-artisan
 copilot plugin list
 ```
 
-- **Update.** Run `copilot plugin marketplace update` (alias `refresh`; it re-fetches the catalog,
-  and every registered marketplace if no name is given), then `copilot plugin update cla`.
-- **Troubleshoot.** `copilot plugin <subcommand> --help` lists the options. `copilot plugin disable
+- **Update.** Run `copilot plugin marketplace update cris-logic-artisan` (alias `refresh`; with no
+  name it re-fetches every registered marketplace), then `copilot plugin update cla@cris-logic-artisan`.
+- **Troubleshoot.** Check registration with `copilot plugin marketplace list`, installation with
+  `copilot plugin list`, and, from the consuming repo, instruction discovery with
+  `copilot instruction list`. `copilot plugin <subcommand> --help` lists the options. `copilot plugin disable
   cla` turns the plugin off without removing it. A marketplace cannot be removed while its plugins
   are installed; add `--force` to uninstall them too, and name the marketplace as `list` shows it.
   Installed plugins live under `~/.copilot/installed-plugins/`; a repository default is turned off
@@ -210,7 +225,8 @@ copilot plugin list
 - **Instructions are not shipped by the plugin.** The plugin reference lists no instructions
   component, so the plugin cannot deliver the writing convention that `output-styles/CLA.md` gives
   Claude Code. Copilot CLI instead reads instructions from files you own: in your repo
-  `.github/copilot-instructions.md` or `AGENTS.md`, or for all your repos
+  `.github/copilot-instructions.md` (the usual choice: copy `output-styles/COPILOT.md` there) or
+  `AGENTS.md`, or for all your repos
   `$HOME/.copilot/copilot-instructions.md` (the docs say `COPILOT_HOME` replaces `$HOME/.copilot`).
   The docs define no precedence between these files and say to avoid conflicting instructions, so
   put the text below in one of them, not several. Copilot CLI also reads `CLAUDE.md`, `GEMINI.md`,
@@ -354,13 +370,8 @@ files. Other skill text may still name `AskUserQuestion` or `${CLAUDE_PLUGIN_ROO
 not provide those Claude-specific interfaces or expand that placeholder for the plugin. Copilot app
 and cloud agent support are out of scope.
 
-To update the Copilot CLI install, run `copilot plugin marketplace update cris-logic-artisan`,
-then `copilot plugin update cla@cris-logic-artisan`. Copilot CLI does not apply plugin output styles
-automatically. Copy `output-styles/COPILOT.md` into the consuming repository as
-`.github/copilot-instructions.md`. Check registration with `copilot plugin marketplace list`,
-installation with `copilot plugin list`, and instruction discovery from the consuming repository
-with `copilot instruction list`. Skills that require Claude-only agent delegation, skill chaining,
-model routing, or permission settings are marked unsupported in their `SKILL.md` files.
+Install, update, troubleshooting and the instructions file (Copilot CLI does not apply plugin output
+styles) are under *GitHub Copilot CLI* in *Installing and updating* above.
 
 That is the whole published tree. The suite, the mutation corpora, the pytest configuration and the
 release workflow all live outside it, in the canonical source repo only — see *Testing* above.
