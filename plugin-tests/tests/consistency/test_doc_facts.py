@@ -207,21 +207,26 @@ def test_the_invocation_column_is_not_vacuous() -> None:
 
     Two empty sets are equal, so the match test below passes on a tree where the
     column was deleted and every skill dropped the frontmatter key. The floor is
-    the real population, not a decorative 1: measured with
-    `grep -l '^disable-model-invocation: true' .claude/plugins/cla/skills/*/SKILL.md | wc -l`
-    -> 2 (multi-lite, multi-pr). A floor below its population permits the
-    shrinkage it exists to catch.
+    the population `CLAUDE.md`'s own sentence names (read from that file, not
+    copied here), so it moves when a skill is added to or dropped from the
+    sentence and cannot sit below the real population as a number once did.
     """
+    claude_md = _DOCS["CLAUDE.md"].read_text(encoding="utf-8")
+    blocks = _claim_blocks(claude_md, _INVOCATION_CLAIM_PHRASE)
+    assert len(blocks) == 1, "CLAUDE.md must hold exactly one invocation sentence"
+    floor = len(_skills_named_in(blocks[0]))
+    assert floor >= 1, "CLAUDE.md's invocation sentence names no shipped skill"
     declared = skills_declaring_user_only()
     marked = skills_marked_user_only_in_the_table()
-    assert len(declared) >= 2, (
-        f"{len(declared)} skill(s) declare `disable-model-invocation: true`; the "
-        f"tree had 2 when this floor was written. A genuine drop to one means "
-        f"deleting a skill — update the floor in that commit, never to go green."
+    assert len(declared) >= floor, (
+        f"{len(declared)} skill(s) declare `disable-model-invocation: true` but "
+        f"CLAUDE.md names {floor}. A genuine drop means deleting a skill: update "
+        f"CLAUDE.md in that commit, never lower this check to go green."
     )
-    assert len(marked) >= 2, (
-        f"the phase table marks {len(marked)} skill(s) {_USER_ONLY_MARK}. Either "
-        f"the column was dropped or its marker was reworded."
+    assert len(marked) >= floor, (
+        f"the phase table marks {len(marked)} skill(s) {_USER_ONLY_MARK}, "
+        f"CLAUDE.md names {floor}. Either the column was dropped or its marker "
+        f"was reworded."
     )
 
 

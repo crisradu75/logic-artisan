@@ -20,7 +20,7 @@ Deliberately absent, because no correct input can tell them from the real code:
 - dropping `or not cwd` from the cwd fallback. An empty cwd joins to the bare
   path, which `realpath` resolves against the process cwd: the same directory
   the fallback picks.
-- dropping `if not stdout_text: return None` in the dispatcher's `_extract_ask`.
+- dropping `if not stdout_text: return None` in `_dispatch_lib.extract_ask`.
   `json.loads("")` raises the `JSONDecodeError` the next line already maps to
   None.
 

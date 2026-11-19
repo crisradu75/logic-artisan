@@ -11,7 +11,11 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]                 # <repo>/plugin-tests
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 DOC = PLUGIN / "skills" / "annotate" / "scripts" / "render_doc.py"
+DOC_JS_PAGE = DOC.with_name("render_doc_js_page.py")
+DOC_JS_NOTES = DOC.with_name("render_doc_js_notes.py")
+DOC_CSS = DOC.with_name("render_doc_css.py")
 CHANGE = PLUGIN / "skills" / "annotate" / "scripts" / "render_change.py"
+CHANGE_ASSETS = CHANGE.with_name("render_change_assets.py")
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_page_in_a_browser.py"]
 
 # `core.autocrlf` is on in this clone, so a target file may be CRLF on disk while
@@ -31,37 +35,37 @@ def _a(text, path=None):
 MUTANTS = [
     ("the stacking push goes, so two notes on one block are drawn on top of "
      "each other and one cannot be read at all",
-     DOC,
+     DOC_JS_NOTES,
      "    if (top < floor + 8) { top = floor + 8; el.classList.add('stacked'); }",
      "    if (false) { top = floor + 8; el.classList.add('stacked'); }",
      TESTS),
 
     ("marginOff's comparison is inverted",
-     DOC,
+     DOC_JS_NOTES,
      "getComputedStyle(GUTTER).display === 'none'",
      "getComputedStyle(GUTTER).display !== 'none'",
      TESTS),
 
     ("the margin stops folding away, so an open drawer covers it",
-     DOC,
+     DOC_CSS,
      " body.cmt .gutter{display:none}",
      " body.cmt .gutter{display:block}",
      TESTS),
 
     ("the wide layout stops reserving room for the drawer",
-     DOC,
+     DOC_CSS,
      " body.cmt .page{padding-right:27rem}",
      " body.cmt .page{padding-right:0}",
      TESTS),
 
     ("a retried undo splices the same record in a second time",
-     DOC,
+     DOC_JS_NOTES,
      "  if (CMT.list.indexOf(rec) < 0) {",
      "  if (true) {",
      TESTS),
 
     ("the note is anchored to its block's top rather than its own mark",
-     DOC,
+     DOC_JS_NOTES,
      "    let top = contentRect(c.mark).top + window.scrollY - top0 - 6;",
      "    let top = contentRect(c.mark.parentElement).top + window.scrollY - top0 - 6;",
      TESTS),
@@ -70,7 +74,7 @@ MUTANTS = [
 
     ("contentRect drops the frame's own offset, so every rect taken inside the "
      "frame is read as if the frame began at the top of the page",
-     DOC,
+     DOC_JS_PAGE,
      "  const f = FRAME.getBoundingClientRect();",
      "  const f = {top: 0, left: 0};",
      TESTS),
@@ -86,35 +90,35 @@ MUTANTS = [
 
     ("the observer's band stays a percentage, which inside a content-sized "
      "frame resolves against the whole document rather than the viewport",
-     DOC,
+     DOC_JS_PAGE,
      "  if (!FRAME) return '-12% 0px -70% 0px';",
      "  return '-12% 0px -70% 0px'; if (!FRAME)",
      TESTS),
 
     ("the input handlers bind on the shell only, so nothing inside the frame "
      "ever reaches them",
-     DOC,
+     DOC_JS_PAGE,
      "  if (CDOC !== document) CDOC.addEventListener(type, handler, opts);",
      "  /* nothing */",
      TESTS),
 
     ("the rail intercept stops being gated on the framed path, taking the "
      "history entry away from the Markdown rail too",
-     DOC,
+     DOC_JS_PAGE,
      _a("    if (!FRAME) return;\n    /* By section id, not by the href's slug."),
      "    /* By section id, not by the href's slug.",
      TESTS),
 
     ("readiness stops excluding about:blank, so the layer initialises against "
      "the frame's empty placeholder document",
-     DOC,
+     DOC_JS_PAGE,
      "            && d.location && d.location.href !== 'about:blank');",
      "            );",
      TESTS),
 
     ("the frame is left at its default height, so it scrolls itself and the "
      "margin arithmetic loses the offset it depends on",
-     DOC,
+     DOC_JS_NOTES,
      _a("    lastH = h;\n    FRAME.style.height = h + 'px';"),
      "    lastH = h;",
      TESTS),
@@ -123,35 +127,35 @@ MUTANTS = [
 
     ("the frame stops detecting that it is growing itself, so a viewport-sized "
      "document inflates the frame to the browser's maximum element height",
-     DOC,
+     DOC_JS_NOTES,
      "    if (fits > 6 || (lastH && h > lastH + 4 && fits > 2)) {",
      "    if (false) {",
      TESTS),
 
     ("every frame is pinned to the viewport, giving up the outer-page scrolling "
      "the margin arithmetic was built on",
-     DOC,
+     DOC_JS_NOTES,
      "    if (fits > 6 || (lastH && h > lastH + 4 && fits > 2)) {",
      "    if (true) {",
      TESTS),
 
     ("a pinned frame stops re-laying-out the margin as it scrolls, so every "
      "note drifts away from its own line",
-     DOC,
+     DOC_JS_NOTES,
      "      CWIN.addEventListener('scroll', syncMargin);",
      "      /* nothing */",
      TESTS),
 
     ("the rail stops preventing default on a miss, so a click navigates nowhere "
      "and says nothing",
-     DOC,
+     DOC_JS_PAGE,
      _a("    e.preventDefault();\n    const sec = a.dataset.goSec;"),
      "    const sec = a.dataset.goSec;",
      TESTS),
 
     ("showing the banner stops re-laying-out the margin, so every note is off "
      "by the banner's height and its tie still says it is level",
-     DOC,
+     DOC_JS_PAGE,
      "  try { syncMargin(); } catch (e) {}",
      "  /* nothing */",
      TESTS),
@@ -160,52 +164,52 @@ MUTANTS = [
 
     ("a page opened from disk renders an empty frame instead of saying it has "
      "to be served",
-     DOC,
+     DOC_JS_PAGE,
      "  if (!FRAME || location.protocol !== 'file:') return false;",
      "  if (true) return false;",
      TESTS),
 
     ("the unusable frame is left showing under file:, so the notice sits above "
      "a blank rectangle",
-     DOC,
+     DOC_JS_PAGE,
      "  FRAME.hidden = true;",
      "  FRAME.hidden = false;",
      TESTS),
 
     ("an identical message re-lays out the margin every time it is repeated",
-     DOC,
+     DOC_JS_PAGE,
      "  if (!el.hidden && el.textContent === msg) return;",
      "  if (false) return;",
      TESTS),
 
     ("the banner stops being shown at all, so every condition it reports is "
      "silent again",
-     DOC,
+     DOC_JS_PAGE,
      _a("  el.textContent = msg;\n  el.hidden = false;"),
      _a("  el.textContent = msg;\n  el.hidden = true;"),
      TESTS),
 
     # ------------------------------------------------ the change page
     ("opening a counterpart leaves the margin notes where they were",
-     CHANGE,
+     CHANGE_ASSETS,
      "  syncMargin();                        // one counterpart just grew or shrank",
      "  /* nothing */",
      TESTS),
 
     ("a click on a counterpart no longer opens it",
-     CHANGE,
+     CHANGE_ASSETS,
      "  if (sel && !sel.isCollapsed) return;",
      "  return;",
      TESTS),
 
     ("Enter on a counterpart no longer toggles it",
-     CHANGE,
+     CHANGE_ASSETS,
      "  if (e.key !== 'Enter' && e.key !== ' ') return;",
      "  return;",
      TESTS),
 
     ("a requirement heading's group label is no longer drawn",
-     CHANGE,
+     CHANGE_ASSETS,
      "h3[data-group]::before{content:attr(data-group);",
      'h3[data-group]::before{content:"";',
      TESTS),
@@ -213,13 +217,13 @@ MUTANTS = [
     # Which pane opens first is read from the source, in test_render_change.py,
     # and its mutant lives in that batch.
     ("a drag that selects text in a card toggles it",
-     CHANGE,
+     CHANGE_ASSETS,
      "  if (sel && !sel.isCollapsed) return;",
      "  if (false) return;",
      TESTS),
 
     ("following open-in-tab also toggles the card",
-     CHANGE,
+     CHANGE_ASSETS,
      "  if (!cf || e.target.closest('.cf-go')) return;",
      "  if (!cf) return;",
      TESTS),

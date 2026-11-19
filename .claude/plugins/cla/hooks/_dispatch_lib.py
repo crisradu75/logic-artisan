@@ -1,28 +1,22 @@
 #!/usr/bin/env python3
-"""Shared helpers for the PreToolUse dispatcher scripts, and the hooks package's
-shared git-command-matching library.
+"""Shared helpers for the PreToolUse dispatcher scripts: the in-process hook
+runner, the handler budget, and the output caps.
 
-TWO responsibilities, deliberately in one file. (1) It runs several sibling hook
-scripts' `main()` in-process (one Python interpreter instead of one per hook) by
-importing each as a standalone module — the same technique this package's own
-`hooks/tests/` already uses — and temporarily redirecting
-stdin/stdout/stderr around each call. The sibling hook files are never
-modified by this module; it only orchestrates them. (2) It also HOSTS
-`strip_quoted_spans` / `GitInvocation` / `GIT_CMD`, which every leaf hook
-that matches a git command line imports — `ask-destructive-git.py` and
-`warn-stray-scratch-artifact.py`. (Named, not counted: a count restated away
-from its source is what went stale here before, and a date-stamp turns a wrong
-number into a wrong number that reads as verified. `hooks/tests/`'s
-`_GIT_HOOK_FILES` is where the list is maintained. `ask-broad-git-add.py`
-imports `strip_quoted_spans` and `GIT_CMD` and walks tokens itself; the two
-commit-honesty guards hand each `GitInvocation` match to `_git_commit_args.py`,
-which reads the arguments. Both
-ways are linear on hostile input; composing `GIT_GLOBAL_OPTS` into a regex is
-not, see `GitInvocation`.)
-So the relationship with those hooks is bidirectional: this module loads them,
-and they import from it. Consequence worth holding onto: keep this module
-import-cheap and side-effect-free, because a failure here takes out both roles
-at once.
+It runs several sibling hook scripts' `main()` in-process (one Python
+interpreter instead of one per hook) by importing each as a standalone module —
+the same technique the plugin's tests in `plugin-tests/tests/hooks/` use — and
+temporarily redirecting stdin/stdout/stderr around each call. The sibling hook
+files are never modified by this module; it only orchestrates them. It also
+holds the budget the dispatchers spend (`HANDLER_TIMEOUT_SECONDS`,
+`HOOK_WORST_CASE_SECONDS`, `Deadline`) and the bounded `run_git` the hooks with
+git calls share, since a git timeout is a budget figure.
+
+The shell-text helpers every git-matching guard imports (`strip_quoted_spans`,
+`GitInvocation`, `GIT_CMD`, `GIT_SEP`) live in `_shell_text.py`, which imports
+nothing from here. Some hooks still import from this module (`run_git`,
+`clone_paths`, `Deadline`), so it loads them and they import from it: keep it
+import-cheap and side-effect-free, because a failure here takes out the runner
+and those hooks at once.
 
 A hook that crashes (fails to load, or raises out of `main()`) is still
 treated as fail-open — a guard must never wedge the workflow — but the
@@ -120,24 +114,61 @@ HANDLER_TIMEOUT_SECONDS = 15.0
 # the machines that are busy. In a repo whose only gate is the local run, a
 # flaky assertion is worse than none — it trains people to ignore the suite.
 #
-# THE DURABLE FIX, not done here: stop guessing. Stamp a start time in the shell
-# (`CLA_HOOK_T0=$(date +%s%3N)` at the head of `hooks/probe-python.sh`, which is
-# where the probe now lives -- it was the `_pyexe` JSON string when this was
-# written, and one edit there now reaches all five wirings) and have `Deadline`
-# subtract the REAL elapsed pre-`main()` cost, falling back to this constant when
-# the variable is absent or unparseable (BSD `date` has no `%N`, so the fallback
-# is load-bearing, not decorative). That makes the window observable instead of
-# estimated, which is the only thing that can actually close this.
+# THE MEASURED PATH, which replaces the guess where the shell allows it:
+# `hooks/probe-python.sh` exports `CLA_HOOK_T0` from bash's `$EPOCHREALTIME` as
+# its first act, and `Deadline` subtracts the REAL elapsed pre-`main()` cost
+# (`_pre_main_seconds`) plus `_POST_HOOK_RESERVE_SECONDS` for the work after the
+# last hook. `$EPOCHREALTIME` is a shell variable, so stamping spawns nothing on
+# the probe's cache-hit path; `date +%s%3N`, the form first proposed here, would
+# have spawned a process on every tool call. Git Bash on Windows is bash 5 and
+# has it -- the platform this window was measured on. dash and macOS's bash 3.2
+# do not, and leave the variable EMPTY, so this constant is the fallback there
+# and whenever the value is unparseable, in the future, or older than the
+# handler timeout (a stale value exported into the environment). The fallback
+# is load-bearing, not decorative.
 #
-# NOTE the resulting tightness, which is deliberate: usable budget is now
-# exactly the enforcing sum both dispatchers carry (12.0). Those sums are
-# worst-case bounds assuming every hook's git call times out, so real runs sit
-# far below them -- but the next hook added, or the next timeout raised, will
-# fail `test_enforcing_hooks_fit_inside_the_handler_budget` immediately rather
-# than silently overrunning. That is the intended failure mode: the alternative
-# is a killed handler, which turns an enforcing hook's `return 2` into a silent
-# allow.
+# The FALLBACK budget (12.0) is twice the enforcing sum each dispatcher carries
+# (6.0: `ask-destructive-git.py` in the Bash one, `block-worktree-path-escape.py`
+# in the Edit/Write one). The Bash sum was 12.0, the whole fallback, until that
+# hook's probes moved onto one shared deadline. The 6s it freed is room for one
+# more enforcing hook with git calls in the Edit/Write dispatcher, but in the
+# Bash one only for a hook that reads the command alone and is listed in its
+# `_READS_COMMAND_ONLY`: every other Bash hook runs once on the command and
+# once per wrapper part, the part count has no cap, and an enforcing hook is
+# never skipped, so a per-part enforcing hook must spawn nothing (0.0 below;
+# `test_per_part_enforcing_hooks_spawn_nothing` holds it). Those sums are
+# worst-case bounds assuming every git call times out, so real runs sit far
+# below them -- and a hook added past the budget, or a timeout raised past it,
+# fails `test_enforcing_hooks_fit_inside_the_handler_budget` immediately rather
+# than silently overrunning. That test keeps using this constant: it is the
+# worst case, the budget a run gets when nothing was measured. On a quiet
+# machine the measured budget is larger (15 - ~0.7 - 1.0), which is what frees
+# room for the advisory hooks after the enforcing ones; on a loaded one it is
+# smaller, and is then the true figure rather than a guess that overran.
 _BUDGET_RESERVE_SECONDS = 3.0
+
+# Left after the last hook for the dispatcher's compose/print and exit, and for
+# the few shell statements the wiring runs before the probe stamps the time.
+# Used only when `CLA_HOOK_T0` was measured.
+_POST_HOOK_RESERVE_SECONDS = 1.0
+
+# Set by `hooks/probe-python.sh`: the wall-clock time the hook's shell began, in
+# seconds (bash's `$EPOCHREALTIME`, whose decimal point follows the locale).
+HOOK_T0_ENV = "CLA_HOOK_T0"
+
+
+def _pre_main_seconds() -> float | None:
+    """Seconds between the probe's stamp and now, or None when there is no
+    usable stamp: unset, empty, not a plain decimal number, more than a second
+    in the future, or as old as the handler timeout (a handler that old is
+    already dead, so the value is stale, not this call's)."""
+    raw = os.environ.get(HOOK_T0_ENV, "")
+    if not re.fullmatch(r"\d+(?:[.,]\d+)?", raw):
+        return None
+    elapsed = time.time() - float(raw.replace(",", "."))
+    if elapsed < -1.0 or elapsed >= HANDLER_TIMEOUT_SECONDS:
+        return None
+    return max(0.0, elapsed)
 
 # Worst-case wall time each dispatched hook can spend in subprocesses, as
 # (call sites on the hot path) x (that hook's own timeout constant). A hook that
@@ -150,7 +181,9 @@ _BUDGET_RESERVE_SECONDS = 3.0
 #     anyway — the budget check has to be sized against the hook about to run,
 #     not merely against zero.
 #   - `test_hooks_wiring.py`, which asserts each dispatcher's ENFORCING hooks
-#     sum to no more than the budget. Enforcing hooks are never skipped, so if
+#     sum to no more than the budget, each counted once: that sum holds only
+#     because the enforcing Bash hooks that run once per wrapper part all cost
+#     0.0, which the same file asserts. Enforcing hooks are never skipped, so if
 #     their sum alone exceeds the ceiling then no admission policy can rescue
 #     them; the only fixes are fewer calls or shorter timeouts. Keeping the
 #     numbers here rather than deriving them means a hook that gains a call site
@@ -180,20 +213,17 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # Regex scan of the new text of a write under `cla.io/<briefing dir>/`; no
     # subprocess and no file I/O, so it is enforcing in the Edit/Write dispatcher.
     "ask-secret-in-checkpoint.py": 0.0,
-    # 3 x run_git(3s): one `git status --porcelain` for the checkout/restore/
-    # switch paths, one for the `git clean` paths, and one memoised pathless
-    # fallback both fall back to when git refuses a merged pathspec batch. Every
-    # other check in that hook is pure text inspection, and the probes are
-    # collected across all matching invocations rather than run per invocation,
-    # so a `&&` chain of six `git checkout`s is still one process. Plus one
-    # `git rev-parse --absolute-git-dir` for a saving `git stash` (4 x 3s): a
-    # command whose stashes span several directories is asked about, not probed.
-    # The history checks (a rebase of pushed commits, `switch -C`/`checkout -B`
-    # over unique commits, a merging switch over staged work) run AFTER those
-    # four and only spend what they left of this same 12s: each of their calls
-    # gets `min(3s, time left)` and none starts once it is gone
-    # (`_PROBE_BUDGET_SECONDS` in that hook). They add calls, never time.
-    "ask-destructive-git.py": 12.0,
+    # 2 x run_git(3s), as ONE deadline every git call of that hook shares
+    # (`_PROBE_BUDGET_SECONDS` in `_destructive_git_probes.py`): each call gets
+    # `min(3s, time left)` and none starts once it is gone, so this figure holds
+    # however many call sites there are. Those are up to four fail-closed ones
+    # (a `git status --porcelain` for the checkout/restore/switch paths, one for
+    # the `git clean` paths, a memoised pathless fallback, a `rev-parse
+    # --absolute-git-dir` for a saving `git stash`), then the fail-open history
+    # checks (a rebase of pushed commits, `switch -C`/`checkout -B` over unique
+    # commits, a merging switch over staged work), which spend what the first
+    # four left. Before the deadline was shared this entry was 12.0 (4 x 3s).
+    "ask-destructive-git.py": 6.0,
     # 2 x _run_git(3s): combined `rev-parse` + `--show-toplevel`.
     "block-worktree-path-escape.py": 6.0,
     # 1 x `git status --porcelain`(4s) — walks the working tree, so it gets more
@@ -222,15 +252,25 @@ class Deadline:
     """How much of the hooks.json handler timeout is left.
 
     Constructed at dispatcher entry, so `remaining()` already excludes the time
-    spent in hooks that ran before the check.
+    spent in hooks that ran before the check. With no explicit budget, the time
+    before construction is the measured `CLA_HOOK_T0` window when there is one,
+    else the fixed `_BUDGET_RESERVE_SECONDS` guess.
     """
 
-    __slots__ = ("_start", "_budget")
+    __slots__ = ("_start", "_budget", "measured")
 
     def __init__(self, budget_seconds: float | None = None) -> None:
         self._start = time.monotonic()
+        # True when the budget came from a real `CLA_HOOK_T0` measurement.
+        self.measured = False
         if budget_seconds is None:
-            budget_seconds = HANDLER_TIMEOUT_SECONDS - _BUDGET_RESERVE_SECONDS
+            before = _pre_main_seconds()
+            self.measured = before is not None
+            reserve = (
+                _BUDGET_RESERVE_SECONDS if before is None
+                else before + _POST_HOOK_RESERVE_SECONDS
+            )
+            budget_seconds = HANDLER_TIMEOUT_SECONDS - reserve
         self._budget = budget_seconds
 
     def remaining(self) -> float:
@@ -392,6 +432,30 @@ def compose_output(
     return clamp_output(body, budget) + "\n" + must_keep
 
 
+def extract_ask(stdout_text: str) -> str | None:
+    """Pull an `ask` escalation's reason out of a hook's stdout JSON.
+
+    A hook that wants the user prompted (rather than blocked outright) exits 0
+    and emits `permissionDecision: "ask"`. Only the dispatcher's stdout is read
+    per PreToolUse call, so the decision has to be re-emitted there or it is
+    silently downgraded to an allow. Shared by both dispatchers, which carried
+    identical copies.
+    """
+    stdout_text = stdout_text.strip()
+    if not stdout_text:
+        return None
+    try:
+        payload = json.loads(stdout_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    nested = payload.get("hookSpecificOutput")
+    if not isinstance(nested, dict) or nested.get("permissionDecision") != "ask":
+        return None
+    return str(nested.get("permissionDecisionReason") or "A guard requested confirmation.")
+
+
 # --- Bounded git subprocess helpers -----------------------------------------
 # Used by block-worktree-path-escape.py, which runs on every Edit/Write call
 # and needs to answer "is cwd inside a linked worktree?" — resolved from its
@@ -407,7 +471,7 @@ def compose_output(
 # were NOT equivalent — one ran `["git", *args], cwd=cwd` while the other ran
 # `git -C cwd`. Consolidating standardized on `-C`, so this was a behavior
 # reconciliation, not a pure de-duplication. One definition, one fix site, same
-# reasoning as `strip_quoted_spans`/`GIT_GLOBAL_OPTS` below.
+# reasoning as `strip_quoted_spans`/`GIT_GLOBAL_OPTS` in `_shell_text.py`.
 #
 # 3s: the bound exists to catch a WEDGED git (an index lock held by a
 # concurrent session), not to accommodate a slow one — `rev-parse` on a
@@ -455,500 +519,11 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
     return git_dir, os.path.realpath(common)
 
 
-# --- Git command-line matching helpers --------------------------------------
-# Shared by warn-stray-scratch-artifact.py and ask-destructive-git.py (and, at
-# the time this was consolidated, four further git-matching hooks since
-# retired). Previously each of those files carried its own literal copy of this
-# pattern — a bug fixed in one copy could silently persist in the others, and
-# did: a long
-# global option with a space-separated (non-`=`) value (`git --work-tree
-# <path> push origin main`) bypassed all of them, and a quoted `-c`/`-C` value
-# containing a space (`git -C "/path with space" checkout -b x`) bypassed the
-# two hooks that didn't call `strip_quoted_spans` before matching. One
-# definition, one fix site closes both classes at once and keeps them closed.
-
-
-# The git executable token, including the Windows extension forms.
-#
-# `\bgit\s+` cannot match `git.exe` -- `\s` does not match `.` -- so every git
-# guard in this plugin silently allowed the extension spellings. Measured before
-# this constant existed: `git push origin main` blocked (exit 2) while
-# `git.exe push origin main` and `git.cmd push origin main` both exited 0. That
-# was the whole guard set at once: the push-to-main block, both `ask-*`
-# confirmations, worktree isolation, and two warns.
-#
-# Reachable by ordinary use rather than by evasion -- PowerShell is a primary
-# shell for this harness and its tab-completion emits `git.exe`.
-#
-# `ask-destructive-git._GH_PR_MERGE` already spelled the sibling tool as
-# `\bgh(?:\.(?i:exe|cmd|bat|com|ps1))?`, with a comment saying it exists
-# "because Windows is the primary platform". The identical reasoning was never
-# applied to `git`. This constant exists so the fix lands once instead of in six
-# separate regexes -- the same rationale as `GIT_GLOBAL_OPTS` above.
-#
-# The command NAME is case-folded too. It was not, on the reasoning that this
-# "matches the `gh` precedent" -- but that precedent is a gap, not a design, and
-# citing it turned one oversight into two. Windows filesystems and shells are
-# case-insensitive, so `GIT push origin main` and `GIT.EXE push origin main`
-# both RUN, and both walked past every guard below while the lowercase
-# `git.exe` was blocked. Closing the common spelling and leaving the trivially
-# adjacent one open is not a defensible stopping point.
-#
-# This is a TRADE, not a free win, and the cost was measured rather than
-# assumed. An earlier draft of this comment claimed an unrelated uppercase path
-# segment could not match "because what follows it is a separator" -- true only
-# while `GIT` is a NON-TERMINAL segment. Measured against the real composed
-# pattern, against a `commit`-matching guard (measured, not reasoned):
-#
-#     cd /srv/GIT commit      old: no match   new: MATCHES
-#     ls /d/GIT commit        old: no match   new: MATCHES
-#
-# Note WHICH guard: a terminal uppercase `GIT` path segment followed by a word
-# is only reachable where that word is the subcommand being matched, so the
-# exposure is a `commit` matcher's (`commit` is an ordinary English word),
-# not a `push` matcher's -- `push` does not appear after a directory name in
-# normal usage. Both cases above return no args at all.
-#
-# Sharper still: `strip_quoted_spans` deliberately does not blank HEREDOC bodies
-# (its own docstring says so), so an uppercase `GIT` in ordinary prose inside a
-# heredoc reaches `_COMMIT` too -- confirmed by running it, not inferred.
-#
-# Taken deliberately: an enforcing guard that over-blocks announces itself and
-# is trivially worked around, whereas the `GIT push` bypass it closes is silent
-# and defeats the guard entirely. Both directions are pinned by tests -- see
-# `test_git_cmd_matches_every_runnable_spelling` and
-# `test_git_cmd_does_not_over_match`.
-GIT_CMD = r"\b(?i:git)(?:\.(?i:exe|cmd|bat|com|ps1))?"
-
-
-def _blank_keeping_substitutions(text: str) -> str:
-    """`text` with every character replaced by `#`, EXCEPT the `$(...)` and
-    backtick substitutions the shell executes, which stay verbatim. Same length.
-    An escaped `$` or backtick is literal text and is blanked."""
-    out: list[str] = []
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if ch == "\\":
-            out.append("##"[: len(text) - i])
-            i += 2
-            continue
-        if ch == "$" and text.startswith("$(", i):
-            depth, j = 0, i + 1
-            while j < len(text):
-                depth += (text[j] == "(") - (text[j] == ")")
-                if depth == 0:
-                    break
-                j += 1
-            end = min(j, len(text) - 1)  # unterminated: runs to the end
-        elif ch == "`":
-            j = i + 1
-            while j < len(text) and text[j] != "`":
-                j += 2 if text[j] == "\\" else 1
-            end = min(j, len(text) - 1)
-        else:
-            out.append("#")
-            i += 1
-            continue
-        out.append(text[i : end + 1])
-        i = end + 1
-    return "".join(out)[: len(text)]
-
-
-_HEREDOC_OP = re.compile(
-    r"(?<!<)<<(?!<)[ \t]*(?:'([A-Za-z0-9_]+)'|\"([A-Za-z0-9_]+)\"|\\([A-Za-z0-9_]+))"
-)
-# Any heredoc operator at all, used only for the operator-count cap.
-_ANY_HEREDOC = re.compile(r"<<(?!<)")
-# Caps. Past either, every body is left VISIBLE (a guard fails toward asking).
-_HEREDOC_MAX_OPS = 200
-_HEREDOC_MAX_LINE = 4096
-
-# Words that run, or hand text to, an interpreter, or wrap a command that does.
-# Matched on the basename of every word of the command, so `/bin/bash` and
-# `bash.exe` count.
-_INTERPRETERS = frozenset(
-    "bash sh zsh dash ksh csh tcsh fish pwsh powershell cmd node deno bun perl "
-    "ruby php lua ssh source eval xargs exec busybox su sudo env nohup command .".split()
-)
-_WORD_SPLIT = re.compile(r"[\s|;&()<>\"'`$={},]+")
-_SHELL_VAR = re.compile(r"\$\{?(?:SHELL|0)\b")
-
-# The ONLY heredoc that is blanked outright: the WHOLE command is one message
-# command and nothing else. It is matched in full, from the first character to
-# the last, so the shell cannot be reading it any other way: no comment, no
-# single quote, no backslash, no pipe, no redirect, no `$`, no backtick and no
-# second heredoc can appear anywhere outside the body, and the only words are
-# plain words or short double-quoted strings of safe characters.
-_W = r"[A-Za-z0-9_.,:=@+%~/-]+"
-_DQ = r"\"[A-Za-z0-9 ._,:/()#@%+=~-]*\""
-_ARG = rf"(?:{_W}|{_DQ})"
-_MESSAGE_COMMAND = re.compile(
-    rf"(?:(?:git (?:add|status)|cd)(?: {_ARG})* && )*"
-    r"(?:git (?:commit|tag|notes)|gh (?:pr (?:create|edit|comment|review|merge)"
-    r"|issue (?:create|edit|comment)|release create))"
-    rf"(?: {_ARG})* \"\$\(cat <<(?P<q>['\"])(?P<w>[A-Za-z0-9_]+)(?P=q)[ \t]*\r?\n"
-    r"(?P<body>(?:(?!(?P=w))[^\n]*\n)*)"
-    r"(?P=w)\r?\n\)\""
-    rf"(?: {_ARG})*"
-    rf"(?: && (?:git (?:status|push|add|log|diff|show|fetch|pull)"
-    rf"|gh pr (?:view|checks|create|edit|comment|ready)|cd)(?: {_ARG})*)*"
-    r"\s*"
-)
-
-
-def _runs_an_interpreter(text: str) -> bool:
-    if _SHELL_VAR.search(text):
-        return True
-    for word in _WORD_SPLIT.split(text):
-        base = word.replace("\\", "/").rsplit("/", 1)[-1].lower()
-        for ext in (".exe", ".cmd", ".bat", ".com", ".ps1"):
-            if base.endswith(ext):
-                base = base[: -len(ext)]
-                break
-        if base in _INTERPRETERS or base.startswith("python"):
-            return True
-    return False
-
-
-def _blank_heredoc_bodies(cmd: str) -> str:
-    """Blank heredoc text that is data; leave every other body as it was.
-
-    Two things are blanked, both by whitelist, everything else stays VISIBLE.
-
-    1. The body of a message heredoc, only when the WHOLE command fully matches
-       `_MESSAGE_COMMAND` (one `git commit|tag|notes` / `gh pr|issue|release`
-       command whose message is `"$(cat <<'WORD' ... WORD newline )"`, with
-       nothing in the command the shell could read differently).
-    2. Markdown backtick spans in the body of the FIRST heredoc operator, which
-       main always blanked: only when the body has no quote character (main
-       paired quotes before backticks) and that operator has a plain quoted
-       delimiter, nothing before its line contains `<<`, `#`, a backtick, a
-       backslash or an unbalanced quote, the operator line has none of those
-       either, and no interpreter word appears anywhere in the command.
-
-    Newlines and length are kept. One linear pass; past `_HEREDOC_MAX_OPS`
-    operators nothing is blanked."""
-    if "<<" not in cmd:
-        return cmd
-    ops = list(_HEREDOC_OP.finditer(cmd))
-    if not ops or len(_ANY_HEREDOC.findall(cmd)) > _HEREDOC_MAX_OPS:
-        return cmd
-    out = list(cmd)
-    message = _MESSAGE_COMMAND.fullmatch(cmd)
-    if message is not None:
-        _blank_data(out, *message.span("body"))
-        return "".join(out)
-    first = ops[0]
-    if cmd.find("<<") != first.start():
-        return cmd  # an earlier `<<` the shell may read as the real operator
-    nl = cmd.find("\n", first.end())
-    if nl < 0 or nl - cmd.rfind("\n", 0, first.start()) > _HEREDOC_MAX_LINE:
-        return cmd
-    delim = first.group(1) or first.group(2) or first.group(3)
-    term = cmd.find("\n" + delim + "\n", nl)
-    if term < 0 and not cmd.endswith("\n" + delim):
-        return cmd  # no terminator line: left visible
-    body_end = term + 1 if term >= 0 else len(cmd) - len(delim)
-    for ch in ("#", "`", "\\"):
-        at = cmd.find(ch)
-        if at != -1 and at < nl:
-            return cmd
-    head = cmd[:nl]
-    if (head.count("'") - (2 if first.group(1) else 0)) % 2 or (
-        head.count('"') - (2 if first.group(2) else 0)
-    ) % 2:
-        return cmd  # an unbalanced quote: the operator may be inside a string
-    if _runs_an_interpreter(cmd[: nl + 1] + cmd[body_end:]):  # words in the body are data
-        return cmd
-    body = cmd[nl + 1 : body_end]
-    if "'" in body or '"' in body:
-        return cmd  # main paired quotes first; with none here raw pairing is the same
-    for span in re.finditer(r"`[^`]*`", body):
-        _blank_data(out, nl + 1 + span.start() + 1, nl + 1 + span.end() - 1)
-    return "".join(out)
-
-
-def _blank_data(out: list[str], a: int, b: int) -> None:
-    """Blank `out[a:b]` in place, keeping line breaks so line structure holds."""
-    for i in range(a, b):
-        if out[i] not in "\r\n":
-            out[i] = "#"
-
-
-def strip_quoted_spans(cmd: str) -> str:
-    """Replaces the contents of every quoted span with same-length,
-    non-whitespace placeholder characters (the quote delimiters themselves are
-    left in place) EXCEPT command substitutions the shell executes: the body of
-    a `$(...)` or backtick span inside double quotes, and any unquoted backtick
-    span, stays visible (single-quoted text is never executed, so it is always
-    blanked). A matcher below doesn't trip on a `git commit` mentioned
-    inside an echoed string or a commit message, AND so a global option's quoted
-    value (`-C "/path with space"`) becomes a single whitespace-free token
-    before `GIT_GLOBAL_OPTS` tries to match it — the value-consuming
-    alternatives below all use `\\S+`, which cannot span an un-stripped
-    internal space on its own.
-
-    Length-preserving is deliberate, not incidental: it's what lets a caller
-    that captures a match GROUP against the scanned string (e.g. a branch
-    name) re-slice the SAME start/end offsets out of the original, unscanned
-    command to recover the real text — a naive collapse-to-`''` would shift
-    every later offset and silently return the placeholder instead of the
-    real value for anything captured after the first quoted span. Note the
-    re-sliced text still carries its surrounding quote characters, so callers
-    strip them (`.strip("'\\"")`) before use.
-
-    Scope, stated precisely so nobody assumes more than it does:
-
-    - Heredoc bodies stay VISIBLE (as on main) except by whitelist
-      (`_blank_heredoc_bodies`). (1) The body of a message heredoc is blanked
-      only when the WHOLE command fully matches `_MESSAGE_COMMAND`: optional
-      `git add|status`/`cd` words and `&&`, then `git commit|tag|notes` or
-      `gh pr create|edit|comment|review|merge`, `gh issue create|edit|comment`,
-      `gh release create` (no global options), plain words or short
-      double-quoted strings of safe characters, then
-      `"$(cat <<'WORD'` newline body newline `WORD` newline `)"`, then optional
-      such words and `&& git status|push|add|log|diff|show|fetch|pull`. Because
-      it is a full match there is no comment, single quote, backslash, pipe,
-      redirect, `$`, backtick or second heredoc anywhere outside the body, so
-      the shell cannot be reading the operator any other way, and no
-      interpreter can be handed the text. (2) Markdown backtick spans in the
-      body of the FIRST heredoc operator stay blanked, as on main, only when the
-      body has no quote character (main paired quotes before backticks) and the
-      operator has a plain quoted delimiter, no earlier `<<`, `#`, backtick or
-      backslash appears up to its line, quotes before it balance, and no
-      interpreter word (`bash sh ssh source . eval xargs sudo env python*
-      $SHELL $0 …`, any path or `.exe` form) is outside the body. A bare
-      `$(cat <<…)` never qualifies: its output may be run. Everything else
-      (bare `cat <<'EOF'`, `tee`, `git commit -F -`, `--body-file -`, unquoted
-      or odd delimiters, `<<-`, a missing terminator, `<<<`) is visible. Past
-      200 operators or a 4096-char operator line nothing is blanked.
-    - Accepted: a flag now ends at `)` or a backtick (`ask-destructive-git`'s
-      `_END`), so prose such as `# undo with (git reset --hard)` in a comment, or
-      a PowerShell backtick escape, can ask; comments were always scanned.
-    - NOT handled — `bash -c '…'` / `sh -c` / `eval '…'` bodies: single-quoted,
-      so blanked, as on main.
-    - NOT handled — the paren counter ignores quotes and `case` patterns, and
-      the single-quote pass runs first, so an apostrophe in earlier prose can
-      pair with a later one.
-    - NOT handled — escaped or nested quotes (`\\'`, `"a 'b' c"` interactions),
-      including a double quote inside a `$(...)` that sits in double quotes.
-    - NOT handled — `<(...)` / `>(...)` process substitution inside double
-      quotes, which the shell does not execute there; unquoted ones were never
-      blanked.
-    - INTENTIONALLY matches shell semantics for a mid-word apostrophe:
-      `echo don't && git push origin main && echo won't` collapses the span
-      between the two apostrophes, so the `git push` disappears from the
-      scanned string and the hook allows it. That is CORRECT — bash reads the
-      same span as one single-quoted literal and never runs the push. Do not
-      "fix" this by requiring quotes to sit at token boundaries; that would
-      make the hooks fire on commands the shell would not execute."""
-
-    def _placeholder(match: re.Match[str]) -> str:
-        span = match.group(0)
-        return span[0] + "#" * (len(span) - 2) + span[-1]
-
-    def _double_quoted(match: re.Match[str]) -> str:
-        span = match.group(0)
-        return span[0] + _blank_keeping_substitutions(span[1:-1]) + span[-1]
-
-    stripped = _blank_heredoc_bodies(cmd)
-    stripped = re.sub(r"'[^']*'", _placeholder, stripped)
-    stripped = re.sub(r'"[^"]*"', _double_quoted, stripped)
-    # No backtick pass: an unquoted backtick span is a command substitution the
-    # shell runs, and one inside single quotes is already blanked above.
-    return stripped
-
-
-# git GLOBAL options that may sit between `git` and the subcommand — consumed
-# so `git -c core.x=y commit`, `git -C /path checkout`, `git --work-tree /path
-# push origin main` are not a bypass. `-c KEY=VAL` / `-C PATH` take a
-# following value token (bare, or — once `strip_quoted_spans` has run — a
-# same-length `#`-filled quoted token such as `"################"`, which is
-# whitespace-free and so matches `\S+` as one token). A NAMED, closed set of long options that also
-# take their value as a separate space-delimited token (`--git-dir`,
-# `--work-tree`, `--namespace`, `--super-prefix`) get the same optional
-# space-value treatment; every other short/long flag is a single token
-# (`--long[=val]` only, no bare-space form). The named-option list is
-# deliberately closed rather than "any --long-opt may take a following
-# value" — a blanket rule risks the matcher swallowing the real subcommand
-# token whenever a value-less flag (`--bare`, `--no-pager`, `--paginate`) is
-# immediately followed by it. Best-effort, not an exhaustive git-argument
-# parser: an option shape outside this list, or one this hasn't been tested
-# against, can still slip through — see each hook's own docstring for its
-# specific detection scope.
-# Horizontal whitespace, or a backslash line continuation. Defined HERE rather
-# than in a leaf hook because `GIT_GLOBAL_OPTS` below needs it and every git-
-# matching hook imports it — one definition, so the two cannot drift.
-#
-# A continuation is a JOINED line, so it separates tokens; a bare newline ENDS
-# the command and must not. Getting one separator position wrong is this
-# package's most repeated defect, and `GIT_GLOBAL_OPTS` was the last position
-# still on a plain `\s+` after `_SEP` fixed the others. That plain `\s+` was
-# wrong in BOTH directions at once, each verified against a real shell:
-#
-#   git -C . \<newline> push --force origin f   — one command, ran, NOT matched
-#   git -c x=y<newline>  push --force origin f  — two commands, matched as one
-#
-# The first silently disarmed the force-push, `reset --hard`, branch-delete and
-# working-tree-discard guards alike, because every one of them composes this
-# blob. A guard that allows the thing it exists to stop is the worst failure
-# this layer has, and it sat behind the one separator nobody re-checked.
-GIT_SEP = r"(?:[ \t]|\\\r?\n)+"
-
-_GIT_GLOBAL_VALUE_OPTS = r"(?:git-dir|work-tree|namespace|super-prefix)"
-# The four option shapes, shared by `GIT_GLOBAL_OPTS` and `_GIT_OPT_STEPS` below
-# so the two cannot drift.
-_GIT_OPT_VALUED = r"-[cC]" + GIT_SEP + r"\S+"
-_GIT_OPT_NAMED = r"--" + _GIT_GLOBAL_VALUE_OPTS + r"\b"
-_GIT_OPT_SHORT = r"-[A-Za-z]"
-_GIT_OPT_LONG = r"--[A-Za-z][\w-]*(?:=\S+)?"
-# The grammar as one regex. Kept as the reference definition and for repos
-# whose own hooks import it, but no guard here composes it into a search
-# any more: see `GitInvocation` for why (#526).
-GIT_GLOBAL_OPTS = (
-    r"(?:"  # outer repetition group — zero or more options, each followed by whitespace
-    r"(?:"  # inner alternation — exactly one option-shape per repetition
-    r"(?:" + _GIT_OPT_VALUED + r")"
-    r"|(?:" + _GIT_OPT_NAMED + r"(?:=\S+|" + GIT_SEP + r"\S+)?)"
-    r"|(?:" + _GIT_OPT_SHORT + r")"
-    r"|(?:" + _GIT_OPT_LONG + r")"
-    r")"
-    + GIT_SEP +
-    r")*"
-)
-
-# One step of `GIT_GLOBAL_OPTS`: one option and its trailing separator, in the
-# order the regex engine tries them. Each step has one useful end: a shorter
-# `\S+` or separator leaves the next item starting on a character no option and
-# no subcommand can start with. The named option's `=value` and value-less
-# forms are left to the long-option step, which reads them to the same end with
-# only failing steps tried in between; the regex reading `--git-dir=x` both
-# ways is what made a run of them exponential.
-_GIT_OPT_STEPS = tuple(
-    re.compile(shape + GIT_SEP)
-    for shape in (
-        _GIT_OPT_VALUED,
-        _GIT_OPT_NAMED + GIT_SEP + r"\S+",
-        _GIT_OPT_SHORT,
-        _GIT_OPT_LONG,
-    )
-)
-_GIT_HEAD = re.compile(GIT_CMD + GIT_SEP)
-
-
-class GitMatch:
-    """The parts of `re.Match` the git guards read: `group`, `start`, `end`,
-    `span`. Group 0 runs from `git` to the end of the match."""
-
-    __slots__ = ("string", "_spans")
-
-    def __init__(self, string: str, spans: list[tuple[int, int]]) -> None:
-        self.string = string
-        self._spans = spans
-
-    def span(self, group: int = 0) -> tuple[int, int]:
-        return self._spans[group]
-
-    def start(self, group: int = 0) -> int:
-        return self._spans[group][0]
-
-    def end(self, group: int = 0) -> int:
-        return self._spans[group][1]
-
-    def group(self, group: int = 0) -> str | None:
-        start, end = self._spans[group]
-        return None if start < 0 else self.string[start:end]
-
-
-class GitInvocation:
-    """Finds `GIT_CMD + GIT_SEP + GIT_GLOBAL_OPTS + after` in linear time.
-
-    Same matches, groups and spans as `re.compile(<that>).finditer` and
-    `.search`, but without the regex's re-walks (#526). The regex walks the
-    option run again from every `git` inside it, quadratic on `git -c git
-    -c git ... status`; and `-c`/`-C` and the named long options each parse
-    two ways (with a value, or as a bare flag), so on `git -c -c -c ... x` it
-    tries every split, exponential (a 95-byte command took 6 s).
-
-    Here the options are walked as steps, in the regex's own order: from a
-    position, each step that matches is followed to its end first, and only
-    when every step fails is `after` tried there. The answer from a position
-    depends on nothing before it, so each position is worked out once per
-    text and shared by every `git` that reaches it.
-
-    `capture_opts=True` adds the options run as group 1, ahead of `after`'s
-    groups, the way `"(" + GIT_GLOBAL_OPTS + ")"` numbered it. Pass text
-    that has been through `strip_quoted_spans`, as with the regex, and
-    `after` starts at the subcommand word, not at whitespace or a backslash
-    (see `_GIT_OPT_STEPS` for why that keeps one end per step).
-    """
-
-    def __init__(self, after: str, capture_opts: bool = False) -> None:
-        self.after = re.compile(after)
-        self.capture_opts = capture_opts
-        # Each step's one-end reading holds only while `after` cannot match at
-        # whitespace or a backslash, so such a pattern is refused here rather
-        # than matched wrongly later. Three probes catch a pattern that matches
-        # empty or a separator before a word; they are a check, not a proof.
-        if any(self.after.match(probe) for probe in (" x", "\tx", "\\x")):
-            raise ValueError(
-                f"GitInvocation: {after!r} can match at whitespace or a backslash; "
-                "start it at the subcommand word"
-            )
-
-    def _resolve(self, text: str, start: int, failed: set) -> tuple | None:
-        """`(position, after_match)` for the first place, in the regex's
-        backtracking order, that options from `start` reach and `after`
-        matches; None when there is none. `failed` holds the positions already
-        known to lead nowhere, and gains the ones this call rules out.
-
-        Only failures are kept: a success ends the match, and the next `git`
-        searched for starts after it, beyond every position this call saw."""
-        stack = [[start, 0]]  # each: a position, and the next step to try there
-        while stack:
-            frame = stack[-1]
-            pos, step = frame
-            if step < len(_GIT_OPT_STEPS):
-                frame[1] = step + 1
-                m = _GIT_OPT_STEPS[step].match(text, pos)
-                if m is not None and m.end() not in failed:
-                    stack.append([m.end(), 0])
-                continue
-            stack.pop()
-            m = self.after.match(text, pos)
-            if m is not None:
-                return pos, m
-            failed.add(pos)
-        return None
-
-    def finditer(self, text: str):
-        failed: set = set()
-        pos = 0
-        while True:
-            head = _GIT_HEAD.search(text, pos)
-            if head is None:
-                return
-            found = self._resolve(text, head.end(), failed)
-            if found is None:
-                pos = head.start() + 1
-                continue
-            opts_end, m = found
-            spans = [(head.start(), m.end())]
-            if self.capture_opts:
-                spans.append((head.end(), opts_end))
-            spans += [m.span(g) for g in range(1, self.after.groups + 1)]
-            yield GitMatch(text, spans)
-            pos = m.end()
-
-    def search(self, text: str) -> GitMatch | None:
-        return next(self.finditer(text), None)
-
-
 def ensure_hooks_dir_importable() -> None:
     """Put the hooks dir on `sys.path` if it isn't already.
 
-    Several hook files do `from _dispatch_lib import ...` at module level. That
+    Several hook files do `from _dispatch_lib import ...` or `from _shell_text
+    import ...` at module level. That
     import resolves through `sys.path` — `spec_from_file_location` locates the
     HOOK by path but does nothing for the hook's OWN imports. Without this, the
     hooks work only by accident: `hooks.json` happens to invoke the dispatcher
@@ -1034,3 +609,21 @@ def run_hook_file(filename: str, stdin_text: str, argv: list[str] | None = None)
         traceback.print_exc(file=err)
         return HookResult(0, "", err.getvalue(), errored=True)
     return run_hook(mod, stdin_text, argv=argv)
+
+
+def run_hook_file_each(filename: str, stdin_texts: list[str]):
+    """`run_hook_file` over several inputs, loading the file once: yields one
+    `HookResult` per text, in order, so the caller can stop early (on a block,
+    or when the budget runs out) and nothing after that runs. A load failure
+    yields its one errored result and stops, as `run_hook_file` reports it.
+
+    The Bash dispatcher runs a guard on the command and then on each part
+    `_shell_read.guard_parts` found in it; loading the file once per part would
+    cost a module execution per part."""
+    try:
+        mod = load_hook(filename)
+    except Exception:
+        yield run_hook_file(filename, stdin_texts[0] if stdin_texts else "")
+        return
+    for text in stdin_texts:
+        yield run_hook(mod, text)

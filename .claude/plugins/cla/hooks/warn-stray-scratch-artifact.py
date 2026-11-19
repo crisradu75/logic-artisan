@@ -13,10 +13,10 @@ read before each Ship-phase commit — this hook makes that check automatic.
 
 Detection: the Bash command runs `git add` or `git commit`, optionally behind
 git global options, with quoted spans collapsed first so `echo 'git commit'`
-no longer triggers it. That collapse cuts both ways and the trade is accepted
-for a warn-only hook: a git command wrapped in a quoted sub-shell string
-(`bash -c 'git add .'`) is now INVISIBLE to this hook and will not warn, where
-previously it did. Then `git status
+no longer triggers it. A git command wrapped in a quoted sub-shell string
+(`bash -c 'git add .'`) is invisible to that collapse, and is read anyway: the
+Bash dispatcher runs this hook on each shell wrapper's body as well
+(`_shell_read.guard_parts`). Run on its own, the hook does not. Then `git status
 --porcelain` is scanned for an UNTRACKED (`??`) entry whose path has no path
 separator (`/` or `\\`) — sits at repo root, not inside any real source/doc
 directory — AND whose name contains `AppData`, `LocalTemp`, or `scratchpad`
@@ -39,7 +39,7 @@ import sys
 
 from pathlib import Path
 
-# The `_dispatch_lib` import below resolves through `sys.path`; running
+# The `_shell_text` import below resolves through `sys.path`; running
 # standalone normally puts the hooks dir at `sys.path[0]`, but that is
 # suppressed under `PYTHONSAFEPATH=1` / `python -I` / `python -P`. Insert it
 # explicitly so an import failure can't silently disable this hook.
@@ -47,11 +47,11 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GitInvocation  # noqa: E402
-from _dispatch_lib import strip_quoted_spans  # noqa: E402
+from _shell_text import GitInvocation  # noqa: E402
+from _shell_text import strip_quoted_spans  # noqa: E402
 
 # `GitInvocation` matches `GIT_CMD`, the global options and the subcommand in
-# linear time (#526), with `GIT_SEP`, not `\s+`, at the `git`→subcommand
+# linear time, with `GIT_SEP`, not `\s+`, at the `git`→subcommand
 # position — the same separator rule every other git matcher in this package
 # uses. A plain `\s+` is wrong in both directions: it cannot match
 # `git \`+newline+`add .` (a joined line, so an ordinary command, which went

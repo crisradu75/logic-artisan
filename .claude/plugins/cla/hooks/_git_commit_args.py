@@ -5,7 +5,7 @@ Shared by the two commit-honesty guards, `block-dishonest-commit.py` (the
 message and `--allow-empty`) and `ask-staged-debug-tag.py` (what the commit
 would add). It is a library, not a hook: no dispatcher runs it.
 
-Each guard finds its invocations with `_dispatch_lib.GitInvocation` over the
+Each guard finds its invocations with `_shell_text.GitInvocation` over the
 `strip_quoted_spans` text, then hands each match to `read_commit` or `read_add`
 here, which read the ORIGINAL command from the match's end (the two texts have
 the same offsets). Reading the original is the point: a commit message is a

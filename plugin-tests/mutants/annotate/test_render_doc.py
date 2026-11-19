@@ -13,6 +13,10 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]                 # <repo>/plugin-tests
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 DOC = PLUGIN / "skills" / "annotate" / "scripts" / "render_doc.py"
+DOC_MARKDOWN = DOC.with_name("render_doc_markdown.py")
+DOC_JS_PAGE = DOC.with_name("render_doc_js_page.py")
+DOC_JS_NOTES = DOC.with_name("render_doc_js_notes.py")
+DOC_CSS = DOC.with_name("render_doc_css.py")
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_render_doc.py"]
 
 # `core.autocrlf` is on in this clone, so a target file may be CRLF on disk while
@@ -33,71 +37,71 @@ MUTANTS = [
     # ---- the margin ----
     ("the margin note is anchored to a mark that is merely CONNECTED, so a block "
      "on a tab that is not showing gets a note beside nothing",
-     DOC,
+     DOC_JS_NOTES,
      "c.mark.getClientRects().length",
      "c.mark.isConnected",
      TESTS),
 
     ("the inline marker is drawn whether or not there is a margin, so every "
      "annotation appears twice with two delete buttons",
-     DOC,
+     DOC_JS_NOTES,
      "    if (paintedMarginOff) {",
      "    if (true) {",
      TESTS),
 
     ("opening the drawer stops re-laying-out the margin",
-     DOC,
+     DOC_JS_PAGE,
      _a("     that can never fire. */\n  syncMargin();"),
      _a("     that can never fire. */\n  /* nothing */"),
      TESTS),
 
     ("opening the drawer re-lays-out the margin only in a branch that never runs",
-     DOC,
+     DOC_JS_PAGE,
      _a("     that can never fire. */\n  syncMargin();"),
      _a("     that can never fire. */\n  if (false) syncMargin();"),
      TESTS),
 
     ("a resize stops re-laying-out the margin",
-     DOC,
+     DOC_JS_NOTES,
      "addEventListener('resize', () => { clearTimeout(marginT); marginT = setTimeout(syncMargin, 120); });",
      "addEventListener('resize', () => { clearTimeout(marginT); });",
      TESTS),
 
     ("the margin never folds away, so an open drawer lands on top of it",
-     DOC,
+     DOC_CSS,
      " body.cmt .gutter{display:none}",
      " body.cmt .gutter{display:block}",
      TESTS),
 
     # ---- state as a badge ----
     ("a failure state goes back to being a caption suffix, spelled with an escape",
-     DOC,
+     DOC_JS_NOTES,
      "    + stateBadge(c)",
      "    + (c.delFailed ? ' \\u00b7 DELETE FAILED' : '')",
      TESTS),
 
     ("a failure state goes back to being a caption suffix, spelled literally",
-     DOC,
+     DOC_JS_NOTES,
      "    + stateBadge(c)",
      "    + (c.editFailed ? ' · EDIT NOT SAVED' : '')",
      TESTS),
 
     ("only the worst badge prints and the rest are dropped, hiding the more "
      "serious of a pair",
-     DOC,
+     DOC_JS_NOTES,
      "  const more = all.length > 1 ? ' +' + (all.length - 1) : '';",
      "  const more = '';",
      TESTS),
 
     # ---- undo ----
     ("a delete stops offering a way back",
-     DOC,
+     DOC_JS_PAGE,
      "    offerUndo(rec);",
      "    hideUndo();",
      TESTS),
 
     ("the undo strip stays in the tab order after its window closes",
-     DOC,
+     DOC_JS_NOTES,
      "  UNDO.bar.toggleAttribute('inert', !on);",
      "  UNDO.bar.classList.toggle('was-on', !!on);",
      TESTS),
@@ -110,56 +114,56 @@ MUTANTS = [
 
     # ---- legibility ----
     ("type drops back below the 11px floor",
-     DOC,
+     DOC_CSS,
      ".cmt-loc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;color:var(--muted);",
      ".cmt-loc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.63rem;color:var(--muted);",
      TESTS),
 
     ("--muted goes back to failing AA on the drawer's own ground",
-     DOC,
+     DOC_CSS,
      "--muted:#585E62;",
      "--muted:#6E7478;",
      TESTS),
 
     ("--mark goes back to failing AA as text",
-     DOC,
+     DOC_CSS,
      "--mark:#9E4718;",
      "--mark:#C8622F;",
      TESTS),
 
     ("the favicon's bar drifts from --mark, so the tab wears the old colour",
-     DOC,
+     DOC_CSS,
      "'<style>.a{fill:#2F5C57}.b{fill:#9E4718}'",
      "'<style>.a{fill:#2F5C57}.b{fill:#C8622F}'",
      TESTS),
 
     ("the favicon loses its dark override, so the tab keeps the light bar",
-     DOC,
+     DOC_CSS,
      "'@media (prefers-color-scheme:dark){.a{fill:#84B8B0}.b{fill:#E0915E}}</style>'",
      "'</style>'",
      TESTS),
     # ---- what review found, and the checks written for it ----
     ("marginOff's comparison is inverted — every annotation gets an inline "
      "marker exactly when it already has a margin note",
-     DOC,
+     DOC_JS_NOTES,
      "getComputedStyle(GUTTER).display === 'none'",
      "getComputedStyle(GUTTER).display !== 'none'",
      TESTS),
 
     ("a retried undo splices the same record in a second time",
-     DOC,
+     DOC_JS_NOTES,
      "  if (CMT.list.indexOf(rec) < 0) {",
      "  if (true) {",
      TESTS),
 
     ("a failed undo asserts the file's contents again",
-     DOC,
+     DOC_JS_NOTES,
      "'Undo could not be confirmed — reload to see the file. '",
      "'Undo failed — still deleted. '",
      TESTS),
 
     ("a failed edit becomes unretryable again",
-     DOC,
+     DOC_JS_PAGE,
      "  if (note === rec.note && !rec.editFailed) return render();",
      "  if (note === rec.note) return render();",
      TESTS),
@@ -169,49 +173,49 @@ MUTANTS = [
     # nobody here runs. The trailing comment is what makes this line unique
     # against the identical reset inside the try block.
     ("an in-flight edit retry wears the badge of the failure it is retrying",
-     DOC,
+     DOC_JS_PAGE,
      "  rec.editFailed = false;                    // before the POST, not after it",
      "  /* nothing */",
      TESTS),
 
     ("the emptied-note refusal goes back to the closed drawer",
-     DOC,
+     DOC_JS_PAGE,
      "    rec.editFailed = 'an annotation cannot have an empty note",
      "    CMT.err = 'an annotation cannot have an empty note",
      TESTS),
 
     ("the alarm stops reaching the always-visible opener",
-     DOC,
+     DOC_JS_NOTES,
      "  CMT.el.open.classList.toggle('failing', !!alarm);",
      "  /* nothing */",
      TESTS),
 
     ("the failing opener is a colour change with no glyph",
-     DOC,
+     DOC_CSS,
      '.opener.failing::after{content:"!"',
      '.opener.failing::before{content:""',
      TESTS),
 
     ("the undo strip shows a dead Undo button again",
-     DOC,
+     DOC_JS_NOTES,
      "  UNDO.btn.hidden = !onClick;",
      "  /* nothing */",
      TESTS),
 
     ("the wide layout stops reserving room for the drawer",
-     DOC,
+     DOC_CSS,
      " body.cmt .page{padding-right:27rem}",
      " body.cmt .page{padding-right:0}",
      TESTS),
 
     ("the scrim goes back over the margin and swallows every click on it",
-     DOC,
+     DOC_CSS,
      " body.cmt .scrim{opacity:0;pointer-events:none}",
      " body.cmt .scrim{opacity:1}",
      TESTS),
 
     ("a closing # run with no space before it is stripped from a heading again",
-     DOC,
+     DOC_MARKDOWN,
      'HEADING_RE = re.compile(r"^ {0,3}(#{1,6})\\s+(.*?)(?:[ \\t]+#+)?[ \\t]*$")',
      'HEADING_RE = re.compile(r"^ {0,3}(#{1,6})\\s+(.*?)\\s*#*\\s*$")',
      TESTS + [DEV / "tests" / "skills" / "annotate" / "test_render_change.py"]),

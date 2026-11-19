@@ -564,3 +564,117 @@ def test_the_dispatcher_stays_silent_on_a_clean_command(repo):
     r = _dispatch("cp notes.md sub/notes.md && git commit -m one", repo)
     assert r.returncode == 0
     assert "guard-bash-text" not in r.stdout + r.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Edges found by planting a bug in each decision line
+# --------------------------------------------------------------------------- #
+
+_MORE_BLOCKS = [
+    # a longer name that merely starts with the variable's name is a different variable: silent (below);
+    # but a comparison is not an assignment, so a path use beside it still blocks
+    '[ $CLAUDE_PLUGIN_ROOT == "" ] && ls $CLAUDE_PLUGIN_ROOT/x',
+    # a `#` inside a word starts no comment
+    "echo a#${CLAUDE_PLUGIN_ROOT}/x",
+    # a heredoc closed by a tab-indented terminator ends there: the command after it is real code
+    "cat <<-'EOF'\n\t${CLAUDE_PLUGIN_ROOT}/inside\n\tEOF\nls ${CLAUDE_PLUGIN_ROOT}/after",
+    # ...and so is one closed by a CRLF terminator
+    "cat <<'EOF'\r\nbody\r\nEOF\r\nls ${CLAUDE_PLUGIN_ROOT}/after",
+    # a here-string is not a heredoc
+    "cat <<< hello\nls ${CLAUDE_PLUGIN_ROOT}/after",
+    # an arithmetic expansion closes at its own `))`
+    "echo $(( (1+2)*3 )) && ls ${CLAUDE_PLUGIN_ROOT}/x",
+    # a backtick substitution closes at its backtick even with an open paren inside
+    "echo `echo (` && ls ${CLAUDE_PLUGIN_ROOT}/x",
+]
+
+
+# requirement: guard-hooks / An unresolved plugin root in a command is blocked
+@pytest.mark.parametrize("command", _MORE_BLOCKS)
+def test_the_edges_of_the_unresolved_root_block(monkeypatch, tmp_path, command):
+    assert "CLAUDE_PLUGIN_ROOT" in _blocks(monkeypatch, command, tmp_path)
+
+
+_MORE_SILENT = [
+    # another variable whose name starts with the root's
+    "ls $CLAUDE_PLUGIN_ROOT_OLD/x",
+    "ls $CLAUDE_PLUGIN_ROOT9/x",
+    # PowerShell's own assignment silences a plain use of the same name
+    "$env:CLAUDE_PLUGIN_ROOT = 'C:/p'; python $CLAUDE_PLUGIN_ROOT/x.py",
+    # a quoted `A=b` names a command, not an assignment: nothing after it is `git`
+    "\"A\"=1 git commit -m $'a\\nb'",
+    # `command -v` describes, it does not run
+    "command -v git commit -m $'a\\nb'",
+    "command -V git commit -m $'a\\nb'",
+    # a quoted heredoc's body is text, even when its terminator never comes
+    "cat <<-'EOF'\n\t${CLAUDE_PLUGIN_ROOT}/inside\n",
+]
+
+
+@pytest.mark.parametrize("command", _MORE_SILENT)
+def test_the_edges_of_what_is_silent(monkeypatch, tmp_path, command):
+    _silent(monkeypatch, command, tmp_path)
+
+
+_MORE_ASKS = [
+    ("tee \\../outside.txt", "../outside.txt"),              # an escaped first character is still that character
+    ("tee .\\\n./outside.txt", "../outside.txt"),            # a backslash-newline joins the lines
+    ("echo `echo (` > ../out", "../out"),                    # the backtick closes with a paren open
+    ("mkdir -- -m ../out", "../out"),                        # after `--` an option-looking word is an operand
+    ("cp - ../out", "../out"),                               # a lone `-` is an operand
+    ("echo x &>> ../out", "../out"),
+]
+
+
+# requirement: guard-hooks / A write outside the checkout through .. asks first
+@pytest.mark.parametrize("command,target", _MORE_ASKS)
+def test_more_spellings_of_a_write_outside_the_checkout_ask(monkeypatch, repo, command, target):
+    assert f"`{target}`" in _asks(monkeypatch, command, repo)
+
+
+_MORE_NOT_OUTSIDE = [
+    "cp ../a",                       # one operand: no destination
+    "tee ~/../../x",                 # `~` is not knowable from the text, whatever it normalises to
+    "tee $HOME/../../x",
+    "tee C:/../../x",                # a Windows drive path
+    "tee c:\\..\\..\\x",
+    "tee ../a://b",                  # anything holding `://` is a URL, not a path
+    "tee /a/../../x",
+    "echo $((x >../../y))",          # inside `$((...))` a `>` is arithmetic, not a redirect
+    "echo ${v:->../../x}",           # inside `${...}` a `>` is part of the default word, not a redirect
+    "ls &>>| ../../x",               # `&>>|` is no operator: the `|` ends the command, no target is read
+]
+
+
+# requirement: guard-hooks / A write outside the checkout through .. asks first
+@pytest.mark.parametrize("command", _MORE_NOT_OUTSIDE)
+def test_more_paths_that_are_not_a_write_out_of_the_checkout_are_silent(monkeypatch, repo, command):
+    _silent(monkeypatch, command, repo)
+
+
+_MORE_WARNS = [
+    "git 2>/dev/null commit -m $'a\\nb'",                    # the `2` of `2>` is a descriptor, not an argument
+]
+
+
+# requirement: guard-warnings / A multi-line inline commit message or pull request body warns
+@pytest.mark.parametrize("command", _MORE_WARNS)
+def test_more_spellings_of_a_multi_line_message_warn(monkeypatch, tmp_path, command):
+    assert "git commit -m" in _warns(monkeypatch, command, tmp_path)
+
+
+_MORE_NO_WARNING = [
+    "git commit -um$'a\\nb'",                                # the rest of `-u`'s word is its value, not a message
+    "git commit --author -m $'a\\nb'",                       # an option that takes a value swallows the next word
+    "git commit -t -m $'a\\nb'",
+    "gh pr view 5 --body $'a\\nb'",                          # only create, edit, comment and review take a body
+    "gh issue view 5 --body $'a\\nb'",
+    "gitx commit -m $'a\\nb'",                               # a longer command name is another command
+    "ghost pr create --body $'a\\nb'",
+]
+
+
+# requirement: guard-warnings / A multi-line inline commit message or pull request body warns
+@pytest.mark.parametrize("command", _MORE_NO_WARNING)
+def test_more_commands_that_are_not_a_multi_line_message_are_silent(monkeypatch, tmp_path, command):
+    _silent(monkeypatch, command, tmp_path)

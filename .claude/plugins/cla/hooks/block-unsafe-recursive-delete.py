@@ -33,8 +33,8 @@ real POSIX symlinks and real NTFS junctions. They found about twenty shapes
 that exited 0 and destroyed the far side -- unexpanded `~` and `$HOME`, globs
 and braces, a shell metacharacter inside a link's own name, `bash -c`, a bind
 mount, PowerShell parameter abbreviation, and a scan budget that failed open
-on a large tree (issues #218 and #221, closed with their findings intact).
-A later attempt to repair the escape hatch (PR #231, closed) added five NEW
+on a large tree (both review reports were closed with their findings intact).
+A later attempt to repair the escape hatch (closed unmerged) added five NEW
 destructive-allow paths of its own, two of them critical -- including one
 where a PowerShell user following the block message's own advice disarmed the
 guard AND executed the delete.
@@ -79,7 +79,8 @@ is the PowerShell answer. Anyone editing that message must re-measure it;
 cannot prove a new wording runs.
 
 `git worktree remove` is no longer recommended by any message here, which also
-retires the orphaned-worktree dead end of issue #220: this hook no longer fires
+retires the orphaned-worktree dead end, where a message sent the reader to a
+command that could not finish: this hook no longer fires
 on a worktree path merely for being one.
 
 Detection is best-effort, matching this repo's other Bash-command hooks
@@ -202,9 +203,9 @@ def _strip_non_command_text(command: str) -> str:
 # uses `re.fullmatch` on the canonical parameter names, and PowerShell binds
 # any unambiguous prefix -- `-Rec -For`, `-r -Force` and friends all ALLOW.
 # Measured against a real junction, and pre-existing rather than introduced
-# here (#221 lists the family). A prefix match would close it. It is left
-# alone because this change only narrows, and widening a detector is the kind
-# of edit that earned this hook two bad reviews; keeping the arm is a decision
+# here (the second review report lists the family). A prefix match would
+# close it. It is left alone because this change only narrows, and widening a
+# detector is the kind of edit that earned this hook two bad reviews; keeping the arm is a decision
 # not to remove coverage, not a claim that the coverage is good.
 _RM_ALIASES = {"rm", "remove-item", "ri", "del", "erase", "rd", "rmdir"}
 _PS_PATH_PARAMS = {"-path", "-literalpath"}
@@ -624,8 +625,8 @@ def _remedy(tool_name: object) -> str:
     BOTH the `Bash` and `PowerShell` matchers. So a git-bash caller who typed
     `rm -rf <link>` was handed `Remove-Item -Recurse <link>` -- a command their
     shell does not have -- and was never told about `rm <link>`, which works.
-    Issue #236. `cmd /c rmdir` was named alongside and does run from git-bash,
-    so it was a wrong FIRST suggestion rather than a dead end, but the first
+    Reported as a dead end. `cmd /c rmdir` was named alongside and does run
+    from git-bash, so it was a wrong FIRST suggestion rather than a dead end, but the first
     suggestion is the one a reader tries.
 
     Measured 2026-09-12, `-NonInteractive`, real `mklink /J` junction, canary on
@@ -655,8 +656,8 @@ def _remedy(tool_name: object) -> str:
     `Remove-Item` in PowerShell** (`(Get-Alias rm).Definition` prints
     `Remove-Item` in both editions), so a blind `rm <link>` is the bare
     `Remove-Item` that fails under 5.1. Falling back to the platform reproduces
-    the pre-#236 behaviour exactly, and that behaviour was never a dead end --
-    it named `cmd /c rmdir`, which works from every shell here. A wrong guess
+    the behaviour before the shell-aware remedy exactly, and that behaviour
+    was never a dead end -- it named `cmd /c rmdir`, which works from every shell here. A wrong guess
     therefore costs the reader one extra remedy to read, not a way forward.
 
     STILL ONE REMEDY PER CALLER, NOT A MENU. The previous version of this note

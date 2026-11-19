@@ -90,7 +90,7 @@ A requirement proven partly by a test and partly by a prompt SHALL carry a marke
 
 ### Requirement: A checker reports a change over its whole-change budget
 
-`check_spec_proof.py` SHALL report each active change whose `.md` files hold more words in total, or whose specs hold more `### Requirement:` headings in total, than the budget the repo's `openspec/config.yaml` rules state, reading both numbers from that file, and SHALL say when the config states no budget and so none was enforced.
+`check_spec_proof.py` SHALL report each active change whose Markdown files hold more words in total, or whose specs hold more requirements in total, than the budget the repo's `openspec/config.yaml` rules state, reading both numbers from that file, and SHALL say when the config states no budget and so none was enforced.
 
 #### Scenario: A change over its requirement budget
 
@@ -99,7 +99,7 @@ A requirement proven partly by a test and partly by a prompt SHALL carry a marke
 
 #### Scenario: A change over its word budget
 
-- **WHEN** the total words over every `.md` file of an active change exceed the config's word budget
+- **WHEN** the total words over every Markdown file of an active change exceed the config's word budget
 - **THEN** the checker names the change and exits non-zero
 
 #### Scenario: A config with no budget
@@ -109,7 +109,7 @@ A requirement proven partly by a test and partly by a prompt SHALL carry a marke
 
 ### Requirement: A change can opt in to the protected budget
 
-`check_spec_proof.py` SHALL hold a change whose `proposal.md` carries the line `Budget: protected` to the protected budget sentence in the config instead of the repo's, SHALL report any other `Budget:` value, or that line with no protected sentence in the config, and SHALL exit 2 on a budget number it cannot read.
+`check_spec_proof.py` SHALL hold a change whose proposal carries the line `Budget: protected` to the protected budget sentence in the config instead of the repo's, SHALL report any other `Budget:` value, or that line with no protected sentence in the config, and SHALL exit 2 on a budget number it cannot read.
 
 #### Scenario: A change opts in to the protected budget
 

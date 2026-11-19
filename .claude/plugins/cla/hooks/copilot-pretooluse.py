@@ -21,16 +21,16 @@ _DISPATCHERS = {
 }
 # The key that carries the new text of each Edit/Write tool the adapter accepts.
 _TEXT_KEYS = {"Edit": "new_string", "Write": "content"}
-# The dispatchers report "a guard did not run" as an `ask` whose reason carries one
-# of these phrases (`dispatch-*-pretooluse.py`: the enforcing-guard escalation in
-# main() and `_fail_closed`). Copilot cannot resolve that ask as a confirmation of
-# a real action, and an unchecked call must never become an approval, so the
-# adapter turns it into a deny. This is wording-matched because the dispatchers
-# emit no structured flag and are a Claude contract this change does not edit;
-# `test_copilot_hooks.py` fails if a dispatcher's failure wording drifts from
-# these phrases. The one deliberate exception is the Bash dispatcher's oversize-command
-# ask: that call is unchecked too, and it stays an ask.
-FAILURE_MARKERS = ("could not run", "did not run")
+# The dispatchers report "a guard did not run" as an `ask`, and set their module
+# flag `GUARD_NOT_RUN` when they do (`dispatch-*-pretooluse.py`: the
+# enforcing-guard escalation in main() and `_fail_closed`). Copilot cannot resolve
+# that ask as a confirmation of a real action, and an unchecked call must never
+# become an approval, so the adapter turns it into a deny. It reads the flag, not
+# the reason's wording: a reworded message cannot turn a deny back into an ask. A
+# dispatcher without the flag is an unknown contract and is denied as well. The
+# one deliberate exception is the Bash dispatcher's oversize-command ask: that
+# call is unchecked too, sets no flag, and stays an ask.
+_FLAG = "GUARD_NOT_RUN"
 
 
 def _plugin_root() -> Path:
@@ -73,7 +73,7 @@ def _load_dispatcher(path: Path) -> ModuleType:
     return module
 
 
-def _dispatch(path: Path, payload: dict) -> tuple[int, str, str]:
+def _dispatch(path: Path, payload: dict) -> tuple[int, str, str, object]:
     module = _load_dispatcher(path)
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -86,14 +86,29 @@ def _dispatch(path: Path, payload: dict) -> tuple[int, str, str]:
         sys.stdin = previous_stdin
     if not isinstance(code, int):
         raise TypeError("CLA guard dispatcher returned a non-integer exit code")
-    return code, stdout.getvalue(), stderr.getvalue()
+    return code, stdout.getvalue(), stderr.getvalue(), getattr(module, _FLAG, None)
 
 
-def _normalize(stdout_text: str, stderr_text: str, code: int) -> int:
+def _flagged_reason(stdout_text: str) -> str:
+    """The reason a dispatcher that set its flag printed, when it printed one."""
+    try:
+        reason = json.loads(stdout_text)["hookSpecificOutput"]["permissionDecisionReason"]
+    except (ValueError, KeyError, TypeError):
+        reason = None
+    return reason if isinstance(reason, str) else "A CLA guard could not run; refusing the call."
+
+
+def _normalize(stdout_text: str, stderr_text: str, code: int, not_run: object) -> int:
     if code == 2:
         return _deny(stderr_text)
     if code != 0:
         return _deny(f"CLA guard dispatcher exited with status {code}; refusing an unchecked call.")
+    if not isinstance(not_run, bool):
+        return _deny(f"CLA guard dispatcher reports no `{_FLAG}` flag; refusing an unchecked call.")
+    if not_run:
+        # Before the output is read: a call no guard checked is denied whatever
+        # the dispatcher printed, nothing or malformed text included.
+        return _deny(_flagged_reason(stdout_text))
     if not stdout_text.strip():
         return 0
 
@@ -115,8 +130,6 @@ def _normalize(stdout_text: str, stderr_text: str, code: int) -> int:
     if decision == "ask":
         if not isinstance(reason, str) or not reason.strip():
             return _deny("CLA guard dispatcher requested confirmation without a reason; refusing the call.")
-        if any(marker in reason.lower() for marker in FAILURE_MARKERS):
-            return _deny(reason)
         print(json.dumps({
             "permissionDecision": "ask",
             "permissionDecisionReason": reason,
@@ -181,14 +194,14 @@ def main() -> int:
 
     try:
         root = _plugin_root()
-        code, stdout_text, stderr_text = _dispatch(
+        code, stdout_text, stderr_text, not_run = _dispatch(
             root / "hooks" / dispatcher_name,
             event,
         )
     except Exception as exc:
         print(f"cla: Copilot pre-tool guard failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return _deny("CLA guard could not run; refusing this tool call.")
-    return _normalize(stdout_text, stderr_text, code)
+    return _normalize(stdout_text, stderr_text, code, not_run)
 
 
 if __name__ == "__main__":
