@@ -1,5 +1,6 @@
 #!/bin/sh
-# CLA guard: refuse a push that targets the default branch directly.
+# CLA guard: refuse a push that targets the default branch directly, and a push
+# that deletes a tag on the remote or moves a tag the remote already has.
 #
 # This replaces a 491-line PreToolUse hook that parsed the `git push` command
 # STRING to guess its destination. That approach never converged: `git.exe`,
@@ -21,12 +22,33 @@
 # A branch DELETION arrives with an all-zero local sha and the same remote ref,
 # so deleting the default branch is refused by the same case below.
 #
-# Override for a genuine emergency:
-#   ALLOW_PUSH_TO_MAIN=1 git push ...
+# LIMIT: the hook sees only the lines git writes. `git push --mirror` deletes
+# every remote ref the clone lacks, branches and tags alike, without writing a
+# line for any of them, so this hook cannot refuse those deletions. A `--prune`
+# push and an explicit `--delete` or `:<ref>` do write their lines and are
+# refused below.
+#
+# Tags: a consumer that fetched a tag has that tree, so a published tag is not
+# rewritten in place; a fix ships as a new tag. For a ref under `refs/tags/`:
+#   local sha all zeros                      a delete         refused
+#   remote sha all zeros                     a new tag        allowed
+#   remote sha set and different from local a move           refused
+#   remote sha equal to local                nothing changes  allowed
+# Any tag name, lightweight or annotated (an annotated tag's sha is its tag
+# object, so re-creating one on the same commit is a move too). A delete git
+# does not report, as in a mirror push, is outside this (see LIMIT above).
+#
+# Overrides, each for a genuine emergency and each lifting only its own refusal:
+#   ALLOW_PUSH_TO_MAIN=1 git push ...   a push to or delete of the default branch
+#   ALLOW_TAG_REWRITE=1 git push ...    a tag delete or move
 
-if [ "${ALLOW_PUSH_TO_MAIN:-}" = "1" ]; then
-    exit 0
-fi
+# An all-zero sha (40 digits for SHA-1, 64 for SHA-256) names no object.
+is_zero() {
+    case $1 in
+        *[!0]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
 
 # The remote's own default branch is refused too, so a repo whose default is
 # `develop` or `trunk` is guarded. git passes the remote's name as $1 (a URL when
@@ -55,7 +77,7 @@ if head=$(git symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null)
 fi
 
 status=0
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+while read -r _local_ref local_sha remote_ref remote_sha; do
     [ -n "$remote_ref" ] || continue
     target="$remote_ref"
     if [ -n "$default_ref" ] && [ "$remote_ref" = "$default_ref" ]; then
@@ -63,12 +85,28 @@ while read -r _local_ref _local_sha remote_ref _remote_sha; do
     fi
     case "$target" in
         refs/heads/main|refs/heads/master)
+            [ "${ALLOW_PUSH_TO_MAIN:-}" = "1" ] && continue
             branch=${remote_ref#refs/heads/}
             echo "cla: refusing to push directly to '$branch'." >&2
             echo "     Branch and open a PR instead:" >&2
             echo "       git checkout -b feature/<name> && git push -u origin HEAD" >&2
             echo "       gh pr create" >&2
             echo "     Override for a genuine emergency: ALLOW_PUSH_TO_MAIN=1 git push ..." >&2
+            status=1
+            ;;
+        refs/tags/*)
+            [ "${ALLOW_TAG_REWRITE:-}" = "1" ] && continue
+            tag=${remote_ref#refs/tags/}
+            if is_zero "$local_sha"; then
+                echo "cla: refusing to delete tag '$tag' on the remote." >&2
+            elif ! is_zero "$remote_sha" && [ "$remote_sha" != "$local_sha" ]; then
+                echo "cla: refusing to move tag '$tag', which the remote already has." >&2
+            else
+                continue
+            fi
+            echo "     Anyone who fetched it keeps the old tree; publish a new tag instead." >&2
+            echo "     If your local tags are only stale, refresh them: git fetch --tags --force" >&2
+            echo "     Override for a genuine emergency: ALLOW_TAG_REWRITE=1 git push ..." >&2
             status=1
             ;;
     esac
