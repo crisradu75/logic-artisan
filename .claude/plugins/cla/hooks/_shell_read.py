@@ -22,7 +22,7 @@ Two readers use it, once per call:
     and alone turns its unresolved and depth-cap reasons into an ask.
 
 It lived inside `ask-destructive-git.py` until the other guards needed it.
-Stdlib only, import-cheap and side-effect-free, like `_dispatch_lib`.
+Stdlib only, import-cheap and side-effect-free, like `_shell_text`.
 
 The reading is linear in the command's length: the readers spend from one work
 cap (`_WORK_FACTOR`), appended text is capped at the command's own length plus
@@ -43,15 +43,15 @@ import sys
 from pathlib import Path
 
 # Loaded by path from the dispatcher and from pytest, neither of which puts
-# the hooks dir first on `sys.path`, so the `_dispatch_lib` import below is
+# the hooks dir first on `sys.path`, so the `_shell_text` import below is
 # made explicit. The same bootstrap every hook carries.
 _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GitInvocation  # noqa: E402
-from _dispatch_lib import GIT_SEP as _GIT_SEP  # noqa: E402
-from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
+from _shell_text import GitInvocation  # noqa: E402
+from _shell_text import GIT_SEP as _GIT_SEP  # noqa: E402
+from _shell_text import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
 # Horizontal whitespace, or a backslash line continuation. A continuation is a
 # JOINED line, not a new command, so it separates tokens; a bare newline ends

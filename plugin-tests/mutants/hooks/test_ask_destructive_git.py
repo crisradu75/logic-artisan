@@ -159,7 +159,7 @@ MUTANTS.append((
 
 # --- 6. `git branch` ---------------------------------------------------------
 # Was: `_BRANCH` composed with `_GIT_CMD` swapped for a bare `git`. Since #526
-# `GIT_CMD` is composed once, inside `_dispatch_lib.GitInvocation`, so that
+# `GIT_CMD` is composed once, inside `_shell_text.GitInvocation`, so that
 # mutant lives in `test_dispatch_lib.py`'s batch. Here the subcommand word is
 # corrupted, so no force-delete spelling matches.
 _l6 = _line('_BRANCH = GitInvocation(')

@@ -39,7 +39,7 @@ import sys
 
 from pathlib import Path
 
-# The `_dispatch_lib` import below resolves through `sys.path`; running
+# The `_shell_text` import below resolves through `sys.path`; running
 # standalone normally puts the hooks dir at `sys.path[0]`, but that is
 # suppressed under `PYTHONSAFEPATH=1` / `python -I` / `python -P`. Insert it
 # explicitly so an import failure can't silently disable this hook.
@@ -47,8 +47,8 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GitInvocation  # noqa: E402
-from _dispatch_lib import strip_quoted_spans  # noqa: E402
+from _shell_text import GitInvocation  # noqa: E402
+from _shell_text import strip_quoted_spans  # noqa: E402
 
 # `GitInvocation` matches `GIT_CMD`, the global options and the subcommand in
 # linear time, with `GIT_SEP`, not `\s+`, at the `git`→subcommand

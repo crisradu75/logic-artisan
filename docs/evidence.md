@@ -362,7 +362,7 @@ setting, which would also have changed `chain-merge.md`.
 
 **Commands inside backticks or `"$(...)"` stay invisible to `ask-destructive-git`.** The guard
 scans the command after `strip_quoted_spans` has blanked every quoted and backtick span
-(`ask-destructive-git.py:897`; `_dispatch_lib.py:484-525`). A command inside such a span is blanked
+(`ask-destructive-git.py:897`; `_dispatch_lib.py:484-525`, since moved to `_shell_text.py`). A command inside such a span is blanked
 with it. An unquoted `$(...)` is not blanked, so it is still scanned. The accepted weakness: a
 `gh pr merge` or a `git push --no-verify` inside backticks or inside a double-quoted `$(...)` runs
 with no ask. The owner decided to leave it. No incident count

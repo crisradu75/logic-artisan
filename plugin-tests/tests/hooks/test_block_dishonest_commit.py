@@ -335,7 +335,7 @@ def test_the_word_reader_returns_its_own_heredoc_bodies_and_consumes_them():
 def test_a_match_inside_consumed_text_is_not_read_again():
     # The heredoc body holds a `git commit` line; it is message text, not a command.
     command = "git commit -F - <<'EOF'\nfix: x\ngit commit --allow-empty\nEOF\n"
-    dispatch = _load("dispatch_lib_for_commit_tests", "_dispatch_lib.py")
+    dispatch = _load("shell_text_for_commit_tests", "_shell_text.py")
     matcher = dispatch.GitInvocation(args.COMMIT_OR_ADD, capture_opts=True)
     found = args.find_invocations(command, dispatch.strip_quoted_spans(command), matcher, "/")
     assert len(found) == 1
@@ -344,7 +344,7 @@ def test_a_match_inside_consumed_text_is_not_read_again():
 
 
 def test_read_add_names_what_it_stages():
-    dispatch = _load("dispatch_lib_for_add_tests", "_dispatch_lib.py")
+    dispatch = _load("shell_text_for_add_tests", "_shell_text.py")
     matcher = dispatch.GitInvocation(args.COMMIT_OR_ADD, capture_opts=True)
 
     def adds(command):

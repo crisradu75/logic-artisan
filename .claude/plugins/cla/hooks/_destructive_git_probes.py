@@ -19,9 +19,9 @@ ask (fail closed), the history checks stay silent and say so on stderr (fail
 open; the section comment above `_REBASE` in `_destructive_git_rules.py` says
 why). Each identical call runs once per command.
 
-Split out of `ask-destructive-git.py`, which re-exports these names. A test that
-replaces `_run_git`, `time` or a helper patches it HERE: these functions look
-those names up in this module.
+Split out of `ask-destructive-git.py`, which imports only the names its decision
+calls. A test reaches the rest here, and one that replaces `_run_git`, `time` or
+a helper patches it HERE: these functions look those names up in this module.
 """
 
 from __future__ import annotations

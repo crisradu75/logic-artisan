@@ -42,6 +42,8 @@ DEV = Path(__file__).resolve().parents[2]
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 HOOKS_JSON = PLUGIN / "hooks" / "hooks.json"
 GUARD = DEV / "tests" / "hooks" / "test_hooks_wiring.py"
+LIB = PLUGIN / "hooks" / "_dispatch_lib.py"
+BASH_DISPATCHER = PLUGIN / "hooks" / "dispatch-bash-pretooluse.py"
 TARGETS = [GUARD]
 
 MUTANTS = [
@@ -123,6 +125,25 @@ MUTANTS = [
         GUARD,
         '_LOADER_GROUP_KEYS = frozenset({"matcher", "hooks"})',
         '_LOADER_GROUP_KEYS = frozenset({"hooks"})',
+        TARGETS,
+    ),
+    # --- The per-part budget ---------------------------------------------------
+    # `test_enforcing_hooks_fit_inside_the_handler_budget` counts each hook once,
+    # so both of these still fit its sum (6 + 3 and 6 + 6, against 12): only
+    # `test_per_part_enforcing_hooks_spawn_nothing` sees that the hook now runs
+    # once per wrapper part with no cap on the part count.
+    (
+        "an enforcing hook that runs per part gains a subprocess",
+        LIB,
+        '    "block-unsafe-recursive-delete.py": 0.0,',
+        '    "block-unsafe-recursive-delete.py": 3.0,',
+        TARGETS,
+    ),
+    (
+        "the git-probing enforcing hook is read per part as well",
+        BASH_DISPATCHER,
+        '_READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py", "ask-destructive-git.py"})',
+        '_READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py"})',
         TARGETS,
     ),
 ]

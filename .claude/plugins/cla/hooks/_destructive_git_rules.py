@@ -10,9 +10,8 @@ decision in `ask-destructive-git.py`, whose module docstring states the
 detection scope these tables implement. Every matcher reads text that hook's
 `_scan` has already quote-stripped, part by part.
 
-Split out of that hook, which had grown past 2,400 lines; the names it used are
-re-exported there, so a test or mutant batch that reaches one through the hook
-still finds it.
+Split out of that hook, which had grown past 2,400 lines. The hook imports only
+the names its decision uses; a test or mutant batch reaches every name here.
 """
 
 from __future__ import annotations
@@ -22,13 +21,13 @@ import re
 import sys
 from pathlib import Path
 
-# Loaded by path, like every hook: the `_dispatch_lib` import below is made
-# explicit rather than left to how the process happened to start.
+# Loaded by path, like every hook: the sibling imports below are made explicit
+# rather than left to how the process happened to start.
 _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GitInvocation  # noqa: E402
+from _shell_text import GitInvocation  # noqa: E402
 from _shell_read import _SEP, _TAIL, _abbrev, _unquote  # noqa: E402
 
 # Group 1 is the global options (for `-C`), group 2 the tail.

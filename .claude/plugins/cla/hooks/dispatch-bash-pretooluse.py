@@ -178,9 +178,15 @@ _ADVISORY_HOOKS = frozenset({
 # `ask-broad-git-add.py` and `ask-staged-debug-tag.py` are here because, when
 # they were added, the enforcing hooks above spent the whole budget
 # (`HOOK_WORST_CASE_SECONDS`). Since `ask-destructive-git.py`'s probes share one
-# 6s deadline, 6s of it is free: room for ONE more enforcing hook with git
-# calls (either of these fits), not yet spent. (The text-only half of the
-# commit checks, `block-dishonest-commit.py`, costs nothing and is enforcing.)
+# 6s deadline, 6s of it is free, but only for ONE more enforcing hook with git
+# calls that reads the command alone and is listed in `_READS_COMMAND_ONLY`
+# below. Any other hook runs once per wrapper part as well, with no cap on the
+# part count, and an enforcing one is never skipped, so it must spawn nothing
+# (`test_per_part_enforcing_hooks_spawn_nothing` in `test_hooks_wiring.py`).
+# Neither of these two reads the command alone (each checks a `git add` or
+# `git commit` inside `bash -c` too), so making one enforcing means giving it one
+# deadline across all its parts first. (The text-only half of the commit
+# checks, `block-dishonest-commit.py`, costs nothing and is enforcing.)
 _BEST_EFFORT_HOOKS = frozenset({
     "ask-broad-git-add.py",
     "ask-staged-debug-tag.py",
@@ -193,7 +199,9 @@ _SKIPPABLE_HOOKS = _ADVISORY_HOOKS | _BEST_EFFORT_HOOKS
 # allows a subshell for the same reason. Named miss: `eval "cd x"` does change
 # it, and is not read. `ask-destructive-git.py` reads the same cached expansion
 # itself (`_scan`), joined so its checks see every part at once, and owns the
-# asks for what could not be read.
+# asks for what could not be read. Being listed here is also what lets an
+# enforcing hook spend from the budget: one that is not runs per part, and must
+# cost 0.0 in `HOOK_WORST_CASE_SECONDS`.
 _READS_COMMAND_ONLY = frozenset({"block-cd-in-bash.py", "ask-destructive-git.py"})
 
 
