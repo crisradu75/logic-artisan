@@ -48,7 +48,7 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 
 ## Engineering highlights
 
-**19 skills · 17 guard hooks · 5,718 tests · 72 mutation batches · 25 live OpenSpec specs ·
+**19 skills · 17 guard hooks · 5,900 tests · 74 mutation batches · 25 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
@@ -60,7 +60,11 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   or moving a tag the remote already has, so a published release tag stays put. `--no-verify`
   skips it, and the documented overrides `ALLOW_PUSH_TO_MAIN=1` and `ALLOW_TAG_REWRITE=1` each lift
   one refusal; a session is asked first. A `git push --mirror` deletion never reaches the hook
-  ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet)).
+  ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet)). The hook is client-side:
+  it guards only a clone that installed it, so the GitHub web UI, the API or an unhooked clone can
+  still delete or move a tag. The server-side guard is a GitHub tag ruleset that restricts updates
+  and deletions of `cla--v*`; setting it is the owner's call
+  ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet) gives the settings).
 - **An allowlist decides what ships.** The obvious denylist was measured to miss 7 of 72 dev-only
   files, including the release skill itself. An 18-pattern allowlist is checked before every tag
   ([the script](.claude/skills/release/scripts/check_shipped_tree.py) records the measurement).
@@ -81,7 +85,7 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
 
 <details>
-<summary>Where the numbers come from (counted 2026-11-19 on <code>main</code> at <code>d27a0ea</code> with #546, #548, #549, #550, #552, #554, #555, #556, #557 and #560 merged)</summary>
+<summary>Where the numbers come from (counted 2026-11-19 on <code>main</code> after #546 to #565 merged, with #561 applied)</summary>
 
 ```bash
 git ls-files .claude/plugins/cla/skills | cut -d/ -f5 | grep -v '^_' | sort -u | wc -l   # skills (tracked only)

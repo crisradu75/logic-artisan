@@ -1,8 +1,8 @@
 # multi-spec — per-change authoring agent brief
 
-Phase 3 dispatches one `Agent(subagent_type: "claude", model: "opus")` call per change, awaited sequentially. This file is the prompt template — fill in the bracketed parts from the change plan (`references/plan-schema.md`) and the source decisions file.
+Phase 3 dispatches one `Agent(subagent_type: "claude", model:)` call per change, on the model the `multi-spec` authoring row of `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` names, awaited sequentially. This file is the prompt template — fill in the bracketed parts from the change plan (`references/plan-schema.md`) and the source decisions file.
 
-Opus, one change at a time: authoring sets the premise every later phase builds on, and each change's agent gets the siblings already written.
+One change at a time: authoring sets the premise every later phase builds on, and each change's agent gets the siblings already written.
 
 ## Prompt template
 

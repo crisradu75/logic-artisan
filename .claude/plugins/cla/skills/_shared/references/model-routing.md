@@ -49,7 +49,8 @@ and file edits. That rule is the only safeguard, an accepted risk.
 | Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff; `model:` is passed on every dispatch) | inherited (medium only on the opted-in `Workflow` path) | `Agent`; `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter` (`Workflow` `agent()` only if opted in) |
 | Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; `plugin-dev:skill-reviewer` on a prose-dominant diff per "Review sizing by risk" below | inherited (medium only on the opted-in `Workflow` path) | `Agent` (`Workflow` `agent()` only if opted in) |
 | Revise R1 — `comment-analyzer` | sonnet | inherited (medium only on the opted-in `Workflow` path) | `Agent`; `pr-review-toolkit:comment-analyzer` (`Workflow` `agent()` only if opted in) |
-| Implement big-mechanical delegate (sized trigger — see SKILL.md Implement) | sonnet | inherited | `Agent(model:)` |
+| Implement big-mechanical delegate (sized trigger — see SKILL.md Implement), the Revise fix-delegate, and any other agent that implements | per "The implementer's model" in "Review sizing by risk" below, by the work's risk | inherited | `Agent(model:)` |
+| `multi-spec` Phase 3 per-change proposal authoring | opus: authoring sets the premise every later phase builds on, the same tier as Propose authoring's escalate-up | inherited | `Agent(subagent_type: "claude", model:)`, one call per change |
 | Revise round ≥2 (scoped fix-diff) | round 1's reviewers and tiers, at its final level and never lower; see "Review sizing by risk" below | inherited | `Agent(model:)` |
 | Ship / Archive / Handoff / prechecks / Test runs | inline, unchanged | — | no dispatch |
 
@@ -98,6 +99,17 @@ Opus to the high-risk reviewers.
 (a fix touching a protected area: what the Stakes section of `cla.io/project-facts.md` names, or with no such section money, personal data, accessibility, the user's own files or anything shipped to other repos, and always security, safe writes to a user's files or honesty claims; or a guard hook; or a re-entry for still-open
 findings), and only while the repo's limit on review passes allows it. Round 2 reviews the
 fix diff with the same reviewers, at round 1's final level, never lower (judged after any raise or missing-line default).
+
+**The implementer's model.** The same risk call sets the model of an agent that implements: one
+that edits files and runs tests, such as a coding delegate, an agent that applies review fixes, or
+the author of a small fix pull request. Judge the work before it starts, from what it will change,
+by the signals above; unsure means high. A fix applied after a review round uses that round's
+final level. This is the one implementer table; other files point here.
+
+| Risk | Implementer model |
+|---|---|
+| Low risk | Sonnet |
+| High risk | Opus |
 <!-- economy-rules-file:review-sizing:end -->
 
 ### Artifact-class override — a prose-dominant diff promotes the prose reviewer

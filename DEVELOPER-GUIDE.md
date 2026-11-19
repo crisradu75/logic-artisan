@@ -308,6 +308,18 @@ asks before any mirror push instead. A plugin cannot write to `.git/hooks`, so i
 cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ```
 
+**The hook is client-side, so it guards only the clones that installed it.** The GitHub web UI,
+the REST API and a clone without the hook can still delete or move a published tag, and nothing in
+this repo sees them do it. The server-side guard is a GitHub tag ruleset, which the repo owner sets
+once: repository **Settings → Rules → Rulesets → New ruleset → New tag ruleset**, name it (for
+example `release tags`), set **Enforcement status** to **Active**, add a target with **Include by
+pattern** `cla--v*`, and turn on **Restrict updates** and **Restrict deletions**. Leave **Restrict
+creations** off, or the next release cannot push its tag. Leave the bypass list empty, so a moved
+tag needs the ruleset itself changed first. A repo that installs the plugin can do the same with
+its own release-tag pattern. Rulesets are available on public repositories on every plan, and on
+private ones under GitHub Pro, Team or Enterprise. The same limit holds for the default-branch
+refusal; a branch ruleset is its server-side counterpart.
+
 Why not a PreToolUse hook, since the question recurs: it would have to parse a command string, and
 every spelling it missed was a hole (`--all`, `--mirror`, `heads/main`, `git.exe`, a here-string, a
 quoted remote). They were closed one at a time and the list never ended. The cost of the git hook is
