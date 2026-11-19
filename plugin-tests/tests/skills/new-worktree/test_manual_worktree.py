@@ -57,6 +57,7 @@ def repo(tmp_path, cached_git_repo):
 # --------------------------------------------------------------------------- #
 
 
+# requirement: worktree-setup / A casing refusal falls back without deleting anyone's files
 def test_creates_a_worktree_on_a_new_branch(repo):
     result = mw.create_worktree(repo, "alpha", "origin/main")
 
@@ -119,6 +120,7 @@ def test_a_duplicate_branch_is_refused_with_an_actionable_message(repo):
 # --------------------------------------------------------------------------- #
 
 
+# requirement: worktree-setup / A casing refusal falls back without deleting anyone's files
 def test_a_registered_leftover_worktree_is_cleaned_before_retrying(repo):
     """The observed failure mode: EnterWorktree registers the worktree with git
     and THEN refuses, so a stale entry blocks the next attempt at that path."""
@@ -130,6 +132,7 @@ def test_a_registered_leftover_worktree_is_cleaned_before_retrying(repo):
     assert os.path.realpath(str(path)) not in mw._registered_worktrees(repo)
 
 
+# requirement: worktree-setup / A casing refusal falls back without deleting anyone's files
 def test_creating_over_a_stale_entry_succeeds_and_says_it_cleaned(repo):
     path = repo / ".claude/worktrees/reuse"
     _git(repo, "worktree", "add", "-q", str(path), "-b", "leftover2", "origin/main")
@@ -161,6 +164,7 @@ def test_a_registration_whose_directory_vanished_is_pruned_and_reported(repo):
     assert os.path.realpath(str(path)) not in mw._registered_worktrees(repo)
 
 
+# requirement: worktree-setup / A casing refusal falls back without deleting anyone's files
 def test_a_nonempty_unregistered_directory_is_never_deleted(repo):
     """It is somebody's work. Deleting it to make room is exactly the
     'destroyed to fix a mistake' failure the skill warns about — better to fail

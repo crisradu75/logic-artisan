@@ -43,10 +43,13 @@ Collect every tool permission the user granted during this conversation session 
    import json
    from pathlib import Path
    p = Path('.claude/settings.local.json')
-   data = json.loads(p.read_text(encoding='utf-8')) if p.exists() else {'permissions': {'allow': []}}
+   data = json.loads(p.read_text(encoding='utf-8')) if p.exists() else {}
+   allow = data.setdefault('permissions', {}).setdefault('allow', [])
    new = ['Skill(...)', 'WebFetch(domain:...)', '...']  # ONLY the new entries from step 3
-   data['permissions']['allow'] = sorted(set(data['permissions']['allow']) | set(new))
-   p.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+   data['permissions']['allow'] = sorted(set(allow) | set(new))
+   t = p.with_name(p.name + '.tmp')
+   t.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+   t.replace(p)
    print(f'added {len(new)} new permission(s); allowlist now has {len(data[\"permissions\"][\"allow\"])} entries')
    "
    ```
@@ -63,7 +66,7 @@ Collect every tool permission the user granted during this conversation session 
    "allowlist now has $($merged.Count) entries"
    ```
 
-   The script is the single source of truth: load → set-union with the new entries → sort → atomic write. Same outcome as a hand-built rewrite, fraction of the tokens.
+   The script is the single source of truth: load (a file with no `permissions` or `allow` key gets them; a file that is not valid JSON stops the script before anything is written) → set-union with the new entries → sort → write to a temporary file and replace the original in one step (the Python form). Same outcome as a hand-built rewrite, fraction of the tokens.
 
    **In the Bash form, use the `\"key\"` escape verbatim.** On Git Bash the `\"permissions\"`/`\"allow\"` escapes inside the outer `python3 -c "..."` work correctly — DO NOT substitute `chr(34)` / `chr(39)` / other character-code tricks (they end up putting literal quotes inside the dict key and crash with `KeyError`). If escaping ever fails on a copy-paste run, switch to a heredoc form (`python3 << 'PYEOF'`) or use the PowerShell variant.
 
