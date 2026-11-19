@@ -29,12 +29,24 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
   tool to; `Write` is now allowed, and the file goes in a temp directory outside the repo (#549).
 - **The Copilot catalog no longer says the guard hooks are Claude-only**; they have been wired for
   Copilot CLI since 2.3.0 (#546).
+- **`ask-destructive-git` sees through shell wrappers.** A force-push, hard reset or forced branch
+  delete inside a `bash -c`, `sh -c`, `zsh -c`, `eval`, `pwsh -Command`/`-EncodedCommand`,
+  `Invoke-Expression` or `cmd /c` body now asks, three levels deep, as does one whose subcommand or
+  flag comes from a variable it cannot resolve (`X=push; git $X -f`, `git push "-f"`,
+  `git push --force$X`). The reading stays linear in the command's length (#552).
+- **Hook timing is measured, not guessed.** `probe-python.sh` stamps the start time, so the guards'
+  shared time budget counts the interpreter's real startup; the Copilot adapter denies on a flag the
+  dispatchers set when a guard could not run, not on words in the reason (#552).
+- **`warn-stacked-pr-merge` sees clustered short flags.** `gh pr merge 3 -sd` squashes and deletes
+  the branch; it now gets the stacked-PR warning, while `-bd` (a body of "d") stays silent (#554).
 
 ### Development
 
 Not shipped: `/release` refuses to start while a catalog names a tag `origin` lacks, and reports a
 release done only once `check_catalog_tags.py --expect cla--v<new>` passes (#548); specs for the
-eight skills that had none, so every shipped skill now has a spec (#549).
+eight skills that had none, so every shipped skill now has a spec (#549); mutation batches for
+`guard-bash-text`, `warn-stacked-pr-merge`, `warn-wholesale-rewrite`, `probe-python.sh` and the
+Copilot adapter, and full branch coverage of `sweep_changes.py` and `setup_guard.py` (#552, #554).
 
 ## [2.4.0] — 2026-11-18
 
