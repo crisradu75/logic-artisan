@@ -106,7 +106,7 @@ them in one Python process each; `warn-wholesale-rewrite` runs on its own after 
 | | `block-dishonest-commit` | a `git commit` whose message has a `Measured-by: none` trailer, or `--allow-empty` with a review-round subject (any other `--allow-empty` warns) |
 | | `block-worktree-path-escape` | a write that escapes the worktree boundary |
 | | `guard-bash-text` | three checks on a Bash or PowerShell command's text. **Blocks** a `${CLAUDE_PLUGIN_ROOT}/` or `$CLAUDE_PLUGIN_ROOT/` path the shell would expand: the Bash tool's shell does not set that variable, so the path collapses to `/...` (a placeholder copied from a `references/` file; single quotes, `\$`, a quoted heredoc and a comment stay silent). **Asks** before a write redirect, `tee`, `mkdir`, or a `cp`/`mv` destination whose path starts with `..` and lands outside the checkout, where a consuming repo keeps the user's other projects. **Warns** on a `git commit -m` or `gh pr`/`gh issue` `--body` holding a real newline or a `$(cat <<...)` heredoc (use `-F` / `--body-file`). Reads only the command text, so it runs on every call at no budget cost |
-| **Ask**: a permission prompt | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete and PR merges (`ALLOW_PR_MERGE=1` drops only the merge prompt, for the chainers' unattended runs); `git checkout <path>`, `git restore <path>`, a forced `checkout -f`/`switch -f` and `git clean`, but only when they would destroy uncommitted work; a saving `git stash` while a merge, cherry-pick or revert is in progress, because it drops `MERGE_HEAD`; a `git rebase` or rebasing `git pull` that would rewrite commits already on a remote-tracking ref (this clone's refs: a stale or missing one, as in a single-branch clone or a push to a URL, is missed); `git switch -C`/`git checkout -B` over a branch whose commits nothing else reaches; a merging `switch`/`checkout -m` while changes are staged; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
+| **Ask**: a permission prompt | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete and PR merges (`ALLOW_PR_MERGE=1` drops only the merge prompt, for the chainers' unattended runs); `git checkout <path>`, `git restore <path>`, a forced `checkout -f`/`switch -f` and `git clean`, but only when they would destroy uncommitted work; a saving `git stash` while a merge, cherry-pick or revert is in progress, because it drops `MERGE_HEAD`; a `git rebase` or rebasing `git pull` that would rewrite commits already on a remote-tracking ref (this clone's refs: a stale or missing one, as in a single-branch clone or a push to a URL, is missed); `git switch -C`/`git checkout -B` over a branch whose commits nothing else reaches; a merging `switch`/`checkout -m` while changes are staged; a push that skips or overrides the `pre-push` guard (`--no-verify`, `core.hooksPath`, `ALLOW_PUSH_TO_MAIN=1` or `ALLOW_TAG_REWRITE=1`, PowerShell's `$env:` form included); a `git push --mirror`. Also inside a shell wrapper's body (the wrappers are listed under *What the guards are, and what they are not* below), and when a subcommand or flag comes from a variable it cannot resolve |
 | | `ask-plugin-cache-edit` | an Edit or Write whose target, resolved through symlinks and `..`, lies inside an installed plugin copy: the `cache/` or `marketplaces/` part of the plugins directory (`~/.claude/plugins`, moved by `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_PLUGIN_CACHE_DIR`), or the plugin's own root when that root is in there. The edit would be lost on the next update; a repo's rules go in `cla.io/overlays/<skill>.md` or `cla.io/project-facts.md`. Silent for a plugin run with `--plugin-dir`, for the plugin's `data/` directory and on bad input; if the hook itself fails to load, every Edit and Write asks |
 | | `ask-secret-in-checkpoint` | an Edit or Write under `cla.io/checkpoints/`, `cla.io/decisions/`, `cla.io/feedback/` or `cla.io/lessons-learned/` (committed briefings) whose new text holds a secret-shaped string: an AWS, GitHub, Anthropic, OpenAI, Slack, Google or Stripe live key, a `PRIVATE KEY` header, a JWT, or a `scheme://user:password@host` URL whose password is not a placeholder. It names the kind and the line, leaves the value out, and points at the checkpoint rule: name the file, not its value. Silent for placeholders (`<password>`, `***`, `${VAR}`), ordinary prose and on bad input; if the hook itself fails to load or its scan crashes, every Edit and Write asks. |
 | | `ask-staged-debug-tag` | a `git commit` that would add a line holding a `/cla:diagnose` debug tag (best-effort: reads `git diff --cached`); names up to ten |
@@ -121,9 +121,11 @@ them in one Python process each; `warn-wholesale-rewrite` runs on its own after 
 
 **Direct pushes to `main` are NOT guarded by any of these.** That protection is a git `pre-push`
 hook at `hooks/git/pre-push`, which sees the refspec git already resolved, so no way of naming the
-target branch evades it (only git's `--no-verify` flag, or the hook's `ALLOW_PUSH_TO_MAIN=1`
-emergency override, skips it, and `ask-destructive-git` asks before either). It refuses the
-remote's own default branch as well as `main` and `master`. A plugin cannot write to `.git/hooks`, so **every clone installs it
+target branch evades it. It refuses the remote's own default branch as well as `main` and
+`master`, and deleting or moving a tag the remote already has. git's `--no-verify` flag skips it;
+the emergency overrides `ALLOW_PUSH_TO_MAIN=1` and `ALLOW_TAG_REWRITE=1` each lift one refusal;
+`ask-destructive-git` asks before each. A `git push --mirror` deletion is not reported to the
+hook, so `ask-destructive-git` asks before any mirror push. A plugin cannot write to `.git/hooks`, so **every clone installs it
 once. `<plugin>` is this plugin's installed directory, a version-keyed copy under
 `~/.claude/plugins/cache/`; `find ~/.claude/plugins/cache -path '*hooks/git/pre-push'` prints the hook's path in each installed version:
 
@@ -132,6 +134,25 @@ cp "<plugin>/hooks/git/pre-push" .git/hooks/pre-push && chmod +x .git/hooks/pre-
 ```
 
 Until you run that, nothing stops a direct push.
+
+**What the guards are, and what they are not.** They catch an agent's mistakes; they are not a
+sandbox, and a determined or confused command can get past them:
+
+- **They read command text.** Every Bash guard but `block-cd-in-bash` also checks the body of a
+  shell wrapper (`bash -c` or `eval`, and their sh, zsh, PowerShell and cmd forms) as if it were
+  typed bare, its option words dropped. Heredoc text is read as data (only its `$(...)` spans as
+  commands), a wrapper behind `docker exec` or `ssh` runs elsewhere and is not read, and a body too
+  long to read asks. `ask-destructive-git` reads wrapper bodies three levels deep and asks when a
+  git subcommand or flag comes from a variable it cannot resolve. A command that reaches git some
+  other way still gets past it: a git alias (`git -c alias.p='push -f' p`), another program that runs git
+  (`python3 -c "os.system('git push -f')"`, `ssh host "..."`), git itself named through a variable
+  (`G=git; $G push -f`), or `git push "$@"`.
+- **They need Python 3.8+.** Without it each hook prints that the guards are NOT running and lets
+  the call through; failing closed would leave no Bash, Edit or Write at all.
+- **They have a time budget.** Advisory and best-effort checks are skipped when it runs out; a hook
+  the agent's runtime kills at its own timeout lets the call through.
+- **The `pre-push` hook is the exception.** It reads the ref git has already resolved, so no
+  spelling of the command gets past it, short of the overrides named above.
 
 ## Architecture — the fact/procedure split
 
@@ -188,20 +209,22 @@ Scope is Copilot CLI only; the Copilot app and cloud agent are not supported. Co
 locations below are from GitHub's Copilot CLI documentation, read 2026-11-11
 (*Adding custom instructions for GitHub Copilot CLI*, *Finding and installing plugins for GitHub
 Copilot CLI*, *GitHub Copilot CLI plugin reference*, all on docs.github.com). What was live-tested
-is under *Layout* below (install and both helper agents validated with Copilot CLI 1.0.105 and
-release `cla--v2.2.3`); the instructions file below was not.
+is under *Copilot CLI hook caveats* below (install and both helper agents validated with Copilot
+CLI 1.0.105 and release `cla--v2.2.3`); the instructions file below was not.
 
 ```bash
 copilot plugin marketplace add crisradu75/logic-artisan
 copilot plugin install cla@cris-logic-artisan
-copilot plugin marketplace update    # re-fetch the catalog
-copilot plugin update cla            # takes the plugin name
+copilot plugin marketplace update cris-logic-artisan   # re-fetch the catalog
+copilot plugin update cla@cris-logic-artisan
 copilot plugin list
 ```
 
-- **Update.** Run `copilot plugin marketplace update` (alias `refresh`; it re-fetches the catalog,
-  and every registered marketplace if no name is given), then `copilot plugin update cla`.
-- **Troubleshoot.** `copilot plugin <subcommand> --help` lists the options. `copilot plugin disable
+- **Update.** Run `copilot plugin marketplace update cris-logic-artisan` (alias `refresh`; with no
+  name it re-fetches every registered marketplace), then `copilot plugin update cla@cris-logic-artisan`.
+- **Troubleshoot.** Check registration with `copilot plugin marketplace list`, installation with
+  `copilot plugin list`, and, from the consuming repo, instruction discovery with
+  `copilot instruction list`. `copilot plugin <subcommand> --help` lists the options. `copilot plugin disable
   cla` turns the plugin off without removing it. A marketplace cannot be removed while its plugins
   are installed; add `--force` to uninstall them too, and name the marketplace as `list` shows it.
   Installed plugins live under `~/.copilot/installed-plugins/`; a repository default is turned off
@@ -210,7 +233,8 @@ copilot plugin list
 - **Instructions are not shipped by the plugin.** The plugin reference lists no instructions
   component, so the plugin cannot deliver the writing convention that `output-styles/CLA.md` gives
   Claude Code. Copilot CLI instead reads instructions from files you own: in your repo
-  `.github/copilot-instructions.md` or `AGENTS.md`, or for all your repos
+  `.github/copilot-instructions.md` (the usual choice: copy `output-styles/COPILOT.md` there) or
+  `AGENTS.md`, or for all your repos
   `$HOME/.copilot/copilot-instructions.md` (the docs say `COPILOT_HOME` replaces `$HOME/.copilot`).
   The docs define no precedence between these files and say to avoid conflicting instructions, so
   put the text below in one of them, not several. Copilot CLI also reads `CLAUDE.md`, `GEMINI.md`,
@@ -354,13 +378,8 @@ files. Other skill text may still name `AskUserQuestion` or `${CLAUDE_PLUGIN_ROO
 not provide those Claude-specific interfaces or expand that placeholder for the plugin. Copilot app
 and cloud agent support are out of scope.
 
-To update the Copilot CLI install, run `copilot plugin marketplace update cris-logic-artisan`,
-then `copilot plugin update cla@cris-logic-artisan`. Copilot CLI does not apply plugin output styles
-automatically. Copy `output-styles/COPILOT.md` into the consuming repository as
-`.github/copilot-instructions.md`. Check registration with `copilot plugin marketplace list`,
-installation with `copilot plugin list`, and instruction discovery from the consuming repository
-with `copilot instruction list`. Skills that require Claude-only agent delegation, skill chaining,
-model routing, or permission settings are marked unsupported in their `SKILL.md` files.
+Install, update, troubleshooting and the instructions file (Copilot CLI does not apply plugin output
+styles) are under *GitHub Copilot CLI* in *Installing and updating* above.
 
 That is the whole published tree. The suite, the mutation corpora, the pytest configuration and the
 release workflow all live outside it, in the canonical source repo only — see *Testing* above.

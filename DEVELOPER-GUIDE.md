@@ -272,7 +272,7 @@ and `warn-agent-dispatch` and `warn-agent-reply-format` on their own before and 
 | | `block-worktree-path-escape` | a Write or Edit outside the current worktree (section 7) |
 | | `block-dishonest-commit` | a `git commit` whose message ends in a `Measured-by: none` trailer (it certifies a check nobody ran), or an `--allow-empty` commit with a `fix: review round N` subject; any other `--allow-empty` only warns. Silent for a mention in the body and for a commit inside another command's heredoc |
 | | `guard-bash-text` | in a Bash or PowerShell command's text: **blocks** a `${CLAUDE_PLUGIN_ROOT}/` or `$CLAUDE_PLUGIN_ROOT/` path the shell would expand (the Bash tool's shell never has the variable, so it becomes `/...`); **asks** before a redirect, `tee`, `mkdir` or `cp`/`mv` destination that starts with `..` and lands outside the checkout; **warns** on a multi-line `git commit -m` or `gh pr|issue --body` (newline or `$(cat <<...)`). Enforcing, at no budget cost: one linear pass over the text, no subprocess |
-| **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, a saving `git stash` during a merge, cherry-pick or revert, a `git rebase` (or a rebasing `git pull`) that would rewrite commits already on a remote-tracking ref (it sees this clone's remote-tracking refs only, so a stale or missing one, as in a single-branch clone or a push to a URL, is a known miss), a `switch -C`/`checkout -B` that would orphan commits, and a merging switch (`-m`) over staged work; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
+| **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, a saving `git stash` during a merge, cherry-pick or revert, a `git rebase` (or a rebasing `git pull`) that would rewrite commits already on a remote-tracking ref (it sees this clone's remote-tracking refs only, so a stale or missing one, as in a single-branch clone or a push to a URL, is a known miss), a `switch -C`/`checkout -B` that would orphan commits, and a merging switch (`-m`) over staged work; a push that skips or overrides the `pre-push` guard (`--no-verify`, `core.hooksPath`, `ALLOW_PUSH_TO_MAIN=1` or `ALLOW_TAG_REWRITE=1`, PowerShell's `$env:` form included); a `git push --mirror` |
 | | `ask-plugin-cache-edit` | a Write or Edit whose resolved target is inside an installed plugin copy: `cache/` or `marketplaces/` under the plugins directory (`~/.claude/plugins`, or where `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_PLUGIN_CACHE_DIR` puts it), or `$CLAUDE_PLUGIN_ROOT` when that root is in there; silent for a `--plugin-dir` working tree (this repo), for `data/` and on bad input. Enforcing, at no budget cost: it runs no subprocess, and if it fails to load the dispatcher asks on every Edit and Write |
 | | `ask-secret-in-checkpoint` | a Write or Edit under `cla.io/checkpoints/`, `decisions/`, `feedback/` or `lessons-learned/` whose new text holds a secret-shaped string (AWS, GitHub, Anthropic, OpenAI, Slack, Google or Stripe live key, a `PRIVATE KEY` header, a JWT, or a URL with a real `user:password@`); the ask names the kind and line, not the value. Silent for placeholders, prose and bad input. Enforcing, at no budget cost: it runs no subprocess, and if it fails to load or its scan crashes the dispatcher asks. |
 | | `ask-staged-debug-tag` | a `git commit` that would add a line holding a `/cla:diagnose` debug tag (best-effort: reads `git diff --cached`, pathspecs after `--`); names up to ten |
@@ -296,10 +296,13 @@ turns off the usual confirmations, so this hook is what brings one back. Section
 
 **Direct pushes to `main` are stopped by a git hook, not by these.** `hooks/git/pre-push` sees the
 refspec git has already resolved, so no way of naming the target branch gets past it, and it covers
-pushes from a terminal or an IDE too. Two things skip it: git's own `--no-verify` flag, and the
-`ALLOW_PUSH_TO_MAIN=1` override the hook keeps for a genuine emergency. From a session,
-`ask-destructive-git` asks before either. It refuses the remote's own default branch as well as
-`main` and `master`. A plugin cannot write to `.git/hooks`, so install it once per clone:
+pushes from a terminal or an IDE too. It refuses the remote's own default branch as well as
+`main` and `master`, and it refuses deleting or moving a tag the remote already has (creating a
+new tag is fine). git's own `--no-verify` flag skips the hook; `ALLOW_PUSH_TO_MAIN=1` lifts only the
+default-branch refusal and `ALLOW_TAG_REWRITE=1` only the tag refusal, for a genuine emergency.
+From a session, `ask-destructive-git` asks before each. One limit is git's: a `git push --mirror`
+deletion is never reported to the hook, so the hook cannot refuse it, and `ask-destructive-git`
+asks before any mirror push instead. A plugin cannot write to `.git/hooks`, so install it once per clone:
 
 ```bash
 cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
@@ -560,6 +563,7 @@ plugin-tests/                  the repo's ONE pytest scope
   scripts/check_copilot_models.py
   scripts/check_catalog_tags.py
 .claude/skills/openspec-*/     OpenSpec's generated skills
+.agents/skills/openspec-*/     the same OpenSpec skills, generated for agents that read .agents/
 .claude-plugin/                marketplace.json — the Claude Code catalog
 .github/plugin/                marketplace.json — the GitHub Copilot CLI catalog
 ```
@@ -568,7 +572,10 @@ plugin-tests/                  the repo's ONE pytest scope
 `mutants`), and a `pythonpath` that reaches into the plugin, because the scripts under test stay
 shipped and only their tests moved. A guard's batch is found by name: `mutants/hooks/` for a hook,
 `mutants/<skill>/` (no `skills/` level) for a skill's scripts. Sitting beside `tests/` keeps the
-batches from being collected as tests. A batch is optional. `plugin-tests/tests/launcher/` tests
+batches from being collected as tests. A batch is optional. A skill gets a
+`tests/skills/<name>/` folder when it has scripts or spec requirements of its own to prove; a
+prose-only skill with neither has no folder, and its text is checked by the `conformance` and
+`consistency` areas (skill lint, rule ledger, doc facts). `plugin-tests/tests/launcher/` tests
 the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin tree.
 
 ### The guards that police the fact/procedure split
@@ -603,7 +610,9 @@ cannot be justified in one line, it is not a survivor.** (Guard hooks are in sec
 
 Shipped scripts are given relative to `.claude/plugins/cla/` without that prefix: a bare top-level
 path (`lib/...`) for a script outside `skills/`, and a skill-relative path (`<skill>/scripts/...`,
-no leading `skills/`) for a script that belongs to one.
+no leading `skills/`) for a script that belongs to one. The table lists commands. A module that a
+command imports (`spec_proof_*.py`, `render_doc_*.py`, `render_change_*.py`,
+`openspec_change_*.py`) is not a command; the header of the entry point that imports it describes it.
 
 | Script | Why prose can't do it |
 |---|---|
@@ -615,7 +624,9 @@ no leading `skills/`) for a script that belongs to one.
 | `plugin-tests/scripts/sync_copilot_agents.py` *(dev tree)* | Writes the Copilot CLI copy of each helper agent from its Claude Code agent: the body is copied unchanged and `tools` and `model` are mapped by documented tables and `color` is dropped, which is a rewrite of frontmatter that a sentence of prose would get wrong. The tests import it and fail when a committed copy differs. |
 | `cla-setup/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. It skips a path `_is_machine_local` accepts (read the function for the rule). It also reports a path under a top-level directory that git history shows was renamed or removed, and skips one whose first part never was a top-level name here. A path with a placeholder (`{...}`, `<...>`) is never checked; a stale line whose path also ends a tracked path elsewhere gets a hint naming up to three (`_stale_hint`). |
 | `cla-setup/scripts/seed_openspec_rules.py` | Seeds or compares the OpenSpec `rules:` block in the *consuming* repo's config. The block was an 8172-byte bash block in `SKILL.md`, and a Bash-tool command that long is cut off on Windows: in the Bash tool here, `echo "<padding>" | wc -c` of about 9.3 KB failed with `unexpected EOF while looking for matching quote` and of about 5.7 KB ran (issue #385), so the model could not paste a bigger block. The comparison (quoted and CRLF forms, artifact names, config left byte-identical) is also the part a model gets wrong when it improvises. The one place the rules text lives; a test pins it equal to this repo's own config. It also picks the `lean` or `protected` change-budget sentence from the `Change budget:` line of the facts file's `## Stakes` section (a config that carries any budget sentence is left alone). |
+| `cla-setup/scripts/render_economy_rules.py` | Renders `.claude/rules/cla-economy.md` from the three `_shared/references` sources, byte-identical to the bash block it replaced; checks the markers before writing, refuses a symlink or a folder at the rules path, and replaces through a unique temp file. The marker checks and the CRLF-proof byte comparison are what prose gets wrong. |
 | `cla-setup/scripts/setup_guard.py` | Checks the promises `cla-setup` makes about a repo's own files, which were prose only: `snapshot` at the start of a run hashes the instruction files (any letter case at the root and in `.claude/`), `.claude/settings.json` and `.claude-plugin/plugin.json` (not `settings.local.json`, which Claude Code writes on a "don't ask again"), the repo's own `.claude/rules/*.md`, an existing feedback `notes.md`, the `*.local.md` files under `cla.io/`, the terminology file and the overlays, and records the time and `HEAD`; `verify` at the end reports each one changed, created or deleted without an `--approved` yes, and any overlay or terminology file created, which no yes covers. A snapshot and not `git diff`, because git compares with the last commit: it cannot tell a file the owner had already edited from one the run edited, sees nothing in a gitignored `*.local.md`, and shows a pre-existing untracked overlay as `??` either way. `snapshot` replaces nothing but an earlier snapshot (an empty file and a symlink at `--out` are refused), so the skill's clean-up never deletes a user's file. Exit 2 on a missing, corrupt, foreign or stale snapshot (over 24 h old, or `HEAD` moved off its line), never a pass. |
+| `save-permissions/scripts/merge_permissions.py` | Merges new entries into `.claude/settings.local.json`'s allowlist; exit 1 leaves the file byte-identical on non-UTF-8 or invalid JSON, a non-object top level or `permissions`, a non-list `allow`, a non-string entry or a symlink; writes through a unique temp file and `os.replace`. Replaced two parallel inline snippets (Python and PowerShell) an agent had to copy exactly. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
 | `_shared/scripts/check_spec_proof.py` | Ties each requirement a branch adds or changes (or each scenario, when `cla.io/project-facts.md` opts in) to a test marker or `manual: <spec> / <heading>: <reason>` line, and flags markers naming nothing (a scenario marker is `scenario: <spec> / <scenario>`, or `scenario: <spec> / <requirement> / <scenario>`, which must also name the requirement the scenario sits under, and one that two readings both prove is reported as ambiguous and proves neither: `resolve_scenario_marker`), repeated headings (in scenario mode also a scenario heading under two requirements of one spec: `_shared_scenarios`), an empty corpus, specs over the 500-character and 3-scenario limits it reads from `rules.specs` (a per-spec requirement cap is read only while a config still states one), active changes over the whole-change budget it reads from `rules:` (the words in every `.md` file of the change and its `### Requirement:` headings, as `wc -w` and `grep` count them: `read_change_budget`, `check_change_budget`; a `Budget: protected` line in a change's `proposal.md` selects the second, protected sentence: `change_budget_for`), and notes (never fails on) a live spec whose Purpose is not a `**Serves:**` line plus one sentence. Once `cla.io/project-facts.md` declares a `## Spec map`, it also fails on a spec (live, or added by a change in progress, and not removed whole by one) no map file links and on a map link to a missing spec; with no declaration it prints nothing about a map. It needs the merge-base diff and a scan of every test file, which prose cannot do reliably and which a consuming repo (no pytest gate over the plugin) must run itself. |
 | `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's round 2 (which runs only after round 1 applied a protected-area fix) still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
@@ -667,9 +678,10 @@ A guard is a script in `.claude/plugins/cla/hooks/` that a dispatcher runs. Each
 what enforces it; read that code rather than a copy of it here.
 
 1. **Name it by what it does to the call.** `block-<what>.py` can refuse (exit 2), `ask-<what>.py`
-   escalates to a permission prompt, `warn-<what>.py` only adds advice. The README's recount
-   command (`ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn)-.*\.py$'`) counts guards by
-   this prefix, so a guard with another name is not counted.
+   escalates to a permission prompt, `warn-<what>.py` only adds advice, and `guard-<what>.py` runs
+   several checks that each block, ask or warn (`guard-bash-text.py`). The README's recount command
+   (`ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn|guard)-.*\.py$'`) counts guards by
+   these four prefixes, so a guard with another name is not counted.
 2. **Put it in a dispatcher.** Add the file name to `_HOOK_FILES` in
    `hooks/dispatch-bash-pretooluse.py` (Bash and PowerShell) or
    `hooks/dispatch-edit-write-pretooluse.py` (Edit and Write). A guard that can change the outcome
@@ -692,7 +704,10 @@ what enforces it; read that code rather than a copy of it here.
    (git calls times their timeout; `0.0` for pure text inspection), with the arithmetic in a comment
    on that entry. `test_the_budget_table_covers_every_dispatched_hook` and
    `test_enforcing_hooks_fit_inside_the_handler_budget` fail on a missing entry or a sum over the
-   budget. They cannot tell whether the figure is right, so state it per entry.
+   budget, and `test_per_part_enforcing_hooks_spawn_nothing` fails when an enforcing Bash hook outside
+   `_READS_COMMAND_ONLY` (which runs once per wrapper part) has an entry above `0.0`. They cannot tell whether the figure is right, so state it per entry. Room is left:
+   `ask-destructive-git`'s history probes share one 6 s deadline, so 6 s of the 12 s enforcing
+   budget is free for a new enforcing guard.
 4. **Wire a new dispatcher or event, if you added one.** A new hook inside an existing dispatcher
    needs no change to `hooks/hooks.json`. A new dispatcher or event needs a `hooks.json` entry in
    the shape the existing ones use (the probe-python wiring, `timeout` equal to
@@ -708,8 +723,9 @@ what enforces it; read that code rather than a copy of it here.
    in the plugin.
 6. **Mutation batch.** `CLAUDE.md`, "Before shipping a change: five checks", decides when. A new case
    in an existing guard is an edit: break it by hand once and confirm a test fails. Rewriting a file
-   under `hooks/` is when `python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/<hook>.py` runs;
-   the batches sit beside the existing ones, named after the guard, outside `tests/`.
+   under `hooks/` is when `python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/test_<hook_name>.py`
+   runs; the batches sit beside the existing ones, named after the guard, outside `tests/` (two guards
+   that share a test file share a batch, as `test_commit_honesty_guards.py` does).
 7. **Document it.** Add a row to the guard table in section 8 and to the one in the plugin README
    (`.claude/plugins/cla/README.md`), and update the leaf-hook counts in the sentence above the table. Shipped guard files stay free of project tokens
    (`skills/_shared/scripts/check_no_project_tokens.py`) and import only the standard library.

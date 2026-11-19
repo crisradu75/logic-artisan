@@ -48,7 +48,7 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 
 ## Engineering highlights
 
-**19 skills · 17 guard hooks · 4,899 tests · 67 mutation batches · 17 live OpenSpec specs ·
+**19 skills · 17 guard hooks · 5,718 tests · 72 mutation batches · 25 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
@@ -56,8 +56,10 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
 
 - **A git hook, not a parser, guards `main`.** A Claude Code hook would have to parse each push
   command, and every spelling it missed was a hole. The `pre-push` hook reads the refspec git has
-  already resolved, so no way of naming the target branch gets past it; only `--no-verify` or the
-  documented `ALLOW_PUSH_TO_MAIN=1` emergency override skips it, and a session is asked first
+  already resolved, so no way of naming the target branch gets past it; it also refuses deleting
+  or moving a tag the remote already has, so a published release tag stays put. `--no-verify`
+  skips it, and the documented overrides `ALLOW_PUSH_TO_MAIN=1` and `ALLOW_TAG_REWRITE=1` each lift
+  one refusal; a session is asked first. A `git push --mirror` deletion never reaches the hook
   ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet)).
 - **An allowlist decides what ships.** The obvious denylist was measured to miss 7 of 72 dev-only
   files, including the release skill itself. An 18-pattern allowlist is checked before every tag
@@ -79,7 +81,7 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
 
 <details>
-<summary>Where the numbers come from (counted 2026-11-19 on <code>main</code> at <code>302ddfc</code>)</summary>
+<summary>Where the numbers come from (counted 2026-11-19 on <code>main</code> at <code>d27a0ea</code> with #546, #548, #549, #550, #552, #554, #555, #556, #557 and #560 merged)</summary>
 
 ```bash
 git ls-files .claude/plugins/cla/skills | cut -d/ -f5 | grep -v '^_' | sort -u | wc -l   # skills (tracked only)
@@ -149,6 +151,13 @@ copilot plugin install cla@cris-logic-artisan
 Update, troubleshooting and a Copilot-side writing-style stand-in are in the "GitHub Copilot CLI"
 subsection of the [plugin README](.claude/plugins/cla/README.md).
 
+Guard hooks are wired for Copilot CLI since `cla--v2.3.0`; their limits (fail-open timeout,
+autopilot denies confirmations, untested PowerShell wiring) are in the
+[plugin README hook-caveats section](.claude/plugins/cla/README.md#copilot-cli-hook-caveats).
+
+<details>
+<summary>What was live-tested, and how (Copilot CLI 1.0.105 and 1.0.109)</summary>
+
 Validated in that run:
 
 - Marketplace registration and browsing succeeded, and installation listed 19 skills.
@@ -188,6 +197,8 @@ was present. This confirms that a timed-out hook does not block the tool call. E
 behavior is adapter-tested but was not live-tested; Windows PowerShell wiring is also untested.
 The hook wiring first ships in `cla--v2.3.0`; the smoke test above predates it. Follow-up work is
 tracked from issue #302.
+
+</details>
 
 The Claude Code install above is unchanged by any of this.
 
