@@ -88,7 +88,9 @@ Collect every tool permission the user granted during this conversation session 
    $tmp = "$p.tmp"
    try {
      [System.IO.File]::WriteAllText($tmp, ($data | ConvertTo-Json -Depth 20) + "`n", [System.Text.UTF8Encoding]::new($false))
-     Move-Item -LiteralPath $tmp -Destination $p -Force
+     # File.Replace swaps in one call and leaves the original whole if it fails; Move-Item -Force
+     # deletes the target first, so a failed rename after it would leave only the temp file.
+     if (Test-Path -LiteralPath $p) { [System.IO.File]::Replace($tmp, $p, $null) } else { [System.IO.File]::Move($tmp, $p) }
    } finally {
      if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
    }

@@ -194,7 +194,10 @@ def test_the_powershell_form_carries_the_same_guards_as_the_python_form():
     ):
         assert guard in ps, guard
         assert ps.index(guard) < write, guard
-    assert ps.index("Move-Item -LiteralPath $tmp -Destination $p -Force") > write
+    # Replace, not Move-Item -Force: Move-Item deletes the target before the rename, so a failure
+    # between the two, followed by the finally block, would leave the user with no settings file.
+    assert ps.index("[System.IO.File]::Replace($tmp, $p, $null)") > write
+    assert "Move-Item -LiteralPath" not in ps
     assert "finally {\n  if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }" in ps
     assert "Set-Content" not in ps and "Out-File" not in ps
     # Both forms stop on the same cases, with the same messages.
