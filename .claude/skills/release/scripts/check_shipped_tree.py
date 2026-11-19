@@ -90,7 +90,7 @@ ALLOWLIST: tuple[tuple[str, str], ...] = (
     (r"lib/[^/]+\.py",
      "The shared ledger writer every retro-logging skill invokes as a program."),
     (r"hooks/[^/]+\.py",
-     "The leaf hooks, the two dispatchers, and _dispatch_lib.py. Narrow, not "
+     "The leaf hooks, the two dispatchers, and their shared _*.py modules. Narrow, not "
      "hooks/**: the wide form accepted hooks/tests/test_x.py and hooks/pyproject.toml."),
     (r"hooks/hooks\.json",
      "The wiring the harness reads at load."),

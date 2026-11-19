@@ -6,7 +6,7 @@ Run:
     python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/test_warn_stray_scratch_artifact.py
 
 Started with #526, which moved the hook's matcher onto
-`_dispatch_lib.GitInvocation`. The matcher itself is mutated in
+`_shell_text.GitInvocation`. The matcher itself is mutated in
 `test_dispatch_lib.py`'s batch; this one breaks the hook's own use of it.
 
 Anchors are single lines (the source is CRLF in a Windows checkout).

@@ -4,7 +4,7 @@ a branch that open stacked child PRs are based on.
 
 GitHub documents retargeting (2020-05-19 changelog): a head branch merged then
 deleted should retarget open PRs based on it. MEASURED otherwise on gh's own
-deletion path: `gh pr merge --delete-branch` CLOSED the dependent PR (#64 in
+deletion path: `gh pr merge --delete-branch` CLOSED the dependent PR (in
 the canonical repo, 2026-08-14) — the API deletion lands before any retarget,
 and GitHub refuses to reopen a PR whose base branch is gone ("Cannot change
 the base branch of a closed pull request"). Recovery exists (restore the base

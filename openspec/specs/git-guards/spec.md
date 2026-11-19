@@ -4,7 +4,7 @@
 
 **Serves:** maintainers whose agents run git commands and pushes in a repo that installs the plugin.
 
-When a git command asks first and when a push to the default branch is refused.
+When a git command asks first, and when a push to the default branch, or one that deletes or moves a tag on the remote, is refused.
 
 ## Requirements
 
@@ -80,7 +80,7 @@ Setting `ALLOW_DESTRUCTIVE_GIT=1` SHALL drop every prompt the guard hooks raise 
 
 ### Requirement: A push that skips the pre-push guard asks first
 
-The guard hooks SHALL ask the user before a `git push` that skips the default-branch `pre-push` guard, by `--no-verify`, a different `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1` typed into the command.
+The guard hooks SHALL ask the user before a `git push` that skips the `pre-push` guard, by `--no-verify`, a different `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1` or `ALLOW_TAG_REWRITE=1` typed into the command, in shell or PowerShell `$env:` form.
 
 #### Scenario: A push with no-verify
 
@@ -92,9 +92,14 @@ The guard hooks SHALL ask the user before a `git push` that skips the default-br
 - **WHEN** an agent runs `git push origin feature/x`
 - **THEN** no prompt about the pre-push guard is shown
 
+#### Scenario: A push carrying the tag override
+
+- **WHEN** an agent runs `ALLOW_TAG_REWRITE=1 git push origin :refs/tags/v1` or `$env:ALLOW_TAG_REWRITE='1'; git push origin v1`
+- **THEN** the user is asked before it runs
+
 ### Requirement: Direct pushes to main are refused
 
-The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set.
+The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
 
 #### Scenario: Pushing to main
 
@@ -108,7 +113,7 @@ The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.g
 
 ### Requirement: A push to the remote's own default branch is refused
 
-The `pre-push` hook SHALL also refuse a push that updates or deletes the branch the remote names as its default, whatever its name, unless `ALLOW_PUSH_TO_MAIN=1` is set.
+The `pre-push` hook SHALL also refuse a push that updates or deletes the branch the remote names as its default, whatever its name, unless `ALLOW_PUSH_TO_MAIN=1` is set; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
 
 #### Scenario: A default branch that is not main
 
@@ -246,3 +251,78 @@ The guard hooks SHALL ask before a `git commit` that would add a line holding a 
 
 - **WHEN** the staged diff adds no debug tag
 - **THEN** no prompt is shown
+
+### Requirement: A destructive git command run through a shell wrapper asks first
+
+The guard hooks SHALL ask the user before a git command they would ask about when that command is handed to another shell as text, by `bash -c`, `sh -c`, `zsh -c`, `eval`, `pwsh -Command`, `Invoke-Expression` or `cmd /c`, and SHALL stay silent when the wrapped command is one they would not ask about.
+
+#### Scenario: A force-push inside bash -c
+
+- **WHEN** an agent runs `bash -c "git push -f origin x"`
+- **THEN** the user is asked before it runs
+
+#### Scenario: A harmless wrapped command
+
+- **WHEN** an agent runs `bash -c "git status"` or `eval "$(ssh-agent)"`
+- **THEN** no prompt is shown
+
+### Requirement: A git subcommand or flag from an unresolved expansion asks first
+
+The guard hooks SHALL read a git subcommand, or a push, reset or branch option, that is quoted, or that a variable assigned a plain value in the same command supplies, as its value, and SHALL ask the user when the subcommand, an option whose literal start is `-`, or an unquoted option of a push, reset or branch before its first operand comes from an expansion they cannot resolve.
+
+#### Scenario: A subcommand from a variable
+
+- **WHEN** an agent runs `X=push; git $X -f origin x`, or `git $SUB -f origin x` where nothing in the command sets `SUB`
+- **THEN** the user is asked before it runs
+
+#### Scenario: A quoted or partly expanded force flag
+
+- **WHEN** an agent runs `git push "-f" origin x`, or `git push --force$X origin x` where nothing in the command sets `X`
+- **THEN** the user is asked before it runs
+
+#### Scenario: A branch name from a variable
+
+- **WHEN** an agent runs `git push origin "$BRANCH"`
+- **THEN** no prompt is shown
+
+### Requirement: A long command is read within the guard's time
+
+The guard hooks SHALL finish reading any command up to the dispatcher's scan limit well inside the hook handler's timeout, and SHALL ask the user when a command needs more reading than they allow, rather than run into the timeout, which lets the call run unchecked.
+
+#### Scenario: A long run of shell wrappers
+
+- **WHEN** an agent runs a command of hundreds of thousands of characters of repeated `eval` words followed by `git push -f origin x`
+- **THEN** the user is asked before it runs, within two seconds of the guard's processing time
+
+### Requirement: A mirror push asks first
+
+The guard hooks SHALL ask the user before a `git push --mirror`, which can delete remote branches and tags that the `pre-push` guard is never asked about, and SHALL NOT ask about `--mirror` on any other git command.
+
+#### Scenario: A mirror push
+
+- **WHEN** an agent runs `git push --mirror origin` or `bash -c "git push --mirror"`
+- **THEN** the user is asked before it runs
+
+#### Scenario: A mirror clone
+
+- **WHEN** an agent runs `git clone --mirror https://example.com/x.git`
+- **THEN** no prompt is shown
+
+### Requirement: A push that deletes or moves a tag on the remote is refused
+
+The `pre-push` hook SHALL refuse a push that deletes a tag on the remote or points a tag the remote already has at a different object, naming the `ALLOW_TAG_REWRITE=1` override in its message, SHALL let a push that creates a new tag through, and setting `ALLOW_TAG_REWRITE=1` SHALL lift only this refusal; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
+
+#### Scenario: Deleting a tag
+
+- **WHEN** a push from a clone with the hook installed would delete a tag on the remote
+- **THEN** git refuses the push and the message names `ALLOW_TAG_REWRITE=1`
+
+#### Scenario: Moving a tag
+
+- **WHEN** a forced push would point a tag the remote already has at another commit or tag object
+- **THEN** git refuses the push and the remote tag stays where it was
+
+#### Scenario: A new tag
+
+- **WHEN** a push creates a tag the remote does not have
+- **THEN** the push goes through
