@@ -83,7 +83,7 @@ def test_an_encoded_powershell_command_is_decoded():
 @pytest.mark.parametrize(
     "command",
     [
-        "bash -lc 'make test'",                # -c inside a short-option cluster
+        "bash -lc 'make test' arg0",           # -c inside a short-option cluster: arg0 is $0
         "bash --norc -c 'make test'",          # a value-less long option
         "bash -o pipefail -c 'make test'",     # -o takes the next word
         "bash --rcfile rc -c 'make test'",     # --rcfile takes the next word

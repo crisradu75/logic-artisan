@@ -85,10 +85,14 @@ def test_a_cat_heredoc_substitution_word_takes_the_heredoc_body():
     assert source[end:] == " rest"
 
 
-def test_a_word_with_more_than_the_substitution_keeps_its_text():
-    word, _ = args.read_word("\"x $(cat <<'EOF'\nbody\nEOF\n)\"", 0)
+@pytest.mark.parametrize(
+    "source",
+    ["\"x $(cat <<'EOF'\nbody\nEOF\n)\"", "\"$(cat <<'EOF'\nbody\nEOF\n) tail\""],
+)
+def test_a_word_with_more_than_the_substitution_keeps_its_text(source):
+    word, _ = args.read_word(source, 0)
     assert word.heredoc is None
-    assert word.message.startswith("x $(cat")
+    assert word.message == source[1:-1]
 
 
 @pytest.mark.parametrize("source", ["'open", '"open', "$'open", "$(open", "`open", '"$(open"'])
@@ -343,6 +347,13 @@ def test_find_invocations_skips_text_inside_a_heredoc_body():
 def test_find_invocations_skips_text_an_earlier_invocation_consumed():
     command = "git commit -F - <<'EOF'\nfix: x\ngit commit --allow-empty\nEOF\n"
     found = _found(command)
+    assert len(found) == 1 and not found[0].allow_empty
+
+
+def test_a_git_command_inside_a_message_substitution_is_not_read_again():
+    # The double-quoted `$(...)` stays visible to the matcher, so only the
+    # first invocation's consumed span keeps the inner one out.
+    found = _found('git commit -m "$(echo git commit --allow-empty)"')
     assert len(found) == 1 and not found[0].allow_empty
 
 

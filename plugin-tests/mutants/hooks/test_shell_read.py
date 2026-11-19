@@ -73,8 +73,10 @@ MUTANTS = [
     ("an assignment after the wrapper is carried",
      SHELL, "while next_assign < len(assigned) and assigned[next_assign][0] < w.start():",
      "while next_assign < len(assigned):", T),
+    # Not `known[name] = value` -> `known.setdefault(...)`: the `known.pop` before
+    # it makes that the same code (a first run reported it SURVIVED).
     ("the first value before the wrapper wins",
-     SHELL, "            known[name] = value", "            known.setdefault(name, value)", T),
+     SHELL, "            known.pop(name, None)", "            value = known.get(name, value)", T),
     # --- nesting and caps ---------------------------------------------------
     ("a wrapper past the depth cap is reported complete",
      SHELL, "            if any(_guard_bodies(p) for p in frontier):", "            if False:", T),
