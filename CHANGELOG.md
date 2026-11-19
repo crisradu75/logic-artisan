@@ -62,6 +62,13 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ### Fixed
 
+- **`check_spec_proof.py` no longer asks proof for a requirement the same branch adds and then
+  removes.** When one change archived on a branch adds a requirement and another change archived on
+  that branch removes it or renames it away (a REMOVED+ADDED rewrite, say), the first delta's copy
+  is in no live spec and no active delta, so no marker could name it; the checker now leaves it out
+  and counts it on the `changed requirements:` line. The final heading is still checked. A
+  requirement that is only missing from the live spec, with no removal on the branch, is still
+  reported. ([#563](https://github.com/crisradu75/logic-artisan/pull/563))
 - **`save-permissions` merges into any settings file safely.** A `settings.local.json` with no
   `permissions` or `allow` key no longer crashes the merge; a file that is not valid JSON, or whose
   allowlist is not a list, is left byte-identical with a `stopped, nothing written` message; both

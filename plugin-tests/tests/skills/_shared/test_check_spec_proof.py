@@ -307,6 +307,107 @@ def test_a_manual_line_in_a_change_the_branch_archives_proves_a_live_requirement
     assert code == 0, out
 
 
+OLD_REQ = ("Old rule", "Old SHALL.\n\n" + _scn("Old case"))
+ARCH_A = "openspec/changes/archive/2026-01-01-a/specs/alpha/spec.md"
+ARCH_B = "openspec/changes/archive/2026-01-02-b/specs/alpha/spec.md"
+
+
+def _removed_text(*headings: str, renamed: tuple[str, str] | None = None, then: str = "") -> str:
+    """A delta that removes `headings` (and renames FROM -> TO), followed by `then` (more delta sections)."""
+    out = ["# Spec Delta", ""]
+    if headings:
+        out += ["## REMOVED Requirements", ""]
+        for h in headings:
+            out += [f"### Requirement: {h}", "", "**Reason**: rewritten", "", "**Migration**: none", ""]
+    if renamed:
+        out += ["## RENAMED Requirements", "", f"- FROM: `### Requirement: {renamed[0]}`", f"- TO: `### Requirement: {renamed[1]}`", ""]
+    return "\n".join(out) + then
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_a_requirement_one_archived_change_adds_and_another_removes_needs_no_proof(repo, capsys):
+    # Both changes are archived on this branch; the live spec ends as it was at the base.
+    _write(repo, ARCH_A, _delta_text(added=[NEW_REQ]))
+    _write(repo, ARCH_B, _removed_text("New rule"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "New rule" not in out
+    assert "changed requirements: 0" in out and "1 more in archived deltas need no proof" in out
+
+
+REWRITE = ("Newer rule", "Newer SHALL.\n\n" + _scn("New case"))
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+@pytest.mark.parametrize(
+    "later",
+    [
+        _removed_text("New rule", then="\n" + _delta_text(added=[REWRITE])),  # a REMOVED+ADDED rewrite
+        _removed_text(renamed=("New rule", "Newer rule"), then="\n## MODIFIED Requirements\n\n### Requirement: Newer rule\n\nNewer SHALL.\n\n" + _scn("New case") + "\n"),
+    ],
+    ids=["removed-and-added", "renamed-and-modified"],
+)
+def test_add_then_rewrite_on_one_branch_asks_proof_for_the_final_heading_only(repo, capsys, later):
+    _write(repo, ARCH_A, _delta_text(added=[NEW_REQ]))
+    _write(repo, ARCH_B, later)
+    _write(repo, SPEC, _spec_text(OLD_REQ, REWRITE))
+    code, out, _ = run(repo, capsys)
+    problems = [line for line in out.splitlines() if line.startswith("PROBLEM")]
+    assert code == 1 and problems and all("alpha / Newer rule" in p for p in problems), out
+    assert "alpha / New rule" not in out
+    _write(repo, "tests/test_newer.py", _marker("requirement", "alpha", "Newer rule"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_add_then_modify_under_the_same_heading_still_needs_proof(repo, capsys):
+    _write(repo, ARCH_A, _delta_text(added=[NEW_REQ]))
+    changed = ("New rule", "New SHALL, changed.\n\n" + _scn("New case"))
+    _write(repo, ARCH_B, _delta_text(modified=[changed]))
+    _write(repo, SPEC, _spec_text(OLD_REQ, changed))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "PROBLEM uncovered" in out and "alpha / New rule" in out
+    assert "need no proof" not in out
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_a_plain_archived_add_still_needs_proof(repo, capsys):
+    _write(repo, ARCH_A, _delta_text(added=[NEW_REQ]))
+    _write(repo, SPEC, _spec_text(OLD_REQ, NEW_REQ))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"PROBLEM uncovered: {ARCH_A}: alpha / New rule" in out
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_an_archived_add_missing_from_the_live_spec_with_no_removal_is_still_reported(repo, capsys):
+    # An archive that never reached the live spec is not a removal: nothing on the branch removed the rule.
+    _write(repo, ARCH_A, _delta_text(added=[NEW_REQ]))
+    _write(repo, ARCH_B, _removed_text("Another rule"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"PROBLEM uncovered: {ARCH_A}: alpha / New rule" in out
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_a_removal_in_another_spec_does_not_excuse_the_heading(repo, capsys):
+    _write(repo, ARCH_A, _delta_text(added=[NEW_REQ]))
+    _write(repo, "openspec/changes/archive/2026-01-02-b/specs/beta/spec.md", _removed_text("New rule"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"PROBLEM uncovered: {ARCH_A}: alpha / New rule" in out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_scenario_a_later_archived_change_drops_needs_no_proof(repo, capsys):
+    _write(repo, FACTS, "- Test proof granularity: scenario\n")
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old case"))
+    _write(repo, ARCH_A, _delta_text(added=[("New rule", "New SHALL.\n\n" + _scn("First case"))]))
+    _write(repo, ARCH_B, _delta_text(modified=[("New rule", "New SHALL.\n\n" + _scn("Second case"))]))
+    _write(repo, SPEC, _spec_text(OLD_REQ, ("New rule", "New SHALL.\n\n" + _scn("Second case"))))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "alpha / Second case" in out
+    assert "First case" not in out
+
+
 # requirement: spec-proof / A checker reports proof that points at nothing
 def test_a_marker_in_a_markdown_file_is_not_a_marker(repo, capsys):
     _write(repo, "docs/guide.md", _marker("requirement", "nope", "Nothing"))

@@ -37,8 +37,10 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
   - ``uncovered``: a unit the branch adds or changes (against the merge-base with
     the default branch) with neither a marker nor a ``manual:`` line. A pure
     heading rename (same block text) is not a change. Specs covered: live specs,
-    active change deltas and deltas the branch archives. Without a default branch
-    this rule is off and the output says so.
+    active change deltas and deltas the branch archives. A unit of an archived delta
+    that another change archived on the same branch removes or renames away, so it is
+    in no live spec or active delta, needs no proof (``gone_on_branch``). Without a
+    default branch this rule is off and the output says so.
   - ``dangling``: a marker, ``manual:`` or ``waiting:`` line naming a spec or
     heading that no live spec or active delta holds (a three-part scenario marker whose
     requirement is unknown, or does not hold the scenario, is named as such). A marker of the
@@ -467,6 +469,46 @@ def changed_units(root: Path, base: str, f: SpecFile, mode: str) -> list[Unit]:
     ]
 
 
+def gone_on_branch(files: list[SpecFile], touched: set[str], mode: str, universe: dict[str, set[str]]) -> dict[str, set[str]]:
+    """{archived delta path: the units in it that need no proof, since the branch's net effect drops them}.
+
+    A delta the branch archives counts every unit as changed. When another change archived on the same
+    branch removes that requirement or renames it away (a REMOVED+ADDED rewrite, say), the unit sits in no
+    live spec and no active delta, so no marker can name it; what the branch leaves in the live specs is
+    still checked through the live spec's own diff. A unit is dropped only when both hold: it is in no live
+    spec or active delta of its spec, and another archived delta of that spec on this branch removes or
+    renames its requirement (per scenario, also modifies it, which can drop the scenario). A unit that is
+    merely missing from the live spec (an archive that did not reach it) is still reported.
+
+    Archive order is not read: folder dates cannot order two changes archived the same day, and a
+    requirement both gone at HEAD and removed on the branch is gone whatever the order."""
+    archived = [f for f in files if f.kind == "archived" and f.change in touched]
+    ops: list[tuple[str, str, set[str]]] = []  # (path, spec, requirements the delta removes, renames away or modifies)
+    for f in archived:
+        removed, renames, modified = _delta_ops(f.text)
+        ops.append((f.rel, f.spec, removed | set(renames) | (modified if mode == "scenario" else set())))
+    out: dict[str, set[str]] = {}
+    for f in archived:
+        dropped_by_others: set[str] = set()
+        for rel, spec, heads in ops:
+            if spec == f.spec and rel != f.rel:
+                dropped_by_others |= heads
+        if not dropped_by_others:
+            continue
+        owners: dict[str, set[str]] = {}  # unit heading -> the requirement(s) it sits under in this delta
+        for req, _, scns in _blocks(f.text, True):
+            if mode == "requirement":
+                owners.setdefault(req, set()).add(req)
+            for scn, _ in scns:
+                if mode == "scenario":
+                    owners.setdefault(scn, set()).add(req)
+        present = universe.get(f.spec, set())
+        gone = {u.heading for u in f.units if u.heading not in present and owners.get(u.heading, set()) & dropped_by_others}
+        if gone:
+            out[f.rel] = gone
+    return out
+
+
 def _listed_files(root: Path) -> list[str]:
     """Repo-relative paths of the tracked and untracked-unignored files (a directory walk outside git), sorted."""
     rc, out, _ = _git(root, "ls-files", "-co", "--exclude-standard", "-z")
@@ -676,10 +718,15 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
 
     covered_waiting = 0
     n_changed = 0
+    n_gone = 0
     if changed is not None:
+        gone = gone_on_branch(files, touched, mode, universe)
         for f in files:
             scope = None if f.kind == "live" else f.change
             for u in changed[f.rel]:
+                if u.heading in gone.get(f.rel, set()):
+                    n_gone += 1
+                    continue
                 n_changed += 1
                 where = f"{f.rel}: {f.spec} / {u.heading}"
                 if (f.spec, u.heading) in marked:
@@ -747,7 +794,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         f"granularity: {mode} ({source})",
         f"specs: {len(files)} (live {kinds['live']}, active delta {kinds['active']}, archived delta {kinds['archived']})",
         f"{mode}s in live specs and active deltas: {len(all_units)}",
-        f"changed {mode}s: " + (f"{n_changed} ({base_note})" if changed is not None else f"unknown, the changed-{mode} rule is off ({base_note or 'not a git repo'})"),
+        f"changed {mode}s: " + (f"{n_changed} ({base_note})" if changed is not None else f"unknown, the changed-{mode} rule is off ({base_note or 'not a git repo'})")
+        + (f"; {n_gone} more in archived deltas need no proof, since another change archived on this branch removes them" if n_gone else ""),
         f"markers: {sum(1 for m in markers if m[0] != 'malformed')} in {scanned} files scanned"
         + (f"; skipped {len(skipped)} binary: {', '.join(skipped[:5])}" if skipped else ""),
         f"manual lines: {sum(1 for n in notes if n.kind == 'manual')} (prompt half: {sum(1 for n in notes if n.kind == 'manual' and n.prompt_half)})",
