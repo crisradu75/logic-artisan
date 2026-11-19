@@ -195,6 +195,9 @@ def test_refuses_a_tag_move():
     assert r.returncode == 1
     assert "refusing to move tag 'v1.0.0'" in r.stderr
     assert "ALLOW_TAG_REWRITE=1" in r.stderr
+    # A non-forced `git push --tags` with one stale local tag is now refused whole,
+    # so the message names the way out that is not an override.
+    assert "git fetch --tags --force" in r.stderr
 
 
 def test_allows_a_new_tag():
@@ -401,3 +404,62 @@ def test_a_real_multi_ref_push_with_one_tag_delete_is_refused_whole(clone):
     assert clone.remote_ref("refs/tags/v1.0.0")
     assert clone.remote_ref("refs/heads/feature/a") is None
     assert clone.remote_ref("refs/tags/v1.1.0") is None
+
+
+def test_a_real_prune_push_that_would_delete_a_tag_is_refused(clone):
+    # `--prune` writes a delete line for every remote tag the clone lacks, so the
+    # hook sees it and refuses, unlike the mirror push below.
+    clone.tag("v1.0.0", True)
+    assert clone.push("v1.0.0").returncode == 0
+    clone.git(clone.work, "tag", "-d", "v1.0.0")
+    r = clone.push("--prune", "refs/tags/*:refs/tags/*")
+    assert r.returncode != 0 and "refusing to delete tag 'v1.0.0'" in r.stderr
+    assert clone.remote_ref("refs/tags/v1.0.0")
+
+
+# requirement: git-guards / A push that deletes or moves a tag on the remote is refused
+def test_a_mirror_push_deletes_a_remote_tag_without_consulting_the_hook(clone):
+    """KNOWN LIMIT, pinned so it stays known: `git push --mirror` deletes every
+    remote ref the clone lacks without writing a line for it on the hook's stdin,
+    so the hook cannot refuse it. The hook still runs (it sees the refs the mirror
+    updates); it is simply never told about the deletion. If git ever starts
+    reporting these lines, this test fails and the requirement's exception can go."""
+    clone.tag("v1.0.0", True)
+    assert clone.push("v1.0.0").returncode == 0
+    clone.git(clone.work, "tag", "-d", "v1.0.0")
+    clone.git(clone.work, "branch", "feature/a")  # something the mirror creates, so the hook runs
+    hook = clone.work / ".git" / "hooks" / "pre-push"
+    log = clone.work.parent / "hook-stdin.log"
+    real = clone.work.parent / "real-pre-push"
+    shutil.copyfile(hook, real)
+    hook.write_text(
+        "#!/bin/sh\n"
+        f"in=$(cat); printf '%s\\n' \"$in\" >> '{log.as_posix()}'\n"
+        f"printf '%s\\n' \"$in\" | sh '{real.as_posix()}' \"$@\"\n",
+        encoding="utf-8", newline="\n",
+    )
+    hook.chmod(0o755)
+    r = clone.push("--mirror")
+    assert r.returncode == 0, r.stderr
+    seen = log.read_text(encoding="utf-8")
+    assert "refs/heads/feature/a" in seen, "the hook ran for the ref the mirror created"
+    assert "refs/tags/" not in seen, "git reported the tag deletion to the hook"
+    assert clone.remote_ref("refs/tags/v1.0.0") is None, "the mirror push deleted the tag"
+
+
+
+# requirement: git-guards / Direct pushes to main are refused
+def test_a_mirror_push_deletes_a_protected_branch_without_consulting_the_hook(clone):
+    """The same KNOWN LIMIT for a protected branch: a clone with no local `master`
+    mirror-pushes, and git deletes the remote's `master` without telling the hook.
+    An explicit `--delete master` from the same clone is still refused. (`master`,
+    not `main`, because the remote itself refuses to delete its current branch,
+    as GitHub refuses to delete the default branch.)"""
+    clone.git(clone.work, "branch", "master")
+    assert clone.push("master", env_extra={"ALLOW_PUSH_TO_MAIN": "1"}).returncode == 0
+    clone.git(clone.work, "branch", "-D", "master")
+    r = clone.push("--delete", "master")
+    assert r.returncode != 0 and "refusing to push directly to 'master'" in r.stderr
+    r = clone.push("--mirror")
+    assert r.returncode == 0, r.stderr
+    assert clone.remote_ref("refs/heads/master") is None, "the mirror push deleted master"

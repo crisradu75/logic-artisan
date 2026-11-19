@@ -94,7 +94,7 @@ The guard hooks SHALL ask the user before a `git push` that skips the default-br
 
 ### Requirement: Direct pushes to main are refused
 
-The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set.
+The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
 
 #### Scenario: Pushing to main
 
@@ -108,7 +108,7 @@ The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.g
 
 ### Requirement: A push to the remote's own default branch is refused
 
-The `pre-push` hook SHALL also refuse a push that updates or deletes the branch the remote names as its default, whatever its name, unless `ALLOW_PUSH_TO_MAIN=1` is set.
+The `pre-push` hook SHALL also refuse a push that updates or deletes the branch the remote names as its default, whatever its name, unless `ALLOW_PUSH_TO_MAIN=1` is set; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
 
 #### Scenario: A default branch that is not main
 
@@ -249,7 +249,7 @@ The guard hooks SHALL ask before a `git commit` that would add a line holding a 
 
 ### Requirement: A push that deletes or moves a tag on the remote is refused
 
-The `pre-push` hook SHALL refuse a push that deletes any tag on the remote or points a tag the remote already has at a different object, naming the `ALLOW_TAG_REWRITE=1` override in its message, SHALL let a push that creates a new tag through, and setting `ALLOW_TAG_REWRITE=1` SHALL lift only this refusal.
+The `pre-push` hook SHALL refuse a push that deletes a tag on the remote or points a tag the remote already has at a different object, naming the `ALLOW_TAG_REWRITE=1` override in its message, SHALL let a push that creates a new tag through, and setting `ALLOW_TAG_REWRITE=1` SHALL lift only this refusal; a deletion git does not report to the hook, as in a mirror push, is outside what it can refuse.
 
 #### Scenario: Deleting a tag
 

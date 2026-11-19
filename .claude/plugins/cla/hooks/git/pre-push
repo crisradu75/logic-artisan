@@ -22,6 +22,12 @@
 # A branch DELETION arrives with an all-zero local sha and the same remote ref,
 # so deleting the default branch is refused by the same case below.
 #
+# LIMIT: the hook sees only the lines git writes. `git push --mirror` deletes
+# every remote ref the clone lacks, branches and tags alike, without writing a
+# line for any of them, so this hook cannot refuse those deletions. A `--prune`
+# push and an explicit `--delete` or `:<ref>` do write their lines and are
+# refused below.
+#
 # Tags: a consumer that fetched a tag has that tree, so a published tag is not
 # rewritten in place; a fix ships as a new tag. For a ref under `refs/tags/`:
 #   local sha all zeros                      a delete         refused
@@ -29,7 +35,8 @@
 #   remote sha set and different from local a move           refused
 #   remote sha equal to local                nothing changes  allowed
 # Any tag name, lightweight or annotated (an annotated tag's sha is its tag
-# object, so re-creating one on the same commit is a move too).
+# object, so re-creating one on the same commit is a move too). A delete git
+# does not report, as in a mirror push, is outside this (see LIMIT above).
 #
 # Overrides, each for a genuine emergency and each lifting only its own refusal:
 #   ALLOW_PUSH_TO_MAIN=1 git push ...   a push to or delete of the default branch
@@ -98,6 +105,7 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
                 continue
             fi
             echo "     Anyone who fetched it keeps the old tree; publish a new tag instead." >&2
+            echo "     If your local tags are only stale, refresh them: git fetch --tags --force" >&2
             echo "     Override for a genuine emergency: ALLOW_TAG_REWRITE=1 git push ..." >&2
             status=1
             ;;
