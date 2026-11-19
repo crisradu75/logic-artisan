@@ -32,7 +32,7 @@ A phase-boundary confirmation prompt is a regression against the documented cont
 
 ## Implement
 
-- Post-check: one chain had three ticked tasks in one chain that asserted false things — including a mutation test that could not have failed — with every mechanical check passing. The box count is a presence check on a glyph; the artifact-ready flag does not read task state at all. Briefs that demanded numbers are the ones that came back with real ones, hence the inline `measured:` value; a sample re-measure, not exhaustive re-verification, because that would cost as much as the implementation.
+- Post-check: one chain had three ticked tasks that asserted false things — including a mutation test that could not have failed — with every mechanical check passing. The box count is a presence check on a glyph; the artifact-ready flag does not read task state at all. Briefs that demanded numbers are the ones that came back with real ones, hence the inline `measured:` value; a sample re-measure, not exhaustive re-verification, because that would cost as much as the implementation.
 - A ticked box with "NOT DONE" beneath it is honest work filed dishonestly, and makes every downstream count wrong.
 - A mechanical scan for ticked-but-open tasks was built and withdrawn: over this repo it reached 6 of 173 ticked tasks with 0 true positives against 4 false.
 

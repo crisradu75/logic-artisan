@@ -19,7 +19,8 @@ The FOUR repo-level assertions that used to live here —
 ``test_no_project_tokens_in_synced_source``,
 ``test_no_absolute_developer_paths_in_synced_source`` and
 ``test_every_scanned_file_is_actually_readable`` — are now the body of the
-checker's ``main()``, which runs all four and accumulates across them. Nothing
+checker's ``main()``, which runs all five checks (the tracker scan (e) came later) and
+accumulates across them. Nothing
 else was dropped.
 """
 
@@ -631,7 +632,7 @@ def test_source_scan_of_the_real_plugin_is_non_vacuous():
 # --------------------------------------------------------------------------- #
 #
 # The checker is now a program, so "does it exit 0/1/2 for the right reason, and
-# does one run really perform all four checks" is a behaviour with no test above
+# does one run really perform all five checks" is a behaviour with no test above
 # this line. Driven as a real subprocess rather than by calling `main()`
 # in-process, because `sys.exit(main())` is part of the contract a consumer
 # scripts against and an in-process call cannot see it.
@@ -728,7 +729,7 @@ def test_cli_fails_on_a_present_but_empty_token_list_and_says_how_to_disable(tmp
 
 
 def test_cli_reports_violations_from_more_than_one_check_in_a_single_run(tmp_path):
-    # The accumulate-across-all-four promise. Three of the four checks are made
+    # The accumulate-across-all-five promise. Three of the five checks are made
     # to fire at once: (a) a project token in prose, (c) a hardcoded developer
     # path in source, and (d) a file the scanners cannot read. Stopping after
     # the first would leave the other two invisible, and check (d) in particular
@@ -751,7 +752,7 @@ def test_cli_reports_violations_from_more_than_one_check_in_a_single_run(tmp_pat
 
 def test_cli_reports_the_readability_check_even_when_nothing_else_fires(tmp_path):
     # Check (d) on its own. It reads like plumbing and is the one keeping the
-    # other three from passing vacuously, so it gets a case that cannot be
+    # others from passing vacuously, so it gets a case that cannot be
     # satisfied by any of them.
     plugin = _seed_vendored_plugin(tmp_path)
     _seed_token_list(tmp_path, "- funnel-demo\n")
@@ -955,6 +956,8 @@ def _tracker_hits(tmp_path: Path, rel: str, body: str):
         "a stall (#526) in the hook",
         "Issue #236. `cmd /c rmdir` was named alongside",
         "closed (#64 in a past run)",
+        "GitHub issues #218-#221 were the batch",
+        "a PR #12-style fix",
     ],
 )
 def test_tracker_references_are_flagged_in_py_and_md(tmp_path, line):
@@ -1047,6 +1050,46 @@ def test_a_missing_or_unusable_manifest_skips_only_the_url_rule(tmp_path, manife
         "# https://github.com/acme-owner/acme-plugin/issues/42\n# and issue #9\n",
     )
     assert [(h[1], h[2]) for h in find_tracker_references(tmp_path)] == [("tracker-reference", 2)]
+
+
+@pytest.mark.parametrize(
+    "setup",
+    ["bom", "ssh", "ssh-git", "tree", "blob"],
+)
+def test_manifest_forms_still_enable_the_url_rule(tmp_path, setup):
+    import json
+
+    manifest = tmp_path / ".claude-plugin" / "plugin.json"
+    manifest.parent.mkdir(parents=True)
+    repo = {
+        "bom": "https://github.com/acme-owner/acme-plugin",
+        "ssh": "git@github.com:acme-owner/acme-plugin",
+        "ssh-git": "git@github.com:acme-owner/acme-plugin.git",
+        "tree": "https://github.com/acme-owner/acme-plugin/tree/main/plugin",
+        "blob": "https://github.com/acme-owner/acme-plugin/blob/main/plugin.json",
+    }[setup]
+    raw = json.dumps({"repository": repo})
+    manifest.write_bytes((b"\xef\xbb\xbf" if setup == "bom" else b"") + raw.encode("utf-8"))
+    _seed(tmp_path, "hooks/sample.py", "# https://github.com/acme-owner/acme-plugin/issues/42\n")
+    assert [h[1] for h in find_tracker_references(tmp_path)] == ["tracker-url"]
+
+
+@pytest.mark.parametrize("manifest", ["not json", '{"repository": 5}', '{"repository": "https://example.org/x/y"}'])
+def test_a_present_manifest_without_a_repo_prints_one_note_and_keeps_the_exit_code(tmp_path, manifest, capsys):
+    m = tmp_path / ".claude-plugin" / "plugin.json"
+    m.parent.mkdir(parents=True)
+    m.write_text(manifest, encoding="utf-8")
+    _seed(tmp_path, "hooks/sample.py", "# clean\n")
+    assert find_tracker_references(tmp_path) == []
+    err = capsys.readouterr().err
+    assert err.count("names no GitHub repository; tracker URLs not checked") == 1
+    assert "check_no_project_tokens: note: .claude-plugin/plugin.json names no GitHub repository" in err
+
+
+def test_a_missing_manifest_prints_no_note(tmp_path, capsys):
+    _seed(tmp_path, "hooks/sample.py", "# clean\n")
+    assert find_tracker_references(tmp_path) == []
+    assert capsys.readouterr().err == ""
 
 
 def test_tracker_scan_reaches_every_scanned_file_once(tmp_path):
