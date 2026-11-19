@@ -6,7 +6,7 @@ Adapts `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` — 
 
 Two reasons, both from the real precedent this skill automates:
 
-1. **Cross-change staleness is the batch-specific defect class.** A rescoped change (e.g. #3 folding in a nullable-columns rework) can leave a stale cross-reference in a sibling change (e.g. #4's caveat still describing the old model) — this is invisible to a reviewer that only ever sees one change directory at a time. PR #119's actual follow-up commit fixed exactly this shape of finding six times over.
+1. **Cross-change staleness is the batch-specific defect class.** A rescoped change (e.g. #3 folding in a nullable-columns rework) can leave a stale cross-reference in a sibling change (e.g. #4's caveat still describing the old model) — this is invisible to a reviewer that only ever sees one change directory at a time. One real follow-up commit fixed exactly this shape of finding six times over.
 2. **Cost.** Three agents × N single-change dispatches is N times the cost of three agents × one dispatch fed all N changes' artifacts. The verification work (checks `0a`–`0l`) is naturally batchable — read all N proposal/design/tasks/specs sets once, verify claims once, dispatch once. <!-- enumerates-checks -->
 
 ## Step 1 — Skip this whole gate for a batch of exactly 1

@@ -23,7 +23,7 @@ RUN IT AS A PROGRAM, from anywhere inside the repo it should check::
 
     python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/check_no_project_tokens.py
 
-FOUR CHECKS, ALL IN ONE RUN. A single invocation performs every check this guard
+FIVE CHECKS, ALL IN ONE RUN. A single invocation performs every check this guard
 is responsible for and never stops at the first that fails — surfacing one
 violation at a time turns a run into a fix-and-rerun loop:
 
@@ -39,7 +39,12 @@ violation at a time turns a run into a fix-and-rerun loop:
       different scanner with its own regexes and its own exemption marker, and
       the only one of the four that needs no token list;
   (d) the READABILITY check that every file the scans claim to have inspected
-      was actually readable.
+      was actually readable;
+  (e) the TRACKER-REFERENCE scan: a shipped file may not cite the source repo's
+      own issue or pull-request numbers. Such a number resolves only in the
+      repo that develops the plugin and reads as noise in every repo that
+      installs it. Like (c) it needs no token list. It reads every file the
+      prose and source scans reach; the patterns are ``TRACKER_REF_PATTERNS``.
 
 Check (d) is not optional and is not plumbing. All three scanners above swallow
 a decode/IO error per file so one odd file cannot take the guard down — which
@@ -131,7 +136,7 @@ def _repo_root() -> Path | None:
     consuming repo. This used to walk to the first `.claude` ancestor of
     `__file__`, which under a marketplace install is the user's GLOBAL
     `~/.claude` — so it returned the home directory, found no token list, and
-    the guard skipped green in every consuming repo (upstream issue #52).
+    the guard skipped green in every consuming repo.
     """
     import subprocess
 
@@ -372,7 +377,7 @@ def _iter_scanned_source_files(plugin_root: Path):
     by the source repo's marketplace-manifest guard; nothing token-scans it, by
     design.
 
-    `.sh` was added for the same reason and on the same terms, by issue #254.
+    `.sh` was added for the same reason and on the same terms.
     The plugin ships exactly one, `hooks/probe-python.sh`, and that file is the
     declared home of the wiring rationale that used to sit in `hooks.json`'s
     `_comment` array — rationale the plugin loader rejected, so it had to move
@@ -565,6 +570,90 @@ def find_absolute_path_leaks(plugin_root: Path):
     return leaks
 
 
+# ---------- tracker-reference guard: the list-free second half ----------
+#
+# A shipped sentence such as "(see the tracker entry for the stall)" is worth
+# keeping; the same sentence with the entry's NUMBER in it points into the
+# source repo's tracker, which a consuming repo cannot open. This check is
+# closed-form, like the absolute-path one, so it needs no curated list.
+#
+# The pattern is deliberately narrow, so it flags no heading, shebang, hex
+# colour or `#`-comment: a number counts only when a word or a bracket says it
+# is a tracker entry.
+#   - a tracker word right before it: "issue", "issues", "PR", "PRs", "pull" or
+#     "pull request", any case, with optional space (`#`, digits, up to five);
+#   - an opening bracket right before it, that opens a number, the habit of
+#     citing one in parentheses. An all-digit hex colour in brackets would match
+#     too; none ships, and a real one can be written without the bracket;
+#   - a GitHub issue or pull-request URL naming the source repo, which is read
+#     from the plugin's own manifest, so no repo name is hard-coded here. A URL
+#     into some OTHER project's tracker is an interface a consumer can follow
+#     and is allowed.
+# A bare "Closes #N" in a commit-trailer example is documentation of a syntax,
+# not a reference, and is not matched either.
+TRACKER_REF_PATTERNS = (
+    re.compile(r"\b(?:issues?|PRs?|pull(?:[ \t]+requests?)?)[ \t]*#\d{1,5}(?![\w-])", re.IGNORECASE),
+    re.compile(r"\(#\d{1,5}(?!\w)"),
+)
+MANIFEST_RELPATH = Path(".claude-plugin") / "plugin.json"
+_GITHUB_REPO_URL = re.compile(r"github\.com/([^/\s\"']+)/([^/\s\"'#?]+?)(?:\.git)?/?$", re.IGNORECASE)
+
+
+def _source_repo_url_pattern(plugin_root: Path):
+    """A pattern for issue/PR URLs of the repo the manifest names, or ``None``
+    when the manifest is absent, unreadable or names no GitHub repo."""
+    import json
+
+    try:
+        data = json.loads((plugin_root / MANIFEST_RELPATH).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    repository = data.get("repository") if isinstance(data, dict) else None
+    if isinstance(repository, dict):
+        repository = repository.get("url")
+    if not isinstance(repository, str):
+        return None
+    match = _GITHUB_REPO_URL.search(repository.strip())
+    if not match:
+        return None
+    owner, repo = (re.escape(g) for g in match.groups())
+    return re.compile(
+        rf"github\.com/{owner}/{repo}/(?:issues|pull)/\d+", re.IGNORECASE
+    )
+
+
+def find_tracker_references(plugin_root: Path):
+    """Return ``(rel_path, kind, line_number, excerpt)`` for every citation of the
+    source repo's own issue or pull-request number in a shipped file, over the
+    same files the prose and source scans read (each once)."""
+    patterns = [("tracker-reference", pat) for pat in TRACKER_REF_PATTERNS]
+    url_pattern = _source_repo_url_pattern(plugin_root)
+    if url_pattern is not None:
+        patterns.append(("tracker-url", url_pattern))
+    hits: list[tuple[str, str, int, str]] = []
+    seen: set[Path] = set()
+    for path in list(_iter_scanned_files(plugin_root / "skills")) + list(
+        _iter_scanned_source_files(plugin_root)
+    ):
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue  # reported by `find_unreadable_files`, not here
+        rel = path.relative_to(plugin_root).as_posix()
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for kind, pattern in patterns:
+                if pattern.search(line):
+                    excerpt = line.strip()
+                    if len(excerpt) > MAX_EXCERPT:
+                        excerpt = excerpt[: MAX_EXCERPT - 3] + "..."
+                    hits.append((rel, kind, lineno, excerpt))
+                    break
+    return hits
+
+
 def find_unreadable_files(plugin_root: Path):
     """Every scanned file that cannot be decoded as UTF-8, as ``(rel, reason)``.
 
@@ -636,8 +725,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=_PROG,
         description=(
-            "Fail when a synced-core file leaks a project-specific token or a "
-            "hardcoded absolute developer path, or when a file the scans claim "
+            "Fail when a synced-core file leaks a project-specific token, a "
+            "hardcoded absolute developer path or a source-repo issue/PR "
+            "number, or when a file the scans claim "
             "to have inspected cannot actually be read."
         ),
     )
@@ -789,6 +879,10 @@ def main(argv: list[str] | None = None) -> int:
     for rel, kind, lineno, excerpt in find_absolute_path_leaks(plugin_root):
         violations.append(f"{rel}:{lineno}  [{kind}]  → {excerpt}")
 
+    # ---- (e) tracker references — always armed, no token list needed ----
+    for rel, kind, lineno, excerpt in find_tracker_references(plugin_root):
+        violations.append(f"{rel}:{lineno}  [{kind}]  → {excerpt}")
+
     # ---- (d) readability — the check that keeps (a), (b) and (c) honest ----
     # An unreadable file is silently "clean" to every scanner above, so its
     # unreadability is itself the violation. Never gate this on `tokens`, and
@@ -834,7 +928,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"{len(violations)} conformance violation(s) in synced core — move the "
             "fact behind an overlay, rename the fixture value, curate the token out, "
-            f"or mark a deliberate path fixture with `{ABS_PATH_EXEMPT_MARKER}`."
+            f"state a tracker reference's lesson in words, or mark a deliberate path fixture with `{ABS_PATH_EXEMPT_MARKER}`."
         )
         return EXIT_VIOLATIONS  # branch: confirmed violations win over a blocker
 

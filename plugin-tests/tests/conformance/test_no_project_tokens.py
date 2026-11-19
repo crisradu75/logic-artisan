@@ -91,6 +91,7 @@ find_source_violations = _checker.find_source_violations
 _starts_with_placeholder_user = _checker._starts_with_placeholder_user
 find_absolute_path_leaks = _checker.find_absolute_path_leaks
 find_unreadable_files = _checker.find_unreadable_files
+find_tracker_references = _checker.find_tracker_references
 main = _checker.main
 
 ABS_PATH_EXEMPT_MARKER = _checker.ABS_PATH_EXEMPT_MARKER
@@ -924,3 +925,170 @@ def test_source_scan_of_the_real_plugin_reaches_the_copilot_files():
                for p in _iter_scanned_source_files(_plugin_root())}
     assert "com.github.copilot/hooks/hooks.json" in scanned
     assert "hooks/probe-python.ps1" in scanned
+
+
+# --------------------------------------------------------------------------- #
+# Check (e): a shipped file may not cite the source repo's own issue / PR numbers
+# --------------------------------------------------------------------------- #
+#
+# The number resolves only in the repo that develops the plugin. The pattern is
+# narrow on purpose (a tracker word or an opening bracket right before the
+# number), so the lookalikes below must stay clean: a heading, a shebang, a hex
+# colour, a `#` comment starting with a digit, a commit-trailer example and a
+# numbered list item.
+
+
+def _tracker_hits(tmp_path: Path, rel: str, body: str):
+    _seed(tmp_path, rel, body)
+    return find_tracker_references(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "# see issue #187 for the race",
+        "Source: GitHub issues #98, #100, #102.",
+        "Fixed in PR #231 (closed).",
+        "Fixed in pr #231.",
+        "per pull request #12 the hook was split",
+        "the pull #12 follow-up",
+        "a stall (#526) in the hook",
+        "Issue #236. `cmd /c rmdir` was named alongside",
+        "closed (#64 in a past run)",
+    ],
+)
+def test_tracker_references_are_flagged_in_py_and_md(tmp_path, line):
+    assert find_tracker_references(tmp_path) == []
+    hits = _tracker_hits(tmp_path, "hooks/sample.py", line + "\n")
+    assert [(h[0], h[1], h[2]) for h in hits] == [("hooks/sample.py", "tracker-reference", 1)]
+    md = tmp_path / "md"
+    hits = _tracker_hits(md, "skills/demo/SKILL.md", "---\nname: demo\n---\n\n" + line + "\n")
+    assert [(h[0], h[2]) for h in hits] == [("skills/demo/SKILL.md", 5)]
+
+
+def test_tracker_references_are_flagged_in_frontmatter_too(tmp_path):
+    # Unlike a project token, a tracker number never helps a skill trigger.
+    hits = _tracker_hits(
+        tmp_path, "skills/demo/SKILL.md", "---\ndescription: fixes issue #12\n---\nbody\n"
+    )
+    assert [h[2] for h in hits] == [2]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "# Heading",
+        "## 1. Heading with a number",
+        "#!/usr/bin/env python3",
+        "#!/bin/sh",
+        "color: #fff;",
+        'COLOR = "#336699"',
+        'BG = "#123"  # three-digit hex colour, no bracket',
+        "# 2 bytes is the smallest body",
+        "#1 repeat offender in this skill",
+        "the #1 task-authoring error",
+        "write `Closes: #199` as a trailer",
+        "a bare `Closes #199` drops the trailer block",
+        "a mid-line `#1234` is fine",
+        "see (#abc) and (# 5) and #5 alone",
+        "an issue tracker, and the PR template",
+        "issue numbers and PR numbers are not cited here",
+        "https://github.com/some-other-owner/some-other-repo/issues/42",
+        "pull request 12 has no hash",
+        "colour (#1a2b3c) in brackets",
+        "colour (#12345678) is too long for a number",
+        "issue #1a2b is a hex-looking id",
+    ],
+)
+def test_tracker_reference_lookalikes_are_not_flagged(tmp_path, line):
+    assert _tracker_hits(tmp_path, "hooks/sample.py", line + "\n") == []
+    assert _tracker_hits(tmp_path / "md", "skills/demo/references/note.md", line + "\n") == []
+
+
+def _seed_manifest(root: Path, repository) -> None:
+    import json
+
+    manifest = root / ".claude-plugin" / "plugin.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps({"name": "cla", "repository": repository}), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "repository",
+    [
+        "https://github.com/acme-owner/acme-plugin",
+        "https://github.com/acme-owner/acme-plugin.git",
+        {"type": "git", "url": "https://github.com/acme-owner/acme-plugin/"},
+    ],
+)
+def test_a_url_into_the_source_repos_tracker_is_flagged_but_other_repos_are_not(tmp_path, repository):
+    _seed_manifest(tmp_path, repository)
+    _seed(
+        tmp_path,
+        "hooks/sample.py",
+        "# ours: https://github.com/acme-owner/acme-plugin/issues/42\n"
+        "# ours: https://github.com/Acme-Owner/acme-plugin/pull/7\n"
+        "# upstream, a consumer may follow it: https://github.com/other-owner/other-repo/issues/42\n"
+        "# the repo itself: https://github.com/acme-owner/acme-plugin\n",
+    )
+    hits = find_tracker_references(tmp_path)
+    assert [(h[1], h[2]) for h in hits] == [("tracker-url", 1), ("tracker-url", 2)]
+
+
+@pytest.mark.parametrize("manifest", [None, "not json", '{"repository": 5}', '{"repository": "https://example.org/x/y"}'])
+def test_a_missing_or_unusable_manifest_skips_only_the_url_rule(tmp_path, manifest):
+    if manifest is not None:
+        m = tmp_path / ".claude-plugin" / "plugin.json"
+        m.parent.mkdir(parents=True)
+        m.write_text(manifest, encoding="utf-8")
+    _seed(
+        tmp_path,
+        "hooks/sample.py",
+        "# https://github.com/acme-owner/acme-plugin/issues/42\n# and issue #9\n",
+    )
+    assert [(h[1], h[2]) for h in find_tracker_references(tmp_path)] == [("tracker-reference", 2)]
+
+
+def test_tracker_scan_reaches_every_scanned_file_once(tmp_path):
+    for rel in (
+        "skills/demo/SKILL.md",
+        "skills/demo/scripts/helper.py",
+        "agents/reviewer.md",
+        "hooks/hooks.json",
+        "output-styles/terse.md",
+    ):
+        _seed(tmp_path, rel, "see issue #5\n")
+    got = sorted(h[0] for h in find_tracker_references(tmp_path))
+    assert got == [
+        "agents/reviewer.md",
+        "hooks/hooks.json",
+        "output-styles/terse.md",
+        "skills/demo/SKILL.md",
+        "skills/demo/scripts/helper.py",
+    ]
+
+
+def test_tracker_scan_keeps_the_plugin_tree_scope(tmp_path):
+    # The checker runs in consumer repos too; it must not read their own files.
+    _seed(tmp_path, "docs/notes.md", "see issue #5\n")
+    _seed(tmp_path, "src/app.py", "# PR #7\n")
+    _seed(tmp_path, "skills/demo/tests/test_x.md", "issue #5\n")  # excluded subtree, prose only
+    _seed(tmp_path, "skills/demo/SKILL.md", "clean\n")
+    assert find_tracker_references(tmp_path) == []
+
+
+def test_cli_reports_a_tracker_reference_and_exits_one(tmp_path):
+    plugin = _seed_vendored_plugin(tmp_path)
+    (plugin / "hooks" / "sample.py").write_text("# stalls, see issue #526\n", encoding="utf-8")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_VIOLATIONS, result.stdout + result.stderr
+    assert "hooks/sample.py:1  [tracker-reference]" in result.stdout, result.stdout
+
+
+def test_cli_tracker_check_runs_without_a_token_list(tmp_path):
+    # No token list is a trivial pass for (a)/(b) only, never for (e).
+    plugin = _seed_vendored_plugin(tmp_path)
+    (plugin / "skills" / "demo" / "SKILL.md").write_text("Fixed by PR #12.\n", encoding="utf-8")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_VIOLATIONS, result.stdout + result.stderr
+    assert "skills/demo/SKILL.md:1  [tracker-reference]" in result.stdout, result.stdout
