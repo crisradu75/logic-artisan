@@ -232,6 +232,7 @@ Exit codes:
 from __future__ import annotations
 
 import base64
+import bisect
 import functools
 import itertools
 import json
@@ -1640,14 +1641,14 @@ _LITERAL_VALUE = re.compile(r"[\w ./:+=,@%~^-]*")
 _COMMAND_PREFIXES = frozenset(
     "sudo env command exec time nohup nice xargs builtin then do else elif if while until".split()
 )
-# A subcommand word holding a quote or a `$` anywhere, or starting with a
-# backtick (`git `echo push``). A backtick later in the word ends it: in
-# `` run `git status` `` it closes a span opened before `git`, and reading it
-# as an expansion asked on every heredoc that quotes a git command. The word
-# does not start with `-`, which is an option the matcher did not take as one
+# A subcommand word holding a quote, a `$` or a backtick anywhere. When `git`
+# sits inside a backtick span (`_span_close`), the word ends where the span
+# closes: in `` run `git status` `` that backtick closes a span opened before
+# `git`, and reading it as an expansion asked on every heredoc that quotes a
+# git command. The word does not start with `-`, which is an option the matcher did not take as one
 # (`--git-dir="$D"`), or with a backslash, where `GitInvocation` refuses a
 # pattern that matches.
-_GIT_SUBCOMMAND_EXPANDED = GitInvocation(r"(?!-)(?=`|[^\s;&|<>()\\`]*?[$\"'])", capture_opts=True)
+_GIT_SUBCOMMAND_EXPANDED = GitInvocation(r"(?!-)(?=[^\s;&|<>()\\]*?[$`\"'])", capture_opts=True)
 # Global options that take the next word as their value. The matcher may read
 # one as a bare flag, which makes its value look like the subcommand.
 _GIT_VALUE_OPT = re.compile(r"-[cC]|--(?:git-dir|work-tree|namespace|super-prefix)")
@@ -1806,24 +1807,28 @@ def _expansions(word: str) -> tuple[int, list[tuple[int, int, str]] | None]:
     return first, names
 
 
-def _before_closing_tick(word: str) -> int:
-    """How much of `word` comes before a backtick that is not its first
-    character, outside single quotes and unescaped: all of it when there is
-    none. Such a backtick closes a span opened before the word, as in prose
-    that quotes `` `git status` ``; it starts no expansion inside the word."""
-    i, n = 0, len(word)
-    while i < n:
-        ch = word[i]
-        if ch == "\\":
-            i += 2
-        elif ch == "'":
-            j = word.find("'", i + 1)
-            i = n if j < 0 else j + 1
-        elif ch == "`" and i > 0:
-            return i
-        else:
-            i += 1
-    return n
+@functools.lru_cache(maxsize=16)
+def _live_ticks(scanned: str) -> list[int]:
+    """The offsets of the backticks in quote-stripped `scanned` that open or
+    close a span: every one not escaped (quoted ones are blanked there). One
+    pass per text."""
+    return [m.start() for m in re.finditer(r"(?<!\\)`", scanned)]
+
+
+def _span_close(scanned: str, at: int) -> int | None:
+    """When `at` is inside a backtick span, the offset of the backtick that
+    closes it (the end of the text when none does); None when it is not.
+    Pairing, not position: an odd number of live backticks before `at` opened
+    a span that `at` sits in, as `git` does in prose quoting `` `git status` ``,
+    while a backtick after an even number opens a substitution, as in
+    `git push -`echo f``. A backtick right before `at` opens a span too: the
+    count goes wrong in prose, where an apostrophe (`user's`) pairs with a later
+    one and blanks the backticks between them."""
+    ticks = _live_ticks(scanned)
+    k = bisect.bisect_left(ticks, at)
+    if k % 2 == 0 and not (k and ticks[k - 1] == at - 1):
+        return None
+    return ticks[k] if k < len(ticks) else len(scanned)
 
 
 def _has_expansion(word: str) -> bool:
@@ -1957,13 +1962,17 @@ def _rewrites(part: str, names: dict[str, list[str | None]]) -> tuple[list[str],
         ):
             continue
         sub = m.end()
-        end = _word_end(part, sub)
-        end = sub + _before_closing_tick(part[sub:end])
-        values = _resolve(part[sub:end], names)
+        # Inside a backtick span, the git command ends where the span closes.
+        close = _span_close(scanned, m.start())
+        end = _word_end(part, sub, close)
+        raw = part[sub:end]
+        if not _has_expansion(raw) and _unquote(raw) == raw:
+            continue  # cut at the span's close, it is a plain word
+        values = _resolve(raw, names)
         if values is None:
             unresolved = True
             continue
-        stop = tail_end(end)
+        stop = tail_end(end) if close is None else min(tail_end(end), close)
         lines += [part[m.start():sub] + v + part[end:stop] for v in values]
         if len(lines) > _EXPAND_MAX_LINES:
             return lines, True
@@ -1972,8 +1981,9 @@ def _rewrites(part: str, names: dict[str, list[str | None]]) -> tuple[list[str],
             if not _at_command_start(scanned, m.start()):
                 continue
             operand = False
-            for a, b in _command_words(part, m.start(1), m.end(1)):
-                b = a + _before_closing_tick(part[a:b])
+            close = _span_close(scanned, m.start())
+            limit = m.end(1) if close is None else min(m.end(1), close)
+            for a, b in _command_words(part, m.start(1), limit):
                 raw = part[a:b]
                 first, _ = _expansions(raw)
                 if first < 0:
@@ -1998,7 +2008,7 @@ def _rewrites(part: str, names: dict[str, list[str | None]]) -> tuple[list[str],
                             not operand and raw.startswith("$") and _SINGLE_VAR.fullmatch(raw) is not None
                         )
                         continue
-                lines += [part[m.start():a] + v + part[b:m.end(1)] for v in values]
+                lines += [part[m.start():a] + v + part[b:limit] for v in values]
                 if len(lines) > _EXPAND_MAX_LINES:
                     return lines, True
                 break  # the rewritten line is read again for the next one

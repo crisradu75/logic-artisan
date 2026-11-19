@@ -907,9 +907,9 @@ MUTANTS.append((
 #   clamps any overshoot), `_resolve`'s `islice` (the line cap asks for the same
 #   commands), and `value == raw or` (a plain word rewritten to itself adds a
 #   line no check reads differently);
-# - in `_before_closing_tick`, the single-quote and backslash steps: a backtick
-#   they keep is read as part of the word, and every word that reaches a
-#   decision reads the same either way (`'-f`'` and `-f\``, measured);
+# - in `_rewrites`, `part[b:limit]` after a rewritten option word: the text
+#   past a span's close is read by every matcher in the command itself anyway;
+# - `_live_ticks`'s cache;
 # - the work spent in `_at_command_start` and `tail_end`, and the slack term
 #   and the `finally` reset of the work cap: every command a test can build is
 #   walked far inside the cap without them, and every reader runs under
@@ -942,17 +942,27 @@ for _what, _args in (
     ("any value is a literal", ("_LITERAL_VALUE = re.compile", r'r"[\w ./:+=,@%~^-]*"', 'r".*"')),
     ("sudo hides the command start", ('    "sudo env command exec time', '"sudo env', '"env')),
     ("a quoted subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "\\\"'", "")),
-    ("a backtick subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "(?=`|", "(?=")),
+    ("a backtick subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "$`", "$")),
     ("a subcommand is read only when its first character is special",
-     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", r"[^\s;&|<>()\\`]*?", "")),
-    ("a backtick anywhere in the subcommand word counts again",
-     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", r"()\\`]*?[$\"']", r"()\\]*?[$`\"']")),
-    ("a subcommand word runs on past its closing backtick",
-     ("        end = sub + _before_closing_tick(part[sub:end])", "end = sub + _before_closing_tick(part[sub:end])", "pass")),
-    ("an option word runs on past its closing backtick",
-     ("                b = a + _before_closing_tick(part[a:b])", "b = a + _before_closing_tick(part[a:b])", "pass")),
-    ("a word that opens with a backtick is cut at it",
-     ('        elif ch == "`" and i > 0:', " and i > 0", "")),
+     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", r"[^\s;&|<>()\\]*?", "")),
+    # backtick spans: pairing, not position
+    ("every git ends at the next backtick, opening or closing",
+     ("    if k % 2 == 0 and not (k and ticks[k - 1] == at - 1):", "k % 2 == 0 and not (k and ticks[k - 1] == at - 1)", "False")),
+    ("no git is ever inside a span",
+     ("    if k % 2 == 0 and not (k and ticks[k - 1] == at - 1):", "k % 2 == 0 and not (k and ticks[k - 1] == at - 1)", "True")),
+    ("only the count decides, so prose apostrophes break it",
+     ("    if k % 2 == 0 and not (k and ticks[k - 1] == at - 1):", " and not (k and ticks[k - 1] == at - 1)", "")),
+    ("an unclosed span always runs to the end",
+     ("    return ticks[k] if k < len(ticks) else len(scanned)", "ticks[k] if k < len(ticks) else len(scanned)", "len(scanned)")),
+    ("an escaped backtick opens or closes a span", ('    return [m.start() for m in re.finditer(r"(?<!', "(?<!", "(?<=x)?(?<!x")),
+    ("a plain word cut at a span's close is rewritten anyway",
+     ("            continue  # cut at the span's close, it is a plain word", "continue", "pass")),
+    ("a subcommand's line runs past the span's close",
+     ("        stop = tail_end(end) if close is None else min(tail_end(end), close)",
+      "tail_end(end) if close is None else min(tail_end(end), close)", "tail_end(end)")),
+    ("an option word runs past the span's close",
+     ("            limit = m.end(1) if close is None else min(m.end(1), close)",
+      "m.end(1) if close is None else min(m.end(1), close)", "m.end(1)")),
     ("an option the matcher skipped reads as the subcommand",
      ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "(?!-)", "")),
     ("-C's value reads as the subcommand", ("_GIT_VALUE_OPT = re.compile", "-[cC]", "-[c]")),
@@ -995,7 +1005,7 @@ for _what, _args in (
      ("        choices.append(list(dict.fromkeys(values)))", "list(dict.fromkeys(values))", "values[:1]")),
     ("a resolved word keeps its quotes", ('        readings.append(_unquote("".join(pieces)))', '_unquote("".join(pieces))', '"".join(pieces)')),
     ("an unresolved subcommand is not reported",
-     ("        values = _resolve(part[sub:end], names)", "_resolve(part[sub:end], names)", "_resolve(part[sub:end], names) or []")),
+     ("            continue  # cut at the span's close, it is a plain word", "_resolve(raw, names)", "_resolve(raw, names) or []", 2, 1)),
     ("a rewritten line loses its git", ("lines += [part[m.start():sub] + v + part[end:stop] for v in values]", "part[m.start():sub] + v", "v")),
     ("reset's options are not read", ("    for pattern in (_PUSH, _RESET, _BRANCH):", "_RESET, ", "")),
     ("an operand never ends the option run",
@@ -1009,7 +1019,7 @@ for _what, _args in (
     ("a quoted expansion before the operand asks",
      ('                            not operand and raw.startswith("$") and', ' and raw.startswith("$")', "")),
     ("a resolved option is dropped from the line",
-     ("lines += [part[m.start():a] + v + part[b:m.end(1)] for v in values]", " + v + ", " + ")),
+     ("lines += [part[m.start():a] + v + part[b:limit] for v in values]", " + v + ", " + ")),
     ("text past the cap is read anyway",
      ("        budget -= sum(len(b) for b in frontier)", "len(b)", "0 * len(b)")),
     ("a wrapper past the depth cap is allowed",

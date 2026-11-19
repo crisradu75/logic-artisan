@@ -4084,6 +4084,11 @@ def test_a_long_wrapped_command_is_read_inside_the_work_cap(monkeypatch, capsys)
         # outside a heredoc the span is read: the flag ends at its backtick
         "echo `git branch -m`, which renamed it",
         'echo `git "status"`, then more',
+        # the span ends the git command: `-f` is an argument of `echo`
+        'echo `git "push"` -f origin x',
+        # apostrophes pair across the prose and hide two backticks, so the count
+        # before `git` is even; the backtick right before it still opens a span
+        "gh pr create --body-file - <<'EOF'\nthe ` mark: it's `y`, that's `git status`, so\nEOF",
         "echo it's `git branch -a` that lists step 2's `-d` and `-D` here",
         "git commit -F - <<'EOF'\nit's `git push origin x`, then `git reset --soft HEAD~1`\nEOF",
     ],
@@ -4100,6 +4105,22 @@ def test_a_backtick_after_a_quoted_git_command_stays_silent(command, monkeypatch
         ("git push -f`echo` origin x", _FORCE),
         # the flag before a closing backtick is still read
         ("echo `git branch topic -D` here", _DELETE),
+        # an even number of backticks before `git`: one in a word opens a
+        # substitution, whose output cannot be known
+        ("git push -`echo f` origin x", hook.UNRESOLVED_REASON),
+        ("git push --`echo force` origin x", hook.UNRESOLVED_REASON),
+        ("git reset --`echo hard`", hook.UNRESOLVED_REASON),
+        ("git branch -`echo D` foo", hook.UNRESOLVED_REASON),
+        ("git pu`echo sh` -f origin x", hook.UNRESOLVED_REASON),
+        ("git re`echo set` --hard", hook.UNRESOLVED_REASON),
+        ('git push "-`echo f`" origin x', hook.UNRESOLVED_REASON),
+        ("bash -c 'git push -`echo f` origin x'", hook.UNRESOLVED_REASON),
+        ("X=f; git push -`echo $X` origin x", hook.UNRESOLVED_REASON),
+        # inside a span, an escaped backtick still opens one a level down
+        ("echo `git push -\\`echo f\\` origin x`", hook.UNRESOLVED_REASON),
+        # a span closed before the next command leaves that command whole
+        ('echo "`git status`" && git push -f origin x', _FORCE),
+        ("echo `git status` && git push -f origin x", _FORCE),
     ],
 )
 def test_a_backtick_that_opens_a_substitution_still_counts(command, expected, monkeypatch, capsys):
