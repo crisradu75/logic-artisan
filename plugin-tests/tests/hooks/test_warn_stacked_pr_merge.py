@@ -210,13 +210,20 @@ def test_all_non_dict_elements_yields_no_warning_not_a_crash(monkeypatch, capsys
     "cmd",
     [
         "gh pr merge 3 --foo-d",              # `-d` inside another flag
-        "gh pr merge 3 -dx",                  # `-d` as the prefix of a longer flag
+        "gh pr merge 3 -bd",                  # `-b` takes a value: a body of "d", not a delete
+        "gh pr merge 3 -td",                  # `-t` takes a value: a subject of "d"
         "gh pr merge 3 --delete-branches",
         "gh pr merge 3 --delete-branchx",
     ],
 )
 def test_wants_check_does_not_match_lookalike_flags(cmd):
     assert not hook._wants_stacked_check(cmd)
+
+
+# gh's flag parser clusters short boolean flags, so these all delete the branch (review of #554).
+@pytest.mark.parametrize("flags", ["-sd", "-ds", "-md", "-rd", "-dd", "-d -s"])
+def test_wants_check_clustered_short_delete_flags(flags):
+    assert hook._wants_stacked_check(f"gh pr merge 3 {flags}")
 
 
 def test_wants_check_delete_branch_flag_at_the_very_start_or_end():
