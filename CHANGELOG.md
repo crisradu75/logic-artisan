@@ -16,7 +16,7 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
   is in no live spec and no active delta, so no marker could name it; the checker now leaves it out
   and counts it on the `changed requirements:` line. The final heading is still checked. A
   requirement that is only missing from the live spec, with no removal on the branch, is still
-  reported.
+  reported. ([#563](https://github.com/crisradu75/logic-artisan/pull/563))
 
 ## [2.4.0] — 2026-11-18
 
