@@ -14,8 +14,11 @@ re-breaks exactly that path.
 
 WHY THE MUTATIONS TARGET THE HOOK, NOT THE GUARD. Mutating the test file's own
 assertions would prove the guard's prose reacts to a change in its own prose --
-circular. Every mutant here edits `ask-destructive-git.py`, the file the guard
-is actually meant to pin.
+circular. Every mutant here edits the hook: `ask-destructive-git.py` and the
+three files it was split into (`_destructive_git_rules.py`,
+`_destructive_git_probes.py`, `_shell_read.py`). `_line` searches all four,
+and each mutant is planted in the one file that holds its anchor (`_home`,
+at the end), so an anchor that moves between them follows on its own.
 
 ANCHORS ARE LOCATED, NOT HAND-COPIED. This hook's source is dense with regex
 literals (`\\s`, `\\\\`, character classes), and retyping one by hand is exactly
@@ -35,17 +38,30 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]          # <repo>/plugin-tests
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 HOOK = PLUGIN / "hooks" / "ask-destructive-git.py"
+_FILES = [
+    HOOK,
+    PLUGIN / "hooks" / "_destructive_git_rules.py",
+    PLUGIN / "hooks" / "_destructive_git_probes.py",
+    PLUGIN / "hooks" / "_shell_read.py",
+]
 GUARD = DEV / "tests" / "hooks" / "test_ask_destructive_git.py"
 TARGETS = [GUARD]
 
 _RAW = HOOK.read_bytes()
 _NL = "\r\n" if b"\r\n" in _RAW else "\n"
-_TEXT = _RAW.decode("utf-8")
-_LINES = _TEXT.split(_NL)
+_TEXTS = {f: f.read_bytes().decode("utf-8") for f in _FILES}
+# Every file's lines, one after another, and the file each line came from. A
+# block (`_mut`'s `n`) is taken within one file.
+_LINES: list[str] = []
+_LINE_HOME: list[Path] = []
+for _f in _FILES:
+    _f_lines = _TEXTS[_f].split(_NL)
+    _LINES += _f_lines
+    _LINE_HOME += [_f] * len(_f_lines)
 
 
 def _line(needle: str) -> str:
-    """The one line in the hook source containing `needle`.
+    """The one line in the hook's four files containing `needle`.
 
     Asserted unique HERE, at batch-load time, so a future edit that duplicates
     the needle fails loudly on import rather than silently building a mutant
@@ -199,7 +215,7 @@ MUTANTS.append((
 #
 # Killed by `test_a_wedged_git_prompts_rather_than_going_silent`, which stubs
 # `_run_git` to return None and asserts a payload is still produced.
-_l9 = _line("lines = _status_lines(cwd, paths, ignored)")
+_l9 = _line("lines = _status_lines(cwd, paths, ignored, probes)")
 MUTANTS.append((
     "a wedged git makes the discard layer fail OPEN: the probe returning None "
     "is read as 'nothing would be lost' instead of 'ask'",
@@ -285,16 +301,17 @@ def _mut(what: str, needle: str, old: str, new: str, n: int = 1, at: int = 0) ->
     first = _line(needle)
     i = _LINES.index(first)
     block = _LINES[i:i + n]
+    assert len(set(_LINE_HOME[i:i + n])) == 1, ("a block spans two files", needle)
     assert block[at].count(old) == 1, (old, block[at])
     mutated = list(block)
     mutated[at] = block[at].replace(old, new)
-    MUTANTS.append((what, HOOK, _NL.join(block), _NL.join(mutated), TARGETS))
+    MUTANTS.append((what, _LINE_HOME[i], _NL.join(block), _NL.join(mutated), TARGETS))
 
 
 for _what, _args in (
     # imports and the shared directory helper
     ("the history checks lose `time`, so every command raises in _reasons",
-     ("import time", "import time", "import time as _unused_time")),
+     ("import time  # the deadline's clock", "import time", "import time as _unused_time")),
     ("each history probe may take 12s instead of at most 3s",
      ("import GIT_TIMEOUT_SECONDS", "from _dispatch_lib import GIT_TIMEOUT_SECONDS", "GIT_TIMEOUT_SECONDS = 12.0")),
     ("the history probe budget becomes zero, so none of them ever runs",
@@ -975,7 +992,7 @@ for _what, _args in (
     ("the work cap never trips", ("    if _WORK_LEFT[0] < 0:", "if _WORK_LEFT", "if False and _WORK_LEFT")),
     ("a word costs nothing against the work cap", ("    _spend(end - start)", "end - start", "0")),
     ("reading past the work cap passes what was read",
-     ("    except _OverBudget:", "return parts, UNRESOLVED_REASON", "return parts, None", 2, 1)),
+     ("        return _expand_into(parts)", "return parts, UNRESOLVED_REASON", "return parts, None", 3, 2)),
     # `$(...)`
     ("a `$(` runs to the end of the text", ("            i = _paren_close(text).get(i + 1, n) + 1", "_paren_close(text).get(i + 1, n) + 1", "n")),
     ("a `)` closes the outermost open `(`", ("            close[stack.pop()] = m.start()", "stack.pop()", "stack.pop(0)")),
@@ -1000,8 +1017,8 @@ for _what, _args in (
     ("a value followed by ( is a literal", ('not part.startswith("(", end)', 'not part.startswith("(", end)', "True")),
     ("a non-literal value is kept", ("                    if not _LITERAL_VALUE.fullmatch(value):", "if not", "if False and not")),
     ("a wrapper inside the words of the one before is read again",
-     ("    for m in _WRAPPER.finditer(_stripped(part)):", "if m.start() < read_to:", "if False:", 2, 1)),
-    ("a wrapper's first word is dropped", ('        bodies.append(" ".join(words))', "join(words)", "join(words[1:])")),
+     ("    for m in _WRAPPER.finditer(scanned):", "if m.start() < read_to:", "if False:", 2, 1)),
+    ("a wrapper's first word is dropped", ('        bodies.append(prefix + " ".join(words))', "join(words)", "join(words[1:])")),
     ("the encoded command is read from the flag itself", ("for flag, value in zip(words, words[1:]):", "words[1:]", "words")),
     ("the encoded command is decoded as UTF-8", ('.decode("utf-16-le")', '"utf-16-le"', '"utf-8"')),
     ("an assignment that is not a literal still resolves",
@@ -1053,3 +1070,45 @@ for _what, _args in (
     ("the depth cap forgets gh", ('_NAMES_GIT = re.compile(', "(?:git|gh)", "(?:git)")),
 ):
     _mut(_what, *_args)
+
+
+
+# --- The pre-push tag override, the mirror push, and the shared deadline --------
+for _what, _args in (
+    ("the tag override typed inline no longer asks",
+     ("ALLOW_(?:PUSH_TO_MAIN|TAG_REWRITE)=", "|TAG_REWRITE", "")),
+    ("a mirror push no longer asks",
+     ("    if any(_MIRROR_FLAG.search(m.group(1)) for m in pushes):", "if any(", "if False and any(")),
+    ("--m no longer reads as --mirror",
+     ("_MIRROR_FLAG = re.compile(", '_abbrev("mirror", 1)', '_abbrev("mirror", 6)')),
+    ("a word that only starts like --mirror asks",
+     ("_MIRROR_FLAG = re.compile(", ' + _END)', ')')),
+    ("the mirror reason is given as a force-push",
+     ("        found.append(MIRROR_REASON)", "MIRROR_REASON", '"a force-push"')),
+    ("the discard probe gets a deadline of its own",
+     ('                "ignored" in discard_wanted,', "probes,", "None,", 3, 2)),
+    ("the clean probe gets a deadline of its own",
+     ('            "ignored" in clean_wanted,', "probes,", "None,", 3, 2)),
+    ("the stash probe gets a deadline of its own",
+     ("            in_progress = _operation_in_progress(stash_dirs[0], probes)", ", probes)", ")")),
+    ("a refused working-tree probe reads as a missed history probe",
+     ("    probes.missed = False", "probes.missed = False", "pass")),
+):
+    _mut(_what, *_args)
+
+
+def _home(old: str) -> Path:
+    """The one file of the four that holds `old`. An anchor found in two would
+    be planted in the wrong one as readily as the right one, so it is refused
+    here, at batch-load time, the way `_line` refuses a duplicate needle."""
+    homes = [f for f in _FILES if old in _TEXTS[f]]
+    assert len(homes) == 1, (old, homes)
+    return homes[0]
+
+
+# Every mutant built above with `HOOK` as its file is planted where its anchor
+# now lives.
+MUTANTS = [
+    (what, _home(old) if path == HOOK else path, old, new, targets)
+    for what, path, old, new, targets in MUTANTS
+]

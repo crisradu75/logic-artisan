@@ -711,7 +711,14 @@ def _dispatch_with_errored(monkeypatch, dispatcher, target, payload):
     def one(filename, stdin_text, argv=None):
         return lib.HookResult(0, "", "", filename == target)
 
-    monkeypatch.setattr(dispatcher, "run_hook_file", one)
+    if hasattr(dispatcher, "run_hook_file_each"):
+        # The Bash dispatcher runs each hook through the load-once runner.
+        monkeypatch.setattr(
+            dispatcher, "run_hook_file_each",
+            lambda filename, texts: (one(filename, t) for t in texts),
+        )
+    else:
+        monkeypatch.setattr(dispatcher, "run_hook_file", one)
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -1270,3 +1277,339 @@ def test_options_that_parse_two_ways_are_fast(tmp_path, command, asks):
     assert elapsed < 5.0, f"{elapsed:.1f}s"
     assert r.returncode == 0
     assert ("git reset --hard" in (_reason(r) or "")) is asks
+
+
+# --------------------------------------------------------------------------- #
+# Wrapped forms: every Bash guard reads what a shell wrapper hands on
+#
+# A guard reads the command's text outside quotes, so `bash -c "..."` and
+# `eval "..."` hid their body from every guard but `ask-destructive-git`, which
+# had its own reader. That reader is now `_shell_read.py`, and the dispatcher
+# runs each guard (all but `block-cd-in-bash` and `ask-destructive-git`) on each
+# wrapper body as well as on the command. Measured before: every wrapped form
+# below was allowed while its bare form blocked or asked.
+# --------------------------------------------------------------------------- #
+
+
+def _checkout(tmp_path: Path) -> Path:
+    """A cwd inside a git checkout, two levels below its parent, so `../../x`
+    lands outside it."""
+    repo = tmp_path / "outer" / "repo"
+    (repo / "sub").mkdir(parents=True)
+    _git(repo, "init", "-q")
+    return repo / "sub"
+
+
+def _decide(command: str, cwd: Path) -> tuple[int, dict, str]:
+    r = _run(_BASH_DISPATCH, {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}, cwd=cwd)
+    nested = json.loads(r.stdout)["hookSpecificOutput"] if r.stdout.strip() else {}
+    return r.returncode, nested, r.stderr
+
+
+# requirement: guard-hooks / A command run through a shell wrapper is checked as typed bare
+@pytest.mark.parametrize(
+    "command",
+    [
+        'bash -c "echo hi > ../../outside.txt"',
+        'eval "echo hi > ../../outside.txt"',
+        "sh -c 'echo hi >> ../../log.txt'",
+        "bash -c \"sh -c 'echo hi > ../../outside.txt'\"",
+    ],
+)
+def test_a_wrapped_write_outside_the_checkout_asks(tmp_path, command):
+    rc, nested, _ = _decide(command, _checkout(tmp_path))
+    assert rc == 0
+    assert nested.get("permissionDecision") == "ask", command
+    assert "writes outside the checkout" in nested["permissionDecisionReason"]
+    assert "guard-bash-text.py" in nested["permissionDecisionReason"]
+
+
+# requirement: guard-hooks / A command run through a shell wrapper is checked as typed bare
+@pytest.mark.parametrize(
+    "command",
+    [
+        "bash -c 'git commit -m \"x\" -m \"Measured-by: none\"'",
+        "eval 'git commit -m x -m \"Measured-by: none\"'",
+    ],
+)
+def test_a_wrapped_measured_by_none_commit_is_blocked(tmp_path, command):
+    rc, _, err = _decide(command, tmp_path)
+    assert rc == 2, command
+    assert "block-dishonest-commit.py" in err
+
+
+# requirement: guard-hooks / A command run through a shell wrapper is checked as typed bare
+def test_a_wrapped_unresolved_plugin_root_is_blocked(tmp_path):
+    """The inner shell expands what the outer one's single quotes kept literal."""
+    rc, _, err = _decide("bash -c 'python3 ${CLAUDE_PLUGIN_ROOT}/x.py'", tmp_path)
+    assert rc == 2
+    assert "guard-bash-text.py" in err
+
+
+# requirement: guard-hooks / A command run through a shell wrapper is checked as typed bare
+def test_a_wrapped_recursive_delete_through_a_link_is_blocked(tmp_path, make_dir_alias):
+    link = _unsafe_delete_target(tmp_path, make_dir_alias)
+    rc, _, err = _decide(f'bash -c "rm -rf {link.as_posix()}"', tmp_path)
+    assert rc == 2
+    assert "block-unsafe-recursive-delete.py" in err
+    assert (tmp_path / "far-side" / "canary.txt").exists()
+
+
+# requirement: guard-hooks / A command run through a shell wrapper is checked as typed bare
+def test_a_wrapped_broad_git_add_asks(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "stray.txt").write_text("x", encoding="utf-8")
+    rc, nested, _ = _decide('bash -c "git add -A"', repo)
+    assert rc == 0
+    assert nested.get("permissionDecision") == "ask"
+    assert "ask-broad-git-add.py" in nested["permissionDecisionReason"]
+
+
+# requirement: guard-hooks / A command run through a shell wrapper is checked as typed bare
+@pytest.mark.parametrize(
+    "command",
+    [
+        'bash -c "git status"',
+        'eval "$(ssh-agent)"',
+        'bash -c "echo hi > out.txt"',
+        'bash -c "cd sub && ls"',  # the wrapper's own shell: the session's cwd does not move
+        "CLAUDE_PLUGIN_ROOT=/opt/p bash -c 'python3 $CLAUDE_PLUGIN_ROOT/x.py'",
+        # prose in a quoted heredoc names wrappers; it is data, not a command
+        "git commit -F - <<'EOF'\nrun bash -c 'python3 ${CLAUDE_PLUGIN_ROOT}/x.py' and\neval \"echo > ../../x\"\nEOF",
+    ],
+)
+def test_a_harmless_wrapped_command_stays_silent(tmp_path, command):
+    rc, nested, err = _decide(command, _checkout(tmp_path))
+    assert (rc, nested.get("permissionDecision")) == (0, None), (command, err)
+
+
+def test_a_wrapped_cd_is_left_to_its_own_shell(tmp_path):
+    """Non-vacuity partner of the `cd` row above: the bare form blocks."""
+    rc, _, err = _decide("cd sub && ls", _checkout(tmp_path))
+    assert rc == 2
+    assert "block-cd-in-bash.py" in err
+
+
+def test_a_guard_repeating_one_reason_on_a_part_says_it_once(tmp_path):
+    """The command and its wrapper body ask for the same write; one prompt names it once."""
+    rc, nested, _ = _decide(
+        'echo a > ../../outside.txt && bash -c "echo a > ../../outside.txt"', _checkout(tmp_path)
+    )
+    assert rc == 0
+    assert nested["permissionDecisionReason"].count("writes outside the checkout") == 1
+
+
+def test_parts_over_the_scan_cap_leave_the_guards_on_the_command_alone(monkeypatch, capsys):
+    """The guards are timed for `MAX_SCANNED_COMMAND_CHARS` of text, so a command
+    whose parts would take the total past it is read as before: without them."""
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    command = 'bash -c "echo hi > ../../outside.txt"'
+    stdin = json.dumps({"tool_input": {"command": command}})
+    assert mod._part_inputs(stdin), "non-vacuity: the body is a part under the real cap"
+    monkeypatch.setattr(mod, "MAX_SCANNED_COMMAND_CHARS", len(command) + 5)
+    assert mod._part_inputs(stdin) == []
+
+
+@pytest.mark.parametrize(
+    "stdin",
+    ["{", "[]", '{"tool_input": []}', '{"tool_input": {}}', '{"tool_input": {"command": 3}}',
+     '{"tool_input": {"command": ""}}', '{"tool_input": {"command": "ls"}}'],
+)
+def test_no_parts_for_an_input_with_no_wrapped_command(stdin):
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    assert mod._part_inputs(stdin) == []
+
+
+def test_each_part_is_handed_on_with_the_rest_of_the_payload():
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    stdin = json.dumps({"tool_input": {"command": "bash -c 'echo hi'", "timeout": 5}, "cwd": "/w"})
+    (part,) = mod._part_inputs(stdin)
+    assert json.loads(part) == {"tool_input": {"command": "-c echo hi", "timeout": 5}, "cwd": "/w"}
+
+
+def test_a_reading_that_raises_still_runs_the_guards_on_the_command(monkeypatch, capsys):
+    """The shell reading failing is not a guard failing: the guards run on the
+    command, and `ask-destructive-git`, which reads the same module, is the one
+    that asks when ITS reading raises."""
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+
+    def boom(command):
+        raise RuntimeError("reading exploded")
+
+    monkeypatch.setattr(mod, "_guard_parts", boom)
+    assert mod._part_inputs(json.dumps({"tool_input": {"command": "bash -c 'echo hi'"}})) == []
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"tool_input": {"command": "cd /tmp"}})))
+    assert mod.main() == 2  # the command itself is still read
+    assert "block-cd-in-bash.py" in capsys.readouterr().err
+
+
+def test_a_destructive_git_reading_that_raises_asks_as_an_unrun_guard(monkeypatch):
+    """Fail closed exactly as before the split: the expansion raising inside
+    `ask-destructive-git` is an enforcing hook that could not run."""
+    import _shell_read
+
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+
+    def boom(command):
+        raise RuntimeError("expansion exploded")
+
+    monkeypatch.setattr(_shell_read, "_expand", boom)
+    _shell_read.expand.cache_clear()
+    try:
+        rc, nested = _dispatch_inprocess(mod, monkeypatch, "bash -c 'git push -f origin x'")
+    finally:
+        _shell_read.expand.cache_clear()
+    assert rc == 0
+    assert "ENFORCING guard could not run" in nested["permissionDecisionReason"]
+    assert "ask-destructive-git.py" in nested["permissionDecisionReason"]
+
+
+def _dispatch_inprocess(mod, monkeypatch, command: str) -> tuple[int, dict]:
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"tool_input": {"command": command}})))
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+        rc = mod.main()
+    out = buf.getvalue().strip()
+    return rc, (json.loads(out)["hookSpecificOutput"] if out else {})
+
+
+def test_a_skippable_hook_stops_reading_parts_when_the_budget_runs_out(monkeypatch):
+    """Each run on a part needs room in the budget, like the first: a hook that
+    can spend seconds per run is not handed every part on a spent budget."""
+    import _dispatch_lib as lib
+
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    runs: dict[str, int] = {}
+
+    class SpentAfterOneSkippableRun:
+        """Room until a skippable hook has run once, and none after."""
+        def has_room(self, cost):
+            return not any(runs.get(h) for h in mod._SKIPPABLE_HOOKS)
+
+    def each(filename, texts):
+        for _text in texts:
+            runs[filename] = runs.get(filename, 0) + 1
+            yield lib.HookResult(0, "", "")
+
+    monkeypatch.setattr(mod, "run_hook_file_each", each)
+    monkeypatch.setattr(mod, "Deadline", SpentAfterOneSkippableRun)
+    err = io.StringIO()
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(
+        {"tool_input": {"command": "bash -c 'echo a' && sh -c 'echo b'"}}
+    )))
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+        assert mod.main() == 0
+    # Enforcing hooks read the command and both parts whatever the budget.
+    assert runs["guard-bash-text.py"] == 3
+    # The first skippable hook read the command, then had no room for a part,
+    # and is named among the skipped; the next one had no room at all.
+    assert runs["ask-broad-git-add.py"] == 1
+    assert "ask-staged-debug-tag.py" not in runs
+    assert "ask-broad-git-add.py" in err.getvalue()
+
+
+def test_a_guard_repeating_one_warning_on_a_part_says_it_once(tmp_path):
+    rc, nested, _ = _decide(
+        'git commit --allow-empty -m init && bash -c "git commit --allow-empty -m init"', tmp_path
+    )
+    assert rc == 0
+    assert nested["additionalContext"].count("[block-dishonest-commit] `git commit --allow-empty`") == 1
+
+
+def test_an_enforcing_hook_failing_on_every_part_is_named_once(monkeypatch):
+    import _dispatch_lib as lib
+
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+
+    def each(filename, texts):
+        for _text in texts:
+            yield lib.HookResult(0, "", "", filename == "guard-bash-text.py")
+
+    monkeypatch.setattr(mod, "run_hook_file_each", each)
+    rc, nested = _dispatch_inprocess(mod, monkeypatch, "bash -c 'echo a' && sh -c 'echo b'")
+    assert rc == 0
+    assert nested["permissionDecisionReason"].count("guard-bash-text.py") == 1
+
+
+def test_a_skippable_hook_that_read_every_part_is_not_named_skipped(monkeypatch):
+    """The per-part room check runs only BEFORE another part, never after the last."""
+    import _dispatch_lib as lib
+
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    runs: dict[str, int] = {}
+
+    class SpentAfterOneSkippableRun:
+        def has_room(self, cost):
+            return not any(runs.get(h) for h in mod._SKIPPABLE_HOOKS)
+
+    def each(filename, texts):
+        for _text in texts:
+            runs[filename] = runs.get(filename, 0) + 1
+            yield lib.HookResult(0, "", "")
+
+    monkeypatch.setattr(mod, "run_hook_file_each", each)
+    monkeypatch.setattr(mod, "Deadline", SpentAfterOneSkippableRun)
+    err = io.StringIO()
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"tool_input": {"command": "ls"}})))
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+        assert mod.main() == 0
+    assert runs["ask-broad-git-add.py"] == 1
+    skipped_line = next(line for line in err.getvalue().splitlines() if "skipped" in line)
+    assert "ask-staged-debug-tag.py" in skipped_line
+    assert "ask-broad-git-add.py" not in skipped_line
+
+
+# --- the reading itself: `_shell_read.guard_parts` ---------------------------
+
+
+def _shell_read():
+    if str(_HOOKS_DIR) not in sys.path:
+        sys.path.insert(0, str(_HOOKS_DIR))
+    import _shell_read as shell
+
+    return shell
+
+
+@pytest.mark.parametrize(
+    "command,parts",
+    [
+        ("bash -c 'echo a'; bash -c 'echo a'", ("-c echo a",)),
+        ("X=1 sudo bash -c 'echo a'", ("-c echo a",)),
+        ("A=1 B=2 bash -c 'echo a'", ("export A=1; export B=2; -c echo a",)),
+        ("git commit -F - <<'EOF'\nsee bash -c 'x'\nEOF\nbash -c 'echo a'", ("-c echo a",)),
+        ("git commit -F - <<\"EOF\"\nsee bash -c 'x'\nEOF", ()),
+        ("git commit -F - <<\\EOF\nsee bash -c 'x'\nEOF", ()),
+        # an operator inside a body is text: the body still ends at its own line
+        ("git commit -F - <<'EOF'\nsee <<'NEVER' here\nEOF\nbash -c 'echo a'", ("-c echo a",)),
+        ("cat <<-'EOF'\n\tsee bash -c 'x'\n\tEOF\nbash -c 'echo a'", ("-c echo a",)),
+        # an unquoted delimiter's body runs its substitutions
+        ("cat <<EOF\n$(bash -c 'echo a')\nEOF", ("-c echo a",)),
+        ('bash -c "sh -c \'echo a\'"', ("-c sh -c 'echo a'", "-c echo a")),
+    ],
+)
+def test_the_parts_a_wrapper_hands_on(command, parts):
+    assert _shell_read().guard_parts(command) == parts
+
+
+def test_the_parts_stop_at_the_appended_text_cap(monkeypatch):
+    """A nested body that takes the appended text past the cap is not read."""
+    shell = _shell_read()
+    command = 'bash -c "sh -c \'echo a\'"'
+    monkeypatch.setattr(shell, "_EXPAND_SLACK", 0)
+    shell.guard_parts.cache_clear()
+    try:
+        assert shell.guard_parts(command) == ("-c sh -c 'echo a'",)
+    finally:
+        shell.guard_parts.cache_clear()
+
+
+def test_the_parts_stop_at_the_work_cap(monkeypatch):
+    shell = _shell_read()
+    monkeypatch.setattr(shell, "_WORK_FACTOR", 0)
+    shell.guard_parts.cache_clear()
+    try:
+        assert shell.guard_parts("bash -c 'echo a'") == ()
+    finally:
+        shell.guard_parts.cache_clear()
