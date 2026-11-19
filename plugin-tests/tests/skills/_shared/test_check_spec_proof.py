@@ -219,6 +219,75 @@ def test_archiving_a_delta_unchanged_asks_for_no_new_proof(repo, capsys):
     assert "archived delta 1" in out
 
 
+OLD_REQ = ("Old rule", "Old SHALL.\n\n" + _scn("Old case"))
+TEMP_REQ = ("Temp rule", "Temp SHALL.\n\n" + _scn("Temp case"))
+
+
+def _removed(*headings: str) -> str:
+    return "\n## REMOVED Requirements\n\n" + "".join(f"### Requirement: {h}\n\n**Reason**: rewritten.\n\n" for h in headings)
+
+
+def _archive_on_branch(repo: Path, name: str, delta: str) -> str:
+    """Write an archived change holding one alpha delta, new on the branch; return its path."""
+    rel = f"openspec/changes/archive/2026-01-0{name[-1]}-{name}/specs/alpha/spec.md"
+    _write(repo, rel, delta)
+    return rel
+
+
+def _problems(out: str) -> list[str]:
+    return [line for line in out.splitlines() if line.startswith("PROBLEM")]
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_a_requirement_one_archived_change_adds_and_a_later_one_removes_needs_no_proof(repo, capsys):
+    # Change c1 adds `Temp rule`; change c2, archived on the same branch, removes it. The live spec
+    # ends as it was at the base, so the branch adds nothing, and a marker for `Temp rule` would dangle.
+    _archive_on_branch(repo, "c1", _delta_text(added=[TEMP_REQ]))
+    _archive_on_branch(repo, "c2", "# Spec Delta\n" + _removed("Temp rule"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0 and not _problems(out), out
+    assert "changed requirements: 0" in out and "1 added by an archived delta and removed again" in out
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+@pytest.mark.parametrize(
+    "second, final",
+    [
+        # MODIFIED: same heading, new text.
+        (_delta_text(modified=[("Temp rule", "Temp SHALL, reworded.\n\n" + _scn("Temp case"))]), ("Temp rule", "Temp SHALL, reworded.\n\n" + _scn("Temp case"))),
+        # The REMOVED plus ADDED rewrite `rules.specs` asks for: a new heading replaces the old one.
+        (_delta_text(added=[("Temp rule v2", "Temp SHALL.\n\n" + _scn("Temp case"))]) + _removed("Temp rule"), ("Temp rule v2", "Temp SHALL.\n\n" + _scn("Temp case"))),
+    ],
+    ids=["modified", "removed-and-added"],
+)
+def test_a_requirement_added_then_modified_on_one_branch_needs_proof_under_its_final_heading(repo, capsys, second, final):
+    _archive_on_branch(repo, "c1", _delta_text(added=[TEMP_REQ]))
+    _archive_on_branch(repo, "c2", second)
+    _write(repo, SPEC, _spec_text(OLD_REQ, final))
+    code, out, _ = run(repo, capsys)
+    problems = _problems(out)
+    assert code == 1 and problems, out
+    assert all(f"alpha / {final[0]}:" in p for p in problems), problems
+    if final[0] != "Temp rule":
+        assert not any("alpha / Temp rule:" in p for p in problems), problems
+    _write(repo, "tests/test_temp.py", _marker("requirement", "alpha", final[0]))
+    code, out, _ = run(repo, capsys)
+    assert code == 0 and not _problems(out), out
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_a_requirement_an_archived_change_adds_and_nothing_removes_still_needs_proof(repo, capsys):
+    delta = _archive_on_branch(repo, "c1", _delta_text(added=[TEMP_REQ]))
+    _write(repo, SPEC, _spec_text(OLD_REQ, TEMP_REQ))
+    code, out, _ = run(repo, capsys)
+    problems = _problems(out)
+    # Both the live spec and the archived delta that added it ask for proof of the one requirement.
+    assert code == 1 and len(problems) == 2, out
+    assert any(p.startswith(f"PROBLEM uncovered: {SPEC}: alpha / Temp rule:") for p in problems)
+    assert any(p.startswith(f"PROBLEM uncovered: {delta}: alpha / Temp rule:") for p in problems)
+    assert "removed again" not in out
+
+
 # requirement: spec-proof / A checker reports requirements with no proof
 def test_without_a_default_branch_the_changed_rule_is_off_and_said(tmp_path, capsys):
     root = tmp_path / "plain"

@@ -37,8 +37,10 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
   - ``uncovered``: a unit the branch adds or changes (against the merge-base with
     the default branch) with neither a marker nor a ``manual:`` line. A pure
     heading rename (same block text) is not a change. Specs covered: live specs,
-    active change deltas and deltas the branch archives. Without a default branch
-    this rule is off and the output says so.
+    active change deltas and deltas the branch archives. Proof follows the branch's
+    net effect: a unit an archived delta adds that no live spec or active delta still
+    holds (a later change archived on the branch removed or renamed it) needs none.
+    Without a default branch this rule is off and the output says so.
   - ``dangling``: a marker, ``manual:`` or ``waiting:`` line naming a spec or
     heading that no live spec or active delta holds (a three-part scenario marker whose
     requirement is unknown, or does not hold the scenario, is named as such). A marker of the
@@ -1878,6 +1880,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     changed: dict[str, list[Unit]] | None = None
     touched: set[str] = set()
     touched_specs: set[str] | None = None  # None: no base, so no way to tell which specs the branch touches
+    superseded = 0  # archived-delta units the branch adds and then removes again, so none needs proof
     git_rc = _git(root, "rev-parse", "--git-dir")[0]
     if git_rc == 127:
         raise CheckerError("git is not installed or not on PATH")
@@ -1890,7 +1893,15 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     if base is not None:
         paths = changed_paths(root, base)
         touched_specs = _spec_names_in(paths)
-        changed ={f.rel: changed_units(root, base, f, mode) for f in files}
+        changed = {f.rel: changed_units(root, base, f, mode) for f in files}
+        for f in files:
+            if f.kind == "archived":
+                # Proof follows the branch's net effect on the specs. A unit an archived delta adds that no live
+                # spec or active delta still holds was removed again (a later archived change REMOVED or renamed
+                # it), so the branch does not add it, and a marker naming it would dangle.
+                kept = [u for u in changed[f.rel] if u.heading in universe.get(f.spec, set())]
+                superseded += len(changed[f.rel]) - len(kept)
+                changed[f.rel] = kept
         for p in paths:
             m = re.match(r"openspec/changes/((?:archive/)?[^/]+)/", p)
             if m:
@@ -1977,7 +1988,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         f"granularity: {mode} ({source})",
         f"specs: {len(files)} (live {kinds['live']}, active delta {kinds['active']}, archived delta {kinds['archived']})",
         f"{mode}s in live specs and active deltas: {len(all_units)}",
-        f"changed {mode}s: " + (f"{n_changed} ({base_note})" if changed is not None else f"unknown, the changed-{mode} rule is off ({base_note or 'not a git repo'})"),
+        f"changed {mode}s: " + (f"{n_changed} ({base_note})" if changed is not None else f"unknown, the changed-{mode} rule is off ({base_note or 'not a git repo'})")
+        + (f"; {superseded} added by an archived delta and removed again on the branch, not counted" if superseded else ""),
         f"markers: {sum(1 for m in markers if m[0] != 'malformed')} in {scanned} files scanned"
         + (f"; skipped {len(skipped)} binary: {', '.join(skipped[:5])}" if skipped else ""),
         f"manual lines: {sum(1 for n in notes if n.kind == 'manual')} (prompt half: {sum(1 for n in notes if n.kind == 'manual' and n.prompt_half)})",
