@@ -483,3 +483,43 @@ MUTANTS = [
         GIT_TARGETS,
     ),
 ]
+
+
+# --- CLA_HOOK_T0, the measured pre-main window, and the shared ask reader ------
+# Added with the guard-shell-wrappers change. Killing tests are in
+# tests/hooks/test_dispatch_lib.py unless named otherwise.
+_HOOK_TARGETS = TARGETS + [DEV / "tests" / "hooks" / "test_ask_destructive_git.py"]
+MUTANTS += [
+    ("a stamp is never read, so every run uses the fixed guess",
+     LIB, '    raw = os.environ.get(HOOK_T0_ENV, "")', '    raw = ""', TARGETS),
+    ("a comma decimal point is refused",
+     LIB, r'if not re.fullmatch(r"\d+(?:[.,]\d+)?", raw):', r'if not re.fullmatch(r"\d+(?:[.]\d+)?", raw):',
+     TARGETS),
+    ("a comma decimal point is not converted",
+     LIB, 'float(raw.replace(",", "."))', "float(raw)", TARGETS),
+    ("a stamp in the future is trusted",
+     LIB, "if elapsed < -1.0 or elapsed >= HANDLER_TIMEOUT_SECONDS:", "if elapsed >= HANDLER_TIMEOUT_SECONDS:",
+     TARGETS),
+    ("a stale stamp is trusted",
+     LIB, "if elapsed < -1.0 or elapsed >= HANDLER_TIMEOUT_SECONDS:", "if elapsed < -1.0:", TARGETS),
+    ("a stamp slightly ahead is refused, not read as zero",
+     LIB, "if elapsed < -1.0 or elapsed >= HANDLER_TIMEOUT_SECONDS:",
+     "if elapsed < 0.0 or elapsed >= HANDLER_TIMEOUT_SECONDS:", TARGETS),
+    ("jitter ahead of the clock adds budget",
+     LIB, "    return max(0.0, elapsed)", "    return elapsed", TARGETS),
+    ("a measured run reserves nothing after the last hook",
+     LIB, "else before + _POST_HOOK_RESERVE_SECONDS", "else before", TARGETS),
+    ("a measured run still subtracts the fixed guess",
+     LIB, "else before + _POST_HOOK_RESERVE_SECONDS", "else before + _BUDGET_RESERVE_SECONDS", TARGETS),
+    ("a measurement is never reported, so the history probes ignore it",
+     LIB, "            self.measured = before is not None", "            self.measured = False",
+     _HOOK_TARGETS),
+    ("an explicit budget is reported as measured",
+     LIB, "        self.measured = False\n        if budget_seconds is None:",
+     "        self.measured = True\n        if budget_seconds is None:", TARGETS),
+    ("extract_ask reads any decision as an ask",
+     LIB, 'if not isinstance(nested, dict) or nested.get("permissionDecision") != "ask":',
+     "if not isinstance(nested, dict):", TARGETS),
+    ("extract_ask drops the default reason",
+     LIB, 'or "A guard requested confirmation.")', 'or "")', TARGETS),
+]

@@ -1047,3 +1047,103 @@ def test_every_git_global_opts_consumer_strips_quoted_spans(filename):
     assert "strip_quoted_spans(" in source, (
         f"{filename} imports strip_quoted_spans but never calls it"
     )
+
+
+# --------------------------------------------------------------------------- #
+# CLA_HOOK_T0 -- the measured time before main(), stamped by probe-python.sh
+# --------------------------------------------------------------------------- #
+
+
+def test_deadline_measures_from_a_fresh_stamp(monkeypatch):
+    """A stamp 2s old leaves 15 - 2 - 1 = 12s; one 0.5s old leaves 13.5s, more
+    than the fixed 12s guess, which is the budget this frees on a quiet machine."""
+    import time as _time
+
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 2.0:.6f}")
+    d = lib.Deadline()
+    assert d.measured is True
+    expected = lib.HANDLER_TIMEOUT_SECONDS - 2.0 - lib._POST_HOOK_RESERVE_SECONDS
+    assert expected - 0.5 < d.remaining() <= expected + 0.01
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 0.5:.6f}")
+    assert lib.Deadline().remaining() > lib.HANDLER_TIMEOUT_SECONDS - lib._BUDGET_RESERVE_SECONDS
+
+
+def test_deadline_reads_a_locale_comma_and_whole_seconds(monkeypatch):
+    """bash prints `$EPOCHREALTIME` with the locale's decimal point."""
+    import time as _time
+
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 3.0:.6f}".replace(".", ","))
+    assert lib.Deadline().measured is True
+    monkeypatch.setenv(lib.HOOK_T0_ENV, str(int(_time.time()) - 3))
+    d = lib.Deadline()
+    assert d.measured is True
+    assert d.remaining() < lib.HANDLER_TIMEOUT_SECONDS - 3.0
+
+
+@pytest.mark.parametrize("label", ["unset", "empty", "garbage", "bsd-date", "future", "stale", "negative"])
+def test_deadline_falls_back_to_the_fixed_reserve_without_a_usable_stamp(label, monkeypatch):
+    import time as _time
+
+    now = _time.time()
+    values = {
+        "empty": "",
+        "garbage": "soon",
+        "bsd-date": f"{int(now)}.N",
+        "future": f"{now + 5.0:.6f}",
+        "stale": f"{now - lib.HANDLER_TIMEOUT_SECONDS:.6f}",
+        "negative": f"-{now:.6f}",
+    }
+    if label == "unset":
+        monkeypatch.delenv(lib.HOOK_T0_ENV, raising=False)
+    else:
+        monkeypatch.setenv(lib.HOOK_T0_ENV, values[label])
+    d = lib.Deadline()
+    assert d.measured is False
+    fallback = lib.HANDLER_TIMEOUT_SECONDS - lib._BUDGET_RESERVE_SECONDS
+    assert fallback - 0.5 < d.remaining() <= fallback
+
+
+def test_a_stamp_just_inside_the_tolerances_is_used(monkeypatch):
+    """Both bounds are inclusive the right way: 0.5s ahead (clock jitter) is
+    read as zero elapsed, and 14s old is still this call's."""
+    import time as _time
+
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() + 0.5:.6f}")
+    d = lib.Deadline()
+    assert d.measured is True
+    full = lib.HANDLER_TIMEOUT_SECONDS - lib._POST_HOOK_RESERVE_SECONDS
+    assert full - 0.5 < d.remaining() <= full
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 14.0:.6f}")
+    assert lib.Deadline().measured is True
+
+
+def test_an_explicit_budget_ignores_the_stamp(monkeypatch):
+    import time as _time
+
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 10.0:.6f}")
+    d = lib.Deadline(budget_seconds=30.0)
+    assert d.measured is False and d.remaining() > 29.0
+
+
+# --------------------------------------------------------------------------- #
+# extract_ask -- one definition for both dispatchers
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("dispatcher", ["dispatch-bash-pretooluse.py", "dispatch-edit-write-pretooluse.py"])
+def test_both_dispatchers_use_the_shared_extract_ask(dispatcher):
+    source = (_LIB_PATH.parent / dispatcher).read_text(encoding="utf-8")
+    assert "from _dispatch_lib import extract_ask as _extract_ask" in source
+    assert "def _extract_ask" not in source, f"{dispatcher} carries its own copy again"
+
+
+def test_extract_ask_reads_only_an_ask():
+    ask = json.dumps({"hookSpecificOutput": {"permissionDecision": "ask", "permissionDecisionReason": "why"}})
+    assert lib.extract_ask(ask) == "why"
+    assert lib.extract_ask("  " + ask + "\n") == "why"
+    assert lib.extract_ask(json.dumps({"hookSpecificOutput": {"permissionDecision": "ask"}})) == (
+        "A guard requested confirmation."
+    )
+    for other in ("", "x", "[]", '{"hookSpecificOutput": 1}',
+                  json.dumps({"hookSpecificOutput": {"permissionDecision": "deny"}})):
+        assert lib.extract_ask(other) is None, other
