@@ -20,7 +20,13 @@ line-ending question never bites regardless.
 
 Paths resolve from this file's own location, never an absolute developer path.
 
-COUNT NOTE: 7 MUTANTS ARE NOT 7 INDEPENDENT PIECES OF EVIDENCE. Review measured
+TAG MUTANTS (the last eleven). The hook also refuses a push that deletes a tag on
+the remote or moves one the remote has, under its own `ALLOW_TAG_REWRITE=1`
+override. Each mutant below breaks one input of that decision: which refs count
+as tags, the zero test, the delete and move conditions, the no-change branch,
+and the separation of the two overrides.
+
+COUNT NOTE (first seven mutants): 7 MUTANTS ARE NOT 7 INDEPENDENT PIECES OF EVIDENCE. Review measured
 that mutant 3 (refspec field scramble) dies on the same single assertion as
 mutant 2 (drop `main` from the case arm), because scrambling the fields breaks
 main and master together — its effect is the union of 1 and 2, and nothing in the
@@ -76,8 +82,8 @@ MUTANTS = [
         # impossible by construction; getting the field order wrong reopens it.
         "the refspec field order is scrambled, so remote_ref never holds the actual ref",
         HOOK,
-        'while read -r _local_ref _local_sha remote_ref _remote_sha; do',
-        'while read -r _local_ref remote_ref _local_sha _remote_sha; do',
+        'while read -r _local_ref local_sha remote_ref remote_sha; do',
+        'while read -r _local_ref remote_ref local_sha remote_sha; do',
         TARGETS,
     ),
     (
@@ -89,8 +95,8 @@ MUTANTS = [
         # session and a push to main.
         "the escape hatch disarms on ANY non-empty value, not just '1'",
         HOOK,
-        'if [ "${ALLOW_PUSH_TO_MAIN:-}" = "1" ]; then',
-        'if [ -n "${ALLOW_PUSH_TO_MAIN:-}" ]; then',
+        '[ "${ALLOW_PUSH_TO_MAIN:-}" = "1" ] && continue',
+        '[ -n "${ALLOW_PUSH_TO_MAIN:-}" ] && continue',
         TARGETS,
     ),
     (
@@ -129,7 +135,103 @@ MUTANTS = [
         "lines with an all-zero local sha (a branch deletion) are skipped entirely",
         HOOK,
         '[ -n "$remote_ref" ] || continue',
-        '[ -n "$remote_ref" ] && [ "$_local_sha" != "0000000000000000000000000000000000000000" ] || continue',
+        '[ -n "$remote_ref" ] && ! is_zero "$local_sha" || continue',
+        TARGETS,
+    ),
+    # ---------------------------------------------------------------- tags
+    (
+        # A delete arrives with an all-zero local sha. Without this condition
+        # a delete still trips the move test below (remote sha set, differs),
+        # so the refusal survives but names the wrong act; the tests pin the
+        # message, which is what the user reads to know what was refused.
+        "the delete test is dropped, so a tag delete is reported as a move",
+        HOOK,
+        'if is_zero "$local_sha"; then',
+        'if false; then',
+        TARGETS,
+    ),
+    (
+        # Dropping the remote-is-zero condition refuses every NEW tag: the
+        # release flow's own tag push would be refused.
+        "the move test forgets that an all-zero remote sha is a new tag",
+        HOOK,
+        'elif ! is_zero "$remote_sha" && [ "$remote_sha" != "$local_sha" ]; then',
+        'elif [ "$remote_sha" != "$local_sha" ]; then',
+        TARGETS,
+    ),
+    (
+        # Dropping the inequality refuses a push of a tag the remote already
+        # holds at the same object, which is not a move.
+        "the move test forgets to compare the two shas",
+        HOOK,
+        'elif ! is_zero "$remote_sha" && [ "$remote_sha" != "$local_sha" ]; then',
+        'elif ! is_zero "$remote_sha"; then',
+        TARGETS,
+    ),
+    (
+        "the move test is dropped, so a forced tag move goes through",
+        HOOK,
+        'elif ! is_zero "$remote_sha" && [ "$remote_sha" != "$local_sha" ]; then',
+        'elif false; then',
+        TARGETS,
+    ),
+    (
+        # The no-change branch skips the refusal. Turned into a branch that is
+        # never taken, every tag push (creation included) falls into it.
+        "the no-change branch falls through to the refusal",
+        HOOK,
+        '            else',
+        '            elif false; then',
+        TARGETS,
+    ),
+    (
+        "the tag override disarms on ANY non-empty value, not just '1'",
+        HOOK,
+        '[ "${ALLOW_TAG_REWRITE:-}" = "1" ] && continue',
+        '[ -n "${ALLOW_TAG_REWRITE:-}" ] && continue',
+        TARGETS,
+    ),
+    (
+        # Each override lifts only its own refusal: the default-branch hatch
+        # must not also let a tag be deleted.
+        "the tag arm honours the default-branch override instead of its own",
+        HOOK,
+        '[ "${ALLOW_TAG_REWRITE:-}" = "1" ] && continue',
+        '[ "${ALLOW_PUSH_TO_MAIN:-}" = "1" ] && continue',
+        TARGETS,
+    ),
+    (
+        # The old shape: `ALLOW_PUSH_TO_MAIN=1` exited before reading any line,
+        # which would lift the tag refusal too.
+        "the default-branch override exits before any ref is read",
+        HOOK,
+        'status=0',
+        '[ "${ALLOW_PUSH_TO_MAIN:-}" = "1" ] && exit 0; status=0',
+        TARGETS,
+    ),
+    (
+        # The hook ships to every consuming repo, so it covers any tag name, not
+        # only this repo's release-tag shape.
+        "the tag arm narrows to tags starting with 'v'",
+        HOOK,
+        'refs/tags/*)',
+        'refs/tags/v*)',
+        TARGETS,
+    ),
+    (
+        # Only `refs/tags/*` is a tag; a branch named `tags/x` stays a branch.
+        "the tag arm widens to any ref with a 'tags' segment",
+        HOOK,
+        'refs/tags/*)',
+        '*/tags/*)',
+        TARGETS,
+    ),
+    (
+        # A SHA-256 repository writes 64 zeros for "no object".
+        "the zero test reads a 64-digit all-zero sha as an object",
+        HOOK,
+        '*[!0]*) return 1 ;;',
+        '*[!0]*|????????????????????????????????????????????????????????????????) return 1 ;;',
         TARGETS,
     ),
 ]
