@@ -544,12 +544,11 @@ MUTANTS += [
     ("an input with no command reaches the reading",
      DISPATCH, "    except (ValueError, RecursionError, TypeError, KeyError):",
      "    except (ValueError, RecursionError):", TARGETS),
-    ("a non-dict tool_input reaches the reading",
-     DISPATCH, "    if not isinstance(tool_input, dict) or not isinstance(command, str) or not command:",
-     "    if not isinstance(command, str) or not command:", TARGETS),
-    ("an empty command reaches the reading",
-     DISPATCH, "    if not isinstance(tool_input, dict) or not isinstance(command, str) or not command:",
-     "    if not isinstance(tool_input, dict) or not isinstance(command, str):", TARGETS),
+    # Not planted, each SURVIVED a run and is equivalent: an empty or non-string
+    # command past `if not isinstance(command, str) or not command:` reaches a
+    # reading that yields no part (or raises into the `except`), so no input
+    # tells the guard from its absence. A non-dict `tool_input` check was
+    # dropped from the code for the same reason: indexing one raises.
     ("a part is handed on without the rest of the payload",
      DISPATCH, '        json.dumps({**payload, "tool_input": {**tool_input, "command": part}})',
      '        json.dumps({"tool_input": {"command": part}})', TARGETS),
@@ -572,9 +571,11 @@ MUTANTS += [
     # `_shell_read`'s reading for the guards
     ("prose in a quoted heredoc is read as a command",
      SHELL, "        if k >= 0 and m.start() < data[k][1]:", "        if False:", TARGETS),
-    ("an unquoted heredoc's body is data",
-     SHELL, """_HEREDOC_START = re.compile(r"<<(-?)[ \\t]*(?=['\\"\\\\])")""",
-     """_HEREDOC_START = re.compile(r"<<(-?)[ \\t]*")""", TARGETS),
+    # Not planted: "an unquoted heredoc's body is data" (dropping a lookahead on
+    # `_HEREDOC_START`) SURVIVED as equivalent, since `_HEREDOC_DELIM` refuses an
+    # unquoted delimiter anyway; the lookahead was removed from the code.
+    ("an unquoted heredoc's delimiter is read as quoted",
+     SHELL, "_HEREDOC_DELIM = re.compile(", '_HEREDOC_DELIM = re.compile(r"([A-Za-z0-9_]+)|" + ', TARGETS),
     ("a heredoc body runs to the end of the text",
      SHELL, "        end = close.start() if close else len(part)", "        end = len(part)", TARGETS),
     ("an operator inside a body opens another",

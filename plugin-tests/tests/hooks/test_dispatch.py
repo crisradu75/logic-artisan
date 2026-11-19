@@ -1375,6 +1375,7 @@ def test_a_wrapped_broad_git_add_asks(tmp_path):
         'eval "$(ssh-agent)"',
         'bash -c "echo hi > out.txt"',
         'bash -c "cd sub && ls"',  # the wrapper's own shell: the session's cwd does not move
+        'bash -c "ls; cd sub"',  # the same, with the cd where a bare command would block it
         "CLAUDE_PLUGIN_ROOT=/opt/p bash -c 'python3 $CLAUDE_PLUGIN_ROOT/x.py'",
         # prose in a quoted heredoc names wrappers; it is data, not a command
         "git commit -F - <<'EOF'\nrun bash -c 'python3 ${CLAUDE_PLUGIN_ROOT}/x.py' and\neval \"echo > ../../x\"\nEOF",

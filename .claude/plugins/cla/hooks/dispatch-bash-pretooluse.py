@@ -230,7 +230,7 @@ def _part_inputs(stdin_text: str) -> list[str]:
         command = tool_input["command"]
     except (ValueError, RecursionError, TypeError, KeyError):
         return []  # no command to read: the guards handle the input as it is
-    if not isinstance(tool_input, dict) or not isinstance(command, str) or not command:
+    if not isinstance(command, str) or not command:
         return []
     try:
         extra = _guard_parts(command)

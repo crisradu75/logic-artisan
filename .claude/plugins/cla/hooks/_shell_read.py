@@ -733,7 +733,7 @@ def expand(command: str) -> tuple[tuple[str, ...], str | None]:
 #     reads variables sees the body without it.
 # Past a cap it returns what it found; the asks for what was not read stay
 # with `ask-destructive-git`, for a body that names git.
-_HEREDOC_START = re.compile(r"<<(-?)[ \t]*(?=['\"\\])")
+_HEREDOC_START = re.compile(r"<<(-?)[ \t]*")
 _HEREDOC_DELIM = re.compile(r"""'([A-Za-z0-9_]+)'|"([A-Za-z0-9_]+)"|\\([A-Za-z0-9_]+)""")
 _ENV_WORD = re.compile(r"[A-Za-z_]\w*=\S*")
 _ENV_STOP = " \t\n;&|(){}`!"
@@ -743,7 +743,8 @@ def _quoted_heredoc_bodies(part: str, scanned: str) -> list[tuple[int, int]]:
     """The `(start, end)` of each body in `part` whose heredoc delimiter is
     quoted, in order. The operator is found on the quote-stripped text, so a
     `<<'EOF'` inside a string is none, and its delimiter read from the raw
-    text at the same offset. A body runs to the line that is its delimiter
+    text at the same offset; an unquoted delimiter does not match it, so that
+    body stays a command. A body runs to the line that is its delimiter
     (after tabs, for `<<-`), or to the end. An operator inside an earlier body
     is text and is skipped, so each character is searched once."""
     spans: list[tuple[int, int]] = []
