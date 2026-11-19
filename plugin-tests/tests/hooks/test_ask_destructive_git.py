@@ -3473,6 +3473,9 @@ def test_an_unmeasured_option_turns_the_up_to_date_shortcut_off(
         "git rebase --strategy-option theirs main~1",
         "git rebase --autostash --no-verify --stat main~1",
         "git rebase -m main~1",
+        # `-m`'s long form, and `-X theirs` with its value attached
+        "git rebase --merge main~1",
+        "git rebase -Xtheirs main~1",
     ],
 )
 def test_a_measured_no_replay_option_keeps_the_shortcut(
@@ -3535,6 +3538,7 @@ def test_config_keys_compare_as_git_does():
         ("$'ma\\x69n'", "main"),
         ("$'ma\\151n'", "main"),
         ("$'a\\tb'", "a\tb"),
+        ("$'it\\'s'", "it's"),
         ('$"main"', "main"),
         ("ma\\in", "main"),
         ('"a\\"b"', 'a"b'),
@@ -4079,6 +4083,7 @@ def test_a_long_wrapped_command_is_read_inside_the_work_cap(monkeypatch, capsys)
         "git commit -F - <<'EOF'\nsee `git branch -m`, which renamed it\nEOF",
         # outside a heredoc the span is read: the flag ends at its backtick
         "echo `git branch -m`, which renamed it",
+        'echo `git "status"`, then more',
         "echo it's `git branch -a` that lists step 2's `-d` and `-D` here",
         "git commit -F - <<'EOF'\nit's `git push origin x`, then `git reset --soft HEAD~1`\nEOF",
     ],
@@ -4101,6 +4106,14 @@ def test_a_backtick_that_opens_a_substitution_still_counts(command, expected, mo
     payload = _run(command, monkeypatch, capsys)
     assert payload is not None, command
     assert expected in _reason(payload)
+
+
+def test_many_quoted_git_commands_add_nothing_to_read():
+    """A git word whose only backtick closes it is not an expansion, so it adds
+    no rewritten line; were each mention rewritten, the line cap would ask."""
+    command = "echo " + "`git status` " * (hook._EXPAND_MAX_LINES + 16)
+    text, _, unread = hook._scan(command)
+    assert unread is None and text == command
 
 
 def _shipped_prose() -> list[Path]:
@@ -4128,3 +4141,82 @@ def test_shipped_prose_in_a_heredoc_is_read_in_full(path):
     adds, for text it could not read, is checked here."""
     command = "git commit -F - <<'EOF'\n" + path.read_text(encoding="utf-8") + "\nEOF"
     assert hook._scan(command)[2] is None
+
+
+# --- the history probes' refusals, driven directly ----------------------------------
+# A probe that git refuses, or that cannot run, must not read as an answer. These
+# drive `_Probes` and `_replays_nothing` with a fake git, because a real repository
+# cannot be made to refuse one probe and answer the next.
+
+
+def _fake_git(monkeypatch, answers: dict):
+    """`hook._run_git` answering from `answers`, keyed by the probe's first two
+    arguments: a `(returncode, stdout)` pair, or None for a probe that cannot run.
+    Returns the list of argv it was asked."""
+    asked: list[list[str]] = []
+
+    def run(cwd, args, timeout=None):
+        asked.append(list(args))
+        answer = answers.get(tuple(args[:2]))
+        if answer is None:
+            return None
+        return subprocess.CompletedProcess(args, answer[0], stdout=answer[1], stderr="")
+
+    monkeypatch.setattr(hook, "_run_git", run)
+    return asked
+
+
+def test_a_ref_probe_reads_only_a_ref_that_git_confirmed(monkeypatch, tmp_path):
+    probes = hook._Probes(time.monotonic())
+    asked = _fake_git(monkeypatch, {("rev-parse", "--verify"): (0, "refs/heads/x\n")})
+    assert probes.ref(str(tmp_path), "--output=x") is None
+    assert asked == [], "a revision that starts with `-` is never handed to git"
+    assert probes.ref(str(tmp_path), "x") == "refs/heads/x"
+    for answer in ((1, "refs/heads/y\n"), (0, "HEAD\n"), (0, "deadbeef\n")):
+        _fake_git(monkeypatch, {("rev-parse", "--verify"): answer})
+        assert hook._Probes(time.monotonic()).ref(str(tmp_path), "y") is None, answer
+
+
+class _Answers:
+    """A `_Probes` stand-in for `_replays_nothing`: `git` answers by the
+    probe's first two arguments, `ref` gives one fixed name."""
+
+    def __init__(self, answers: dict):
+        self.answers = answers
+
+    def git(self, directory, args):
+        answer = self.answers.get(tuple(args[:2]))
+        if answer is None:
+            return None
+        return subprocess.CompletedProcess(args, answer[0], stdout=answer[1], stderr="")
+
+    def ref(self, directory, rev):
+        return "refs/remotes/origin/main"
+
+
+def test_a_probe_that_cannot_run_counts_as_up_to_date():
+    """`_replays_nothing` fails open, as its docstring says: no ancestry answer,
+    or no fork-point answer, reads as up to date, never as a replay."""
+    base, tip = "a" * 40, "b" * 40
+    assert hook._replays_nothing("d", "origin/main", base, tip, False, _Answers({}))
+    ancestor = {("merge-base", "--is-ancestor"): (0, "")}
+    assert hook._replays_nothing("d", "origin/main", base, tip, True, _Answers(ancestor))
+    assert not hook._replays_nothing(
+        "d", "origin/main", base, tip, False, _Answers({("merge-base", "--is-ancestor"): (1, "")})
+    )
+
+
+def test_a_refused_fork_point_probe_finds_no_fork_point():
+    """A fork-point probe git refuses yields nothing, so the branch is up to
+    date; one that names a different commit means git would replay."""
+    base, tip = "a" * 40, "b" * 40
+    answers = {("merge-base", "--is-ancestor"): (0, "")}
+    refused = {**answers, ("merge-base", "--fork-point"): (1, "c" * 40 + "\n")}
+    assert hook._replays_nothing("d", "origin/main", base, tip, True, _Answers(refused))
+    other = {**answers, ("merge-base", "--fork-point"): (0, "c" * 40 + "\n")}
+    assert not hook._replays_nothing("d", "origin/main", base, tip, True, _Answers(other))
+
+
+def test_an_empty_setting_does_not_rebase():
+    assert hook._is_true("true") and hook._is_true("merges")
+    assert not hook._is_true("") and not hook._is_true("  ")

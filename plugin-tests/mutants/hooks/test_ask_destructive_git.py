@@ -732,8 +732,11 @@ for _what, _args in (
      ('out.append(_DOUBLE_ESCAPE.sub(r"', "_DOUBLE_ESCAPE.sub(", "(lambda p, r, t: t)(")),
     ("a double-quoted segment is never recognised",
      ("        elif double is not None:", "is not None", "is None and False")),
-    ("single, escaped and plain segments lose their text",
-     ("out.append(next(g for g in (single, escaped, plain)", "(single, escaped, plain)", "(escaped, plain, single)")),
+    # Was a reorder of `(single, escaped, plain)`, which changes nothing: at most
+    # one of the three groups is set for a segment. Dropping the plain text of a
+    # quoted word (`ma"in"`) is the defect a test can see.
+    ("the plain text of a quoted word is dropped",
+     ("out.append(next(g for g in (single, escaped, plain)", "(single, escaped, plain)", '(single, escaped, "")')),
     ("_unquote drops its last segment",
      ('    return "".join(out)', '"".join(out)', '"".join(out[:-1])')),
     ("a hex escape reads as octal",
@@ -904,6 +907,9 @@ MUTANTS.append((
 #   clamps any overshoot), `_resolve`'s `islice` (the line cap asks for the same
 #   commands), and `value == raw or` (a plain word rewritten to itself adds a
 #   line no check reads differently);
+# - in `_before_closing_tick`, the single-quote and backslash steps: a backtick
+#   they keep is read as part of the word, and every word that reaches a
+#   decision reads the same either way (`'-f`'` and `-f\``, measured);
 # - the work spent in `_at_command_start` and `tail_end`, and the slack term
 #   and the `finally` reset of the work cap: every command a test can build is
 #   walked far inside the cap without them, and every reader runs under
@@ -936,9 +942,17 @@ for _what, _args in (
     ("any value is a literal", ("_LITERAL_VALUE = re.compile", r'r"[\w ./:+=,@%~^-]*"', 'r".*"')),
     ("sudo hides the command start", ('    "sudo env command exec time', '"sudo env', '"env')),
     ("a quoted subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "\\\"'", "")),
-    ("a backtick subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "$`", "$")),
+    ("a backtick subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "(?=`|", "(?=")),
     ("a subcommand is read only when its first character is special",
-     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", r"[^\s;&|<>()\\]*?", "")),
+     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", r"[^\s;&|<>()\\`]*?", "")),
+    ("a backtick anywhere in the subcommand word counts again",
+     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", r"()\\`]*?[$\"']", r"()\\]*?[$`\"']")),
+    ("a subcommand word runs on past its closing backtick",
+     ("        end = sub + _before_closing_tick(part[sub:end])", "end = sub + _before_closing_tick(part[sub:end])", "pass")),
+    ("an option word runs on past its closing backtick",
+     ("                b = a + _before_closing_tick(part[a:b])", "b = a + _before_closing_tick(part[a:b])", "pass")),
+    ("a word that opens with a backtick is cut at it",
+     ('        elif ch == "`" and i > 0:', " and i > 0", "")),
     ("an option the matcher skipped reads as the subcommand",
      ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "(?!-)", "")),
     ("-C's value reads as the subcommand", ("_GIT_VALUE_OPT = re.compile", "-[cC]", "-[c]")),
