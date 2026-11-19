@@ -99,7 +99,7 @@ what core does not cover and what that costs.>
 or a precise description. Say so plainly if you only have a diagnosis and no fix.>
 ```
 
-Write the body to a temporary file with the `Write` tool, outside the repo's tracked files.
+Write the body to a temporary file with the `Write` tool, in a temp directory outside the repo (an untracked file inside the repo is debris).
 Open it with a body file, never an inline multi-line string:
 
 ```bash

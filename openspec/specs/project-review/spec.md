@@ -37,7 +37,7 @@ How the project-review skill checks, reviews and grades a repo without changing 
 
 ### Requirement: A project review changes nothing
 
-`/cla:project-review` SHALL read the repo and run its checks and SHALL NOT edit a file or keep state between runs, printing its report as the whole output.
+`/cla:project-review` SHALL read the repo and run its checks and SHALL NOT edit a tracked file or keep state between runs, printing its report as the whole output.
 
 #### Scenario: A finished review
 

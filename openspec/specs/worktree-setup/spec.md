@@ -49,6 +49,20 @@ When the entry tool refuses because two spellings of one path differ only in let
 - **WHEN** the target path holds files that git does not track
 - **THEN** the fallback leaves them in place and the add fails with a message
 
+### Requirement: The fallback keeps a worktree inside the repo
+
+The plain-git fallback SHALL refuse, before creating anything, a worktree name that is not a single folder name and a worktree folder that is empty, absolute or holds a `..` step, so that the path as written stays inside the repo.
+
+#### Scenario: A name that climbs out
+
+- **WHEN** the fallback is given a worktree name such as `../escape`
+- **THEN** it stops with a message and creates no worktree
+
+#### Scenario: A folder outside the repo
+
+- **WHEN** the fallback is given a worktree folder that is an absolute path or climbs out with `..`
+- **THEN** it stops with a message and creates no worktree
+
 ### Requirement: Removing a worktree lists what it would delete
 
 Before a worktree is removed by hand or with the exit tool's remove option, `/cla:new-worktree` SHALL have the untracked and gitignored files in it listed, because removal deletes them silently.

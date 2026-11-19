@@ -393,6 +393,7 @@ def test_a_clean_registered_worktree_is_still_cleaned(repo):
 # --------------------------------------------------------------------------- #
 
 
+# requirement: worktree-setup / The fallback keeps a worktree inside the repo
 @pytest.mark.parametrize("bad", ["../escape", "a/b", "..", "", "sub" + chr(92) + "dir"])
 def test_a_name_that_would_escape_the_worktree_dir_is_refused(bad):
     # Otherwise `--name ../../x` places the worktree outside .claude/worktrees
@@ -407,6 +408,7 @@ def test_an_ordinary_name_is_accepted():
     assert mw.validate_name("my-task") == "my-task"
 
 
+# requirement: worktree-setup / The fallback keeps a worktree inside the repo
 @pytest.mark.parametrize("bad", ["", "../outside", "a/../../b", "/rooted/path"])
 def test_a_worktree_dir_that_would_escape_the_repo_is_refused(bad):
     """`--name` was hardened against traversal and the argument beside it was
@@ -524,6 +526,7 @@ def test_create_worktree_validates_its_own_arguments(repo, kwargs):
     assert not (repo.parent / "escape").exists()
 
 
+# requirement: worktree-setup / The fallback keeps a worktree inside the repo
 def test_the_cli_actually_calls_the_worktree_dir_validator(repo, capsys):
     """The validator existing is not the same as `main` reaching it.
 
@@ -538,6 +541,15 @@ def test_the_cli_actually_calls_the_worktree_dir_validator(repo, capsys):
     assert not (repo.parent / "outside").exists(), (
         "a rejected --worktree-dir must not have created anything on the way out"
     )
+
+
+# requirement: worktree-setup / The fallback keeps a worktree inside the repo
+def test_the_cli_refuses_a_name_that_climbs_out_before_creating_anything(repo, capsys):
+    rc = mw.main(["--repo", str(repo), "--name", "../escape"])
+    assert rc == 1
+    assert "--name" in json.loads(capsys.readouterr().out)["error"]
+    assert not (repo / ".claude" / "escape").exists()
+    assert not (repo / ".claude" / "worktrees").exists() or not any((repo / ".claude" / "worktrees").iterdir())
 
 
 def test_the_worktree_actually_lands_on_the_requested_base(repo):

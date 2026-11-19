@@ -11,7 +11,7 @@
 
 ### Requirement: Saving keeps the rest of the settings file
 
-`/cla:save-permissions` SHALL write only the project's local settings file, SHALL add the new entries to its allowlist and leave every other setting as it was, SHALL create the allowlist when the file has none, and SHALL leave the file unchanged when it is not valid JSON.
+`/cla:save-permissions` SHALL write only the project's local settings file, SHALL add the new entries to its allowlist and leave every other setting as it was, SHALL create the allowlist when the file has none, and SHALL leave the file unchanged and report why when it is not valid JSON or its permissions or allowlist is not the expected object or list.
 
 #### Scenario: A settings file with other keys and no allowlist
 
@@ -22,6 +22,11 @@
 
 - **WHEN** the settings file cannot be parsed
 - **THEN** it is left unchanged and the skill reports the failure
+
+#### Scenario: An allowlist that is not a list
+
+- **WHEN** the allowlist holds a single string instead of a list
+- **THEN** the file is left unchanged and the skill reports the failure
 
 ### Requirement: A wildcard permission needs the user's yes
 
