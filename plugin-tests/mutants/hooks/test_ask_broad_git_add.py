@@ -35,6 +35,16 @@ GUARD = DEV / "tests" / "hooks" / "test_ask_broad_git_add.py"
 TARGETS = [GUARD]
 DISPATCHER = PLUGIN / "hooks" / "dispatch-bash-pretooluse.py"
 DISPATCH_TARGETS = [DEV / "tests" / "hooks" / "test_dispatch.py", DEV / "tests" / "hooks" / "test_hooks_wiring.py"]
+# The newline is read from the dispatcher's own bytes, so the run-order anchor
+# matches on an LF and a CRLF checkout alike (mutate.py, "KEEP \n OUT OF AN ANCHOR").
+_NL = "\r\n" if b"\r\n" in DISPATCHER.read_bytes() else "\n"
+# The enforcing Bash hooks `ask-broad-git-add.py` follows in `_HOOK_FILES`.
+_ENFORCING_RUN = [
+    '    "ask-destructive-git.py",',
+    '    "block-unsafe-recursive-delete.py",',
+    '    "block-dishonest-commit.py",',
+    '    "guard-bash-text.py",',
+]
 
 MUTANTS = [
     (
@@ -257,8 +267,8 @@ MUTANTS = [
     (
         "the best-effort hook runs ahead of the 12 s enforcing hook",
         DISPATCHER,
-        '    "ask-destructive-git.py",\n    "block-unsafe-recursive-delete.py",\n    "ask-broad-git-add.py",\n',
-        '    "ask-broad-git-add.py",\n    "ask-destructive-git.py",\n    "block-unsafe-recursive-delete.py",\n',
+        _NL.join(_ENFORCING_RUN + ['    "ask-broad-git-add.py",']),
+        _NL.join(['    "ask-broad-git-add.py",'] + _ENFORCING_RUN),
         DISPATCH_TARGETS,
     ),
 ]
