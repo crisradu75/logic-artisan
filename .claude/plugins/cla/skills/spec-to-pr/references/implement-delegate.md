@@ -6,7 +6,7 @@
 
 ## Delegating Implement to one coding agent
 
-**Delegate-to-subagent escape hatch (context economy on a big change).** For a large multi-file implementation, dispatch ONE coding `Agent` at `model: sonnet` (per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`) to do the edits + tests. **Sized trigger:** delegate when `tasks.md` has **> ~15 subtasks OR the change touches > ~8 files**; below that, implement inline (a delegation brief costs more than it saves on a small change). Judgment, not a hard cutoff.
+**Delegate-to-subagent escape hatch (context economy on a big change).** For a large multi-file implementation, dispatch ONE coding `Agent` to do the edits + tests, passing the `model:` that "The implementer's model" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` gives this change's risk. **Sized trigger:** delegate when `tasks.md` has **> ~15 subtasks OR the change touches > ~8 files**; below that, implement inline (a delegation brief costs more than it saves on a small change). Judgment, not a hard cutoff. **Risk trigger:** a high-risk change (a signal in "Review sizing by risk") is delegated whatever its size when the session runs below the model "The implementer's model" gives it, so a high-risk change is not built inline on a lower tier.
 
 Structure the brief per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md` (scope / task / do-not-touch / report / done-when) — this delegate is where that file's "done when" slot came from. Its **do-not-touch** slot is the one this site has historically left implicit: name the paths the orchestrator is holding and any a sibling dispatch owns, since scope alone doesn't say what is *someone else's*.
 

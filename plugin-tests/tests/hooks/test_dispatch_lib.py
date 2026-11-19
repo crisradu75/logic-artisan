@@ -5,6 +5,10 @@ silent: an unhandled exception discarded all its diagnostic output on exit 0
 (stderr is dropped entirely on a non-blocking exit per the documented
 PreToolUse hook contract), and a hook that failed to LOAD could crash the
 whole dispatcher, taking out every hook positioned after it in the list.
+
+The quote stripping and the git invocation matcher, once in `_dispatch_lib.py`,
+live in `_shell_text.py`; their tests stay here and load that module as
+`shell_text`.
 """
 
 from __future__ import annotations
@@ -20,16 +24,20 @@ import pytest
 
 _HOOKS_DIR = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks"
 _LIB_PATH = _HOOKS_DIR / "_dispatch_lib.py"
+_SHELL_TEXT_PATH = _HOOKS_DIR / "_shell_text.py"
 
 
-def _load_module():
-    spec = importlib.util.spec_from_file_location("dispatch_lib_under_test", _LIB_PATH)
+def _load_module(name: str = "dispatch_lib_under_test", path: Path = _LIB_PATH):
+    spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
 lib = _load_module()
+# The quote stripping and the git matcher moved out of `_dispatch_lib.py` into
+# `_shell_text.py`; their tests stay here and reach them in their real home.
+shell_text = _load_module("shell_text_under_test", _SHELL_TEXT_PATH)
 
 
 def _stub_module(name: str, main_body: str) -> ModuleType:
@@ -108,11 +116,11 @@ def test_run_hook_file_loads_and_runs_a_real_sibling():
 # --------------------------------------------------------------------------- #
 
 def _git_push_pattern():
-    return lib.GitInvocation(r"push\b")
+    return shell_text.GitInvocation(r"push\b")
 
 
 def _branch_create_pattern():
-    return lib.GitInvocation(r"(?:checkout\s+-b|switch\s+(?:-c|--create))\s+(\S+)")
+    return shell_text.GitInvocation(r"(?:checkout\s+-b|switch\s+(?:-c|--create))\s+(\S+)")
 
 
 # The global-option pattern as it stood before #526, frozen as the reference
@@ -131,8 +139,8 @@ _TAIL = r"((?:\\\r?\n|[^&|;\n])*)"
 def test_the_exported_option_pattern_is_unchanged():
     # Repos with their own hooks may import it; #526 changed how the guards
     # here match, not what the constant says.
-    assert lib.GIT_SEP == _SEP
-    assert lib.GIT_GLOBAL_OPTS == _FROZEN_GLOBAL_OPTS
+    assert shell_text.GIT_SEP == _SEP
+    assert shell_text.GIT_GLOBAL_OPTS == _FROZEN_GLOBAL_OPTS
 
 
 @pytest.mark.parametrize(
@@ -150,8 +158,8 @@ def test_git_invocation_matches_what_the_old_pattern_matched(after, capture_opts
     that split two ways (`-c` with or without a value, `--git-dir=x` read as
     either long-option arm) and in `git` tokens inside option values."""
     opts = "(" + _FROZEN_GLOBAL_OPTS + ")" if capture_opts else _FROZEN_GLOBAL_OPTS
-    old = re.compile(lib.GIT_CMD + _SEP + opts + after)
-    new = lib.GitInvocation(after, capture_opts=capture_opts)
+    old = re.compile(shell_text.GIT_CMD + _SEP + opts + after)
+    new = shell_text.GitInvocation(after, capture_opts=capture_opts)
     tokens = ["git", "git", "GIT.exe", "-c", "-C", "x=y", "--git-dir", "--git-dir=x", "--work-tree",
               "--namespace", "--no-pager", "--bare", "-p", "push", "reset", "--hard", "stash", "status",
               "add", "commit", "checkout", "-b", "switch", "-cfoo", "--git-dirx", "--git-dir-x",
@@ -192,22 +200,22 @@ def test_git_invocation_refuses_a_subcommand_pattern_that_can_start_at_a_separat
     # probes three short strings, so it catches a pattern that matches empty
     # or a separator before a word; it is not a proof for every pattern.
     with pytest.raises(ValueError, match="whitespace or a backslash"):
-        lib.GitInvocation(after)
+        shell_text.GitInvocation(after)
 
 
 def test_git_invocation_accepts_every_subcommand_pattern_the_guards_use():
     for after in (r"push\b" + _TAIL, r"stash\b" + _TAIL, r"(?:add|commit)\b",
                   r"(?:checkout\s+-b|switch\s+(?:-c|--create))\s+(\S+)"):
-        lib.GitInvocation(after)
+        shell_text.GitInvocation(after)
 
 
 def test_git_invocation_groups_read_like_a_match():
-    m = lib.GitInvocation(r"stash\b" + _TAIL, capture_opts=True).search("ls; git -C a -c k=v stash pop && x")
+    m = shell_text.GitInvocation(r"stash\b" + _TAIL, capture_opts=True).search("ls; git -C a -c k=v stash pop && x")
     assert m.group() == "git -C a -c k=v stash pop "
     assert m.group(1) == "-C a -c k=v "
     assert m.group(2) == " pop "
     assert m.span(1) == (8, 20) and m.start(2) == 25 and m.end() == 30
-    absent = lib.GitInvocation(r"push(x)?").search("git push")
+    absent = shell_text.GitInvocation(r"push(x)?").search("git push")
     assert absent.group(1) is None and absent.span(1) == (-1, -1)
 
 
@@ -266,7 +274,7 @@ def test_strip_quoted_spans_lets_a_quoted_c_or_capital_c_value_with_a_space_matc
     # still-quoted value — a real, not exotic, shape (e.g. a checkout under
     # something like "Documents/My Project" on macOS/Windows).
     command = f"git -C {quoted_value} push origin main"
-    scanned = lib.strip_quoted_spans(command)
+    scanned = shell_text.strip_quoted_spans(command)
     assert _git_push_pattern().search(scanned), f"expected a match after stripping: {scanned!r}"
 
 
@@ -276,7 +284,7 @@ def test_strip_quoted_spans_is_length_preserving():
     # name) and re-slice the same offsets out of the ORIGINAL command to
     # recover real text a naive collapse-to-`''` would have destroyed.
     command = "git checkout -b 'feature/foo'"
-    scanned = lib.strip_quoted_spans(command)
+    scanned = shell_text.strip_quoted_spans(command)
     assert len(scanned) == len(command)
 
     m = _branch_create_pattern().search(scanned)
@@ -290,7 +298,7 @@ def test_strip_quoted_spans_still_hides_a_git_command_mentioned_in_quoted_prose(
     # substring inside a quoted commit message / echoed string must not
     # itself look like a real invocation to a caller matching on `scanned`.
     command = 'echo "run git commit -m foo later" && ls'
-    scanned = lib.strip_quoted_spans(command)
+    scanned = shell_text.strip_quoted_spans(command)
     assert "git commit" not in scanned
 
 
@@ -307,10 +315,10 @@ def test_strip_quoted_spans_keeps_executed_substitution_bodies_visible():
         'echo "say $(git commit -m x) now" && ls',
         'echo "say `git commit -m x` now" && ls',
     ):
-        scanned = lib.strip_quoted_spans(command)
+        scanned = shell_text.strip_quoted_spans(command)
         assert "git commit -m x" in scanned, command
         assert len(scanned) == len(command)
-    assert "say" not in lib.strip_quoted_spans('echo "say $(git commit -m x) now"')
+    assert "say" not in shell_text.strip_quoted_spans('echo "say $(git commit -m x) now"')
 
 
 def test_strip_quoted_spans_blanks_unexecuted_substitution_text():
@@ -320,7 +328,7 @@ def test_strip_quoted_spans_blanks_unexecuted_substitution_text():
         'echo "\\$(git commit -m x)" && ls',
         'echo "\\`git commit -m x\\`" && ls',
     ):
-        scanned = lib.strip_quoted_spans(command)
+        scanned = shell_text.strip_quoted_spans(command)
         assert "git commit" not in scanned, command
         assert len(scanned) == len(command)
 
@@ -330,7 +338,7 @@ M = "git commit -m \"$(cat <<'EOF'\n{body}\nEOF\n)\""
 
 def test_strip_quoted_spans_blanks_a_commit_message_heredoc_body():
     command = M.format(body="fix: git push origin main `git reset --hard`")
-    scanned = lib.strip_quoted_spans(command)
+    scanned = shell_text.strip_quoted_spans(command)
     assert "push origin main" not in scanned and "reset" not in scanned
     assert len(scanned) == len(command) and scanned.count("\n") == command.count("\n")
 
@@ -347,17 +355,17 @@ def test_strip_quoted_spans_blanks_a_commit_message_heredoc_body():
     ],
 )
 def test_strip_quoted_spans_blanks_each_message_verb_shape(command):
-    assert "git reset --hard" not in lib.strip_quoted_spans(command)
+    assert "git reset --hard" not in shell_text.strip_quoted_spans(command)
 
 
 def test_strip_quoted_spans_keeps_an_unquoted_heredoc_body_fully_visible():
     command = "cat <<EOF\nprose git reset --hard $(git push -f) `git branch -D x`\nEOF"
-    assert lib.strip_quoted_spans(command) == command
+    assert shell_text.strip_quoted_spans(command) == command
 
 
 def test_strip_quoted_spans_keeps_line_structure_and_crlf_of_a_blanked_body():
     command = "git commit -m \"$(cat <<'EOF'\r\nsecret one\r\nsecret two\r\nEOF\r\n)\"\r\n"
-    scanned = lib.strip_quoted_spans(command)
+    scanned = shell_text.strip_quoted_spans(command)
     assert "secret" not in scanned
     assert scanned.count("\r\n") == command.count("\r\n") and len(scanned) == len(command)
     assert scanned.endswith("EOF\r\n)\"\r\n")
@@ -367,7 +375,7 @@ def test_strip_quoted_spans_skips_an_operator_written_inside_a_blanked_body():
     # `B`'s operator is inside A's body, so the backtick line after A is not B's
     # body and must stay visible.
     nested = "cat <<'A'\ncat <<'B'\nA\n`git reset --hard`\nB"
-    assert "git reset --hard" in lib.strip_quoted_spans(nested)
+    assert "git reset --hard" in shell_text.strip_quoted_spans(nested)
 
 
 @pytest.mark.parametrize(
@@ -413,21 +421,21 @@ def test_strip_quoted_spans_skips_an_operator_written_inside_a_blanked_body():
     ],
 )
 def test_strip_quoted_spans_defaults_to_visible_unless_a_message_heredoc(command):
-    assert "git reset --hard" in lib.strip_quoted_spans(command)
+    assert "git reset --hard" in shell_text.strip_quoted_spans(command)
 
 
 def test_strip_quoted_spans_blanks_markdown_spans_after_balanced_earlier_quotes():
     command = "git commit -q -m 'chore: x' && cat > p.md <<'EOF'\nuse `git reset --hard`\nEOF"
-    assert "git reset --hard" not in lib.strip_quoted_spans(command)
+    assert "git reset --hard" not in shell_text.strip_quoted_spans(command)
 
 
 def test_strip_quoted_spans_blanks_nothing_past_the_operator_and_line_caps():
     def span(pad: int, ops: int) -> str:
         return "cat" + " " * pad + " > f <<'EOF'\nuse `git reset --hard` " + "<< " * ops + "\nEOF"
 
-    assert "git reset --hard" not in lib.strip_quoted_spans(span(100, 100))
-    assert "git reset --hard" in lib.strip_quoted_spans(span(100, 201))   # too many operators
-    assert "git reset --hard" in lib.strip_quoted_spans(span(5000, 1))    # operator line too long
+    assert "git reset --hard" not in shell_text.strip_quoted_spans(span(100, 100))
+    assert "git reset --hard" in shell_text.strip_quoted_spans(span(100, 201))   # too many operators
+    assert "git reset --hard" in shell_text.strip_quoted_spans(span(5000, 1))    # operator line too long
 
 
 def test_strip_quoted_spans_stays_fast_and_total_on_hostile_input():
@@ -442,7 +450,7 @@ def test_strip_quoted_spans_stays_fast_and_total_on_hostile_input():
     ]
     for command in cases:
         started = time.perf_counter()
-        scanned = lib.strip_quoted_spans(command)
+        scanned = shell_text.strip_quoted_spans(command)
         assert time.perf_counter() - started < 2.0, len(command)
         assert len(scanned) == len(command)
 
@@ -457,12 +465,12 @@ def test_strip_quoted_spans_stays_fast_and_total_on_hostile_input():
     ],
 )
 def test_strip_quoted_spans_leaves_executed_heredoc_shapes_visible(command):
-    assert "reset --hard" in lib.strip_quoted_spans(command)
+    assert "reset --hard" in shell_text.strip_quoted_spans(command)
 
 
 def test_strip_quoted_spans_heredoc_in_substitution_ignores_apostrophes():
     command = "x=\"$(cat <<'EOF'\ndon't\nEOF\n)\" && git reset --hard"
-    scanned = lib.strip_quoted_spans(command)
+    scanned = shell_text.strip_quoted_spans(command)
     assert "git reset --hard" in scanned
 
 
@@ -474,7 +482,7 @@ def test_strip_quoted_spans_matches_shell_semantics_for_a_midword_apostrophe():
     # it (e.g. requiring quotes at token boundaries) would make the git hooks
     # fire on commands the shell would never execute.
     command = "echo don't && git " + "push origin main && echo won't"
-    scanned = lib.strip_quoted_spans(command)
+    scanned = shell_text.strip_quoted_spans(command)
     assert "git push" not in scanned
 
 
@@ -498,12 +506,26 @@ def test_ensure_hooks_dir_importable_is_idempotent_and_adds_the_hooks_dir():
         sys.path[:] = original
 
 
+# The files that DEFINE git matchers. `ask-destructive-git.py` defines none of
+# its own any more: its matchers live in `_shell_read.py` (the ones the shell
+# reading rewrites) and `_destructive_git_rules.py` (the rest), and it imports
+# them.
 _GIT_HOOK_FILES = [
     "warn-stray-scratch-artifact.py",
-    "ask-destructive-git.py",
+    "_shell_read.py",
+    "_destructive_git_rules.py",
     "block-dishonest-commit.py",
     "ask-staged-debug-tag.py",
 ]
+
+# A matcher table that strips nothing itself, mapped to the file that strips
+# every text before the table's matchers read it. `ask-destructive-git.py`'s
+# `_scan` hands its checks only `_shell_read._stripped` text, part by part.
+_STRIPPED_BY = {"_destructive_git_rules.py": "ask-destructive-git.py"}
+
+# Every file that imports `_dispatch_lib` or `_shell_text` (or a sibling that
+# does) at module level, and so must put the hooks dir on `sys.path` first.
+_BOOTSTRAPPED_FILES = _GIT_HOOK_FILES + ["ask-destructive-git.py", "_destructive_git_probes.py"]
 
 
 @pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
@@ -516,10 +538,10 @@ def test_git_hooks_import_the_shared_pattern_instead_of_re_inlining_it(filename)
     # grammar in linear time; a hook composing `GIT_GLOBAL_OPTS` into its own
     # regex brings back the quadratic (and exponential) search it replaced.
     source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
-    assert "from _dispatch_lib import GitInvocation" in source, (
+    assert "from _shell_text import GitInvocation" in source, (
         f"{filename} must import the shared matcher, not define its own"
     )
-    assert not re.search(r"^from _dispatch_lib import GIT_GLOBAL_OPTS", source, re.MULTILINE), (
+    assert not re.search(r"^from _shell_text import GIT_GLOBAL_OPTS", source, re.MULTILINE), (
         f"{filename} composes GIT_GLOBAL_OPTS into a regex again; use GitInvocation"
     )
     assert not re.search(r"^_G\s*=\s*r?['\"]\(\?:", source, re.MULTILINE), (
@@ -870,18 +892,18 @@ def test_compose_output_with_nothing_to_say_is_empty():
     assert lib.compose_output([]) == ""
 
 
-@pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
+@pytest.mark.parametrize("filename", _BOOTSTRAPPED_FILES)
 def test_git_hooks_bootstrap_their_own_sys_path_for_standalone_runs(filename):
     # These are loaded two ways — in-process by a dispatcher, and directly by
     # pytest — and hooks.json invokes a few of them standalone. In a standalone
-    # run the `_dispatch_lib` import resolves only because CPython sets
+    # run the `_shell_text` import resolves only because CPython sets
     # sys.path[0] to the script's dir, a property suppressed by
     # PYTHONSAFEPATH=1 / -I / -P; in the other two neither mechanism puts the
     # hooks dir first at all. Each hook therefore inserts its own dir explicitly,
     # so an ImportError can never silently disable a guard.
     source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
     assert "sys.path.insert(0, _HOOKS_DIR)" in source, (
-        f"{filename} must bootstrap its own sys.path before importing _dispatch_lib"
+        f"{filename} must bootstrap its own sys.path before importing its siblings"
     )
 
 
@@ -911,7 +933,7 @@ def test_git_hooks_bootstrap_their_own_sys_path_for_standalone_runs(filename):
 )
 def test_git_cmd_matches_every_runnable_spelling(exe):
     """Every spelling a case-insensitive shell will actually execute."""
-    assert re.search(lib.GIT_CMD + r"\s", f"{exe} push origin main")
+    assert re.search(shell_text.GIT_CMD + r"\s", f"{exe} push origin main")
 
 
 @pytest.mark.parametrize(
@@ -935,7 +957,7 @@ def test_git_cmd_does_not_over_match(text):
     test green. Measured on a `\\b`-stripped pattern: `re.match` rejected all
     four, `re.search` matched `mygit push origin main` and `digit push`.
     """
-    assert not re.search(lib.GIT_CMD + r"\s", text)
+    assert not re.search(shell_text.GIT_CMD + r"\s", text)
 
 
 def test_git_cmd_over_blocks_only_where_the_subcommand_is_an_english_word():
@@ -947,7 +969,7 @@ def test_git_cmd_over_blocks_only_where_the_subcommand_is_an_english_word():
     directions so a future reader sees the real shape of the trade rather than
     a claim that widening was free.
     """
-    assert re.search(lib.GIT_CMD + r"\s+commit\b", "cd /srv/GIT commit")
+    assert re.search(shell_text.GIT_CMD + r"\s+commit\b", "cd /srv/GIT commit")
     # `push` gains the SAME exposure — the earlier comment here claimed it did
     # not, and the assertion below could not have caught the error because its
     # subject contained no `push` at all: it passed for every possible value of
@@ -955,8 +977,8 @@ def test_git_cmd_over_blocks_only_where_the_subcommand_is_an_english_word():
     # `ls /d/GIT push --force origin main` does fire. The trade is that an
     # over-blocking enforcing guard announces itself and is trivially worked
     # around, while the `GIT push` bypass it closes is silent and total.
-    assert re.search(lib.GIT_CMD + r"\s+push\b", "ls /d/GIT push --force origin main")
-    assert not re.search(lib.GIT_CMD + r"\s+push\b", "cd /srv/GIT && ls")
+    assert re.search(shell_text.GIT_CMD + r"\s+push\b", "ls /d/GIT push --force origin main")
+    assert not re.search(shell_text.GIT_CMD + r"\s+push\b", "cd /srv/GIT && ls")
 
 
 def test_every_git_guard_uses_the_shared_constant():
@@ -1028,7 +1050,7 @@ def test_every_git_global_opts_consumer_strips_quoted_spans(filename):
     name (`import fit_json_payload as _strip_quoted_spans`) leaves the string
     `strip_quoted_spans` in the file at the call site, so a substring check
     stayed green while the pre-pass was gone. Every consumer imports it from
-    `_dispatch_lib` by its real name, so the import form is the stable thing to
+    `_shell_text` by its real name, so the import form is the stable thing to
     pin. (`_GIT_HOOK_FILES` is the single place that list is maintained — by
     hand, so it is not self-updating either. Name the files there rather than
     restating a count in prose; a count was already wrong once.)
@@ -1036,14 +1058,122 @@ def test_every_git_global_opts_consumer_strips_quoted_spans(filename):
     source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
     if "GitInvocation" not in source and "GIT_GLOBAL_OPTS" not in source:
         pytest.skip(f"{filename} does not match git global options")
+    if filename in _STRIPPED_BY:
+        # A table: the scanner that feeds it must strip, through the shell
+        # reading's cached `_stripped`, which must call the real helper.
+        scanner = (_HOOKS_DIR / _STRIPPED_BY[filename]).read_text(encoding="utf-8")
+        assert re.search(r"^    _stripped,$", scanner, re.MULTILINE) and "_stripped(" in scanner, (
+            f"{_STRIPPED_BY[filename]} no longer strips the text {filename}'s matchers read"
+        )
+        filename, source = "_shell_read.py", (_HOOKS_DIR / "_shell_read.py").read_text(encoding="utf-8")
     assert re.search(
-        r"^from _dispatch_lib import [^\n]*\bstrip_quoted_spans\b", source, re.MULTILINE
+        r"^from _shell_text import [^\n]*\bstrip_quoted_spans\b", source, re.MULTILINE
     ), (
         f"{filename} consumes GIT_GLOBAL_OPTS but does not import "
-        "strip_quoted_spans from _dispatch_lib; its `\\S+` alternatives cannot "
+        "strip_quoted_spans from _shell_text; its `\\S+` alternatives cannot "
         "match a quoted global-option value, so every "
         "`git -C \"/path with space\" ...` silently bypasses this guard"
     )
     assert "strip_quoted_spans(" in source, (
         f"{filename} imports strip_quoted_spans but never calls it"
     )
+
+
+# --------------------------------------------------------------------------- #
+# CLA_HOOK_T0 -- the measured time before main(), stamped by probe-python.sh
+# --------------------------------------------------------------------------- #
+
+
+def test_deadline_measures_from_a_fresh_stamp(monkeypatch):
+    """A stamp 2s old leaves 15 - 2 - 1 = 12s; one 0.5s old leaves 13.5s, more
+    than the fixed 12s guess, which is the budget this frees on a quiet machine."""
+    import time as _time
+
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 2.0:.6f}")
+    d = lib.Deadline()
+    assert d.measured is True
+    expected = lib.HANDLER_TIMEOUT_SECONDS - 2.0 - lib._POST_HOOK_RESERVE_SECONDS
+    assert expected - 0.5 < d.remaining() <= expected + 0.01
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 0.5:.6f}")
+    assert lib.Deadline().remaining() > lib.HANDLER_TIMEOUT_SECONDS - lib._BUDGET_RESERVE_SECONDS
+
+
+def test_deadline_reads_a_locale_comma_and_whole_seconds(monkeypatch):
+    """bash prints `$EPOCHREALTIME` with the locale's decimal point."""
+    import time as _time
+
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 3.0:.6f}".replace(".", ","))
+    assert lib.Deadline().measured is True
+    monkeypatch.setenv(lib.HOOK_T0_ENV, str(int(_time.time()) - 3))
+    d = lib.Deadline()
+    assert d.measured is True
+    assert d.remaining() < lib.HANDLER_TIMEOUT_SECONDS - 3.0
+
+
+@pytest.mark.parametrize("label", ["unset", "empty", "garbage", "bsd-date", "future", "stale", "negative"])
+def test_deadline_falls_back_to_the_fixed_reserve_without_a_usable_stamp(label, monkeypatch):
+    import time as _time
+
+    now = _time.time()
+    values = {
+        "empty": "",
+        "garbage": "soon",
+        "bsd-date": f"{int(now)}.N",
+        "future": f"{now + 5.0:.6f}",
+        "stale": f"{now - lib.HANDLER_TIMEOUT_SECONDS:.6f}",
+        "negative": f"-{now:.6f}",
+    }
+    if label == "unset":
+        monkeypatch.delenv(lib.HOOK_T0_ENV, raising=False)
+    else:
+        monkeypatch.setenv(lib.HOOK_T0_ENV, values[label])
+    d = lib.Deadline()
+    assert d.measured is False
+    fallback = lib.HANDLER_TIMEOUT_SECONDS - lib._BUDGET_RESERVE_SECONDS
+    assert fallback - 0.5 < d.remaining() <= fallback
+
+
+def test_a_stamp_just_inside_the_tolerances_is_used(monkeypatch):
+    """Both bounds are inclusive the right way: 0.5s ahead (clock jitter) is
+    read as zero elapsed, and 14s old is still this call's."""
+    import time as _time
+
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() + 0.5:.6f}")
+    d = lib.Deadline()
+    assert d.measured is True
+    full = lib.HANDLER_TIMEOUT_SECONDS - lib._POST_HOOK_RESERVE_SECONDS
+    assert full - 0.5 < d.remaining() <= full
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 14.0:.6f}")
+    assert lib.Deadline().measured is True
+
+
+def test_an_explicit_budget_ignores_the_stamp(monkeypatch):
+    import time as _time
+
+    monkeypatch.setenv(lib.HOOK_T0_ENV, f"{_time.time() - 10.0:.6f}")
+    d = lib.Deadline(budget_seconds=30.0)
+    assert d.measured is False and d.remaining() > 29.0
+
+
+# --------------------------------------------------------------------------- #
+# extract_ask -- one definition for both dispatchers
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("dispatcher", ["dispatch-bash-pretooluse.py", "dispatch-edit-write-pretooluse.py"])
+def test_both_dispatchers_use_the_shared_extract_ask(dispatcher):
+    source = (_LIB_PATH.parent / dispatcher).read_text(encoding="utf-8")
+    assert "from _dispatch_lib import extract_ask as _extract_ask" in source
+    assert "def _extract_ask" not in source, f"{dispatcher} carries its own copy again"
+
+
+def test_extract_ask_reads_only_an_ask():
+    ask = json.dumps({"hookSpecificOutput": {"permissionDecision": "ask", "permissionDecisionReason": "why"}})
+    assert lib.extract_ask(ask) == "why"
+    assert lib.extract_ask("  " + ask + "\n") == "why"
+    assert lib.extract_ask(json.dumps({"hookSpecificOutput": {"permissionDecision": "ask"}})) == (
+        "A guard requested confirmation."
+    )
+    for other in ("", "x", "[]", '{"hookSpecificOutput": 1}',
+                  json.dumps({"hookSpecificOutput": {"permissionDecision": "deny"}})):
+        assert lib.extract_ask(other) is None, other

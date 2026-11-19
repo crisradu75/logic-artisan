@@ -11,7 +11,7 @@
 # and `exit 1`s the CALLING shell.
 #
 # THIS HEADER IS THE ONLY HOME FOR THE WIRING'S RATIONALE. `hooks.json` carried
-# ~37 lines of it in a top-level `_comment` array until issue #254, and the
+# ~37 lines of it in a top-level `_comment` array until it moved here, and the
 # loader does not recognise that key, so every session in every consuming repo
 # printed `unknown key "_comment" ignored` — noise no consumer could fix, since
 # the install cache is read-only. The JSON now carries a one-line `description`
@@ -111,11 +111,26 @@
 # live session.
 #
 # WHAT SOURCING LEAKS into the calling shell: the function `_cla_py_ok` and the
-# variables `_p` and `_c`, all `_cla`/`_`-prefixed for that reason. NOT `$@` —
+# variables `_p` and `_c`, all `_cla`/`_`-prefixed for that reason, plus the
+# EXPORTED `CLA_HOOK_T0`, which is meant for the hook (see the start stamp
+# below). NOT `$@` —
 # stage 3 runs its `set --` inside a command substitution precisely so the
 # caller's positional parameters survive.
 
 PYEXE=
+
+# --- the start stamp ----------------------------------------------------------
+# The dispatchers' `Deadline` (hooks/_dispatch_lib.py) measures the time spent
+# before Python's `main()` from this stamp instead of guessing it: on a loaded
+# Windows machine this probe plus interpreter start ranged 0.7s to 10.8s, so no
+# fixed reserve fits. bash's `$EPOCHREALTIME` is a shell variable, so the stamp
+# spawns nothing; Git Bash is bash 5 and has it. dash and macOS's bash 3.2 do
+# not, so the value is EMPTY there and `Deadline` falls back to its fixed
+# reserve. Always assigned and exported, never left alone: a value inherited
+# from the environment belongs to some other call. `Deadline` also refuses a
+# value older than the handler timeout or in the future.
+CLA_HOOK_T0=${EPOCHREALTIME:-}
+export CLA_HOOK_T0
 
 # --- 0. the cache -----------------------------------------------------------
 # WHY THIS EXISTS. Stages 1-3 below decide which interpreter to use by RUNNING
