@@ -887,19 +887,34 @@ MUTANTS.append((
 
 # --- shell wrappers and expansions (guard-shell-wrappers) ----------------------
 # One mutant per changed line that a correct input can tell apart. Killing tests
-# are the `wrapped`, `expansion`, `cap` and `measured_handler` tests at the end of
+# are the `wrapped`, `expansion`, `quoted_or_partly_expanded`, `cap`,
+# `scan_cap`, `work_cap` and `measured_handler` tests at the end of
 # tests/hooks/test_ask_destructive_git.py. Deliberately absent, because no input
-# tells them from the real code: the early `return lines, True` inside
-# `_rewrites` (the `_expand` line cap asks for the same commands, it is there to
-# stop work sooner); `_scan`'s one-part shortcut (joining one part is the part);
-# `_stripped`'s cache; the `break` after a rule-B rewrite (the next round reads
-# the rewritten line either way); `_word_end`'s loop steps whose removal never
-# ends the loop, which would hang the run rather than fail a test.
+# tells them from the real code:
+# - the early `return lines, True` inside `_rewrites` (the `_expand` line cap
+#   asks for the same commands, it is there to stop work sooner), `_scan`'s
+#   one-part shortcut (joining one part is the part), `_stripped`'s and
+#   `_paren_close`'s caches, and the `break` after a rule-B rewrite (the next
+#   round reads the rewritten line either way);
+# - `_word_end`'s loop steps whose removal never ends the loop, which would hang
+#   the run rather than fail a test, and its two fast paths (`_PLAIN_RUN`, and
+#   `_unquote`'s plain-word return), which give the same answer one character
+#   at a time;
+# - the `limit` passed to `str.find` and `startswith` (the final `min(i, n)`
+#   clamps any overshoot), `_resolve`'s `islice` (the line cap asks for the same
+#   commands), and `value == raw or` (a plain word rewritten to itself adds a
+#   line no check reads differently);
+# - the work spent in `_at_command_start` and `tail_end`, and the slack term
+#   and the `finally` reset of the work cap: every command a test can build is
+#   walked far inside the cap without them, and every reader runs under
+#   `_expand`, which sets the cap first. The cap itself is held by the
+#   `work_cap` tests and by every scan-cap reproducer.
 for _what, _args in (
     ("wrappers are never read", ("_WRAP_DEPTH = 3", "= 3", "= 0")),
     ("only two levels of wrapper are read", ("_WRAP_DEPTH = 3", "= 3", "= 2")),
     ("expansion rounds stop after one", ("_EXPAND_ROUNDS = 4", "= 4", "= 1")),
     ("the line cap never trips", ("_EXPAND_MAX_LINES = 64", "= 64", "= 100000")),
+    ("the work cap is the text's own length", ("_WORK_FACTOR = 8", "= 8", "= 1")),
     ("parts join with one newline, so a continued last line runs into a body",
      ('_PART_SEP = "\\n\\n"', '"\\n\\n"', '"\\n"')),
     ("a wrapper word may start anywhere, inside `refresh` too",
@@ -912,7 +927,9 @@ for _what, _args in (
      ('r"|eval|iex|invoke-expression)', "(?=[ \\t]|\\\\\\r?\\n)", "(?=[ \\t])")),
     ("-ec is not -EncodedCommand", ("_PS_ENCODED = re.compile", "ec|", "xx|")),
     ("a body holding only gh is dropped", ('_HAS_GIT = re.compile(r"(?i)git|gh")', "|gh", "")),
-    ("${NAME} is not resolved", ("_SINGLE_VAR = re.compile", "|\\{([A-Za-z_]\\w*)\\}", "")),
+    ("an unquoted ${F} before an operand does not ask", ("_SINGLE_VAR = re.compile", "|\\{([A-Za-z_]\\w*)\\}", "")),
+    ("${NAME} is not resolved",
+     ("braced = bare is None and _VAR_BRACED.match(word, i + 1)", "bare is None and _VAR_BRACED.match(word, i + 1)", "None")),
     ("export X= is not an assignment", ('    r"(?:^|(?<=[\\s;&|(){}`]))(?:(?:export', "\\s;", ";")),
     ("a PowerShell assignment is never read", ("_PS_ASSIGN = re.compile", "\\$([A-Za-z_]", "\\$\\$([A-Za-z_]")),
     ("a comparison reads as a PowerShell assignment", ("_PS_ASSIGN = re.compile", "(?!=)", "")),
@@ -920,12 +937,25 @@ for _what, _args in (
     ("sudo hides the command start", ('    "sudo env command exec time', '"sudo env', '"env')),
     ("a quoted subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "\\\"'", "")),
     ("a backtick subcommand is not read", ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "$`", "$")),
+    ("a subcommand is read only when its first character is special",
+     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", r"[^\s;&|<>()\\]*?", "")),
+    ("an option the matcher skipped reads as the subcommand",
+     ("_GIT_SUBCOMMAND_EXPANDED = GitInvocation", "(?!-)", "")),
     ("-C's value reads as the subcommand", ("_GIT_VALUE_OPT = re.compile", "-[cC]", "-[c]")),
+    # the work cap
+    ("the work cap never trips", ("    if _WORK_LEFT[0] < 0:", "if _WORK_LEFT", "if False and _WORK_LEFT")),
+    ("a word costs nothing against the work cap", ("    _spend(end - start)", "end - start", "0")),
+    ("reading past the work cap passes what was read",
+     ("    except _OverBudget:", "return parts, UNRESOLVED_REASON", "return parts, None", 2, 1)),
+    # `$(...)`
+    ("a `$(` runs to the end of the text", ("            i = _paren_close(text).get(i + 1, n) + 1", "_paren_close(text).get(i + 1, n) + 1", "n")),
+    ("a `)` closes the outermost open `(`", ("            close[stack.pop()] = m.start()", "stack.pop()", "stack.pop(0)")),
     ("an unquoted backslash does not escape the next character",
-     ("    operator ends it. An unterminated quote runs to the end of the text.", "i += 2", "i += 1", 6, 5)),
+     ("    start = i", "i += 2", "i += 1", 5, 4)),
     ("a wrapper's words run on past its command",
      ('        elif ch in "<>":', "break", "i += 1", 6, 5)),
-    ("a backtick is not an expansion", ("            double = not double", "return True", "pass", 3, 2)),
+    ("a backtick is not an expansion",
+     ("            double = not double", "return (i if first < 0 else first), None", "pass", 3, 2)),
     ("only ${ and $( are expansions",
      ('elif ch == "$" and i + 1 < n and (word[i + 1].isalnum()', 'word[i + 1].isalnum() or word[i + 1] in "_{(@*#?!$-"', 'word[i + 1] in "{("')),
     ("single-quoted text can hold an expansion",
@@ -935,36 +965,50 @@ for _what, _args in (
     ("an option before git hides the command start", ('            or word.startswith("-")', "or word", "or False and word")),
     ("an assignment before git hides the command start",
      ('            or re.fullmatch(r"[A-Za-z_]\\w*=\\S*", word)', "or re", "or False and re")),
+    ("an assignment inside an earlier value is read",
+     ("        for pattern in (_ASSIGN, _PS_ASSIGN):", "if m.start() < read_to:", "if False:", 4, 3)),
     ("a bare PowerShell word is a literal", ("bare_ps = pattern is _PS_ASSIGN and", "bare_ps = pattern", "bare_ps = False and pattern")),
     ("a value followed by ( is a literal", ('not part.startswith("(", end)', 'not part.startswith("(", end)', "True")),
     ("a non-literal value is kept", ("                    if not _LITERAL_VALUE.fullmatch(value):", "if not", "if False and not")),
+    ("a wrapper inside the words of the one before is read again",
+     ("    for m in _WRAPPER.finditer(_stripped(part)):", "if m.start() < read_to:", "if False:", 2, 1)),
     ("a wrapper's first word is dropped", ('        bodies.append(" ".join(words))', "join(words)", "join(words[1:])")),
     ("the encoded command is read from the flag itself", ("for flag, value in zip(words, words[1:]):", "words[1:]", "words")),
     ("the encoded command is decoded as UTF-8", ('.decode("utf-16-le")', '"utf-16-le"', '"utf-8"')),
     ("an assignment that is not a literal still resolves",
-     ("    if not values or any(v is None for v in values):", " or any(v is None for v in values)", "")),
-    ("only the first value a name is given is tried", ("    return list(dict.fromkeys(values))", "list(dict.fromkeys(values))", "values[:1]")),
+     ("        if not values or any(v is None for v in values):", " or any(v is None for v in values)", "")),
+    ("only the first value a name is given is tried",
+     ("        choices.append(list(dict.fromkeys(values)))", "list(dict.fromkeys(values))", "values[:1]")),
+    ("a resolved word keeps its quotes", ('        readings.append(_unquote("".join(pieces)))', '_unquote("".join(pieces))', '"".join(pieces)')),
     ("an unresolved subcommand is not reported",
      ("        values = _resolve(part[sub:end], names)", "_resolve(part[sub:end], names)", "_resolve(part[sub:end], names) or []")),
     ("a rewritten line loses its git", ("lines += [part[m.start():sub] + v + part[end:stop] for v in values]", "part[m.start():sub] + v", "v")),
     ("reset's options are not read", ("    for pattern in (_PUSH, _RESET, _BRANCH):", "_RESET, ", "")),
     ("an operand never ends the option run",
-     ('                    operand = operand or not _unquote(raw).startswith("-")', "operand or not", "False and not")),
+     ('                        operand = operand or not value.startswith("-")', "operand or not", "False and not")),
+    ("a quoted refspec is not read", ('if value == raw or not value.startswith(("-", "+")):', '("-", "+")', '"-"')),
+    ("the literal start keeps its quotes", ("                    lead = _unquote(raw[:first])", "_unquote(raw[:first])", "raw[:first]")),
+    ("a forced refspec's placeholder is dropped", ('                        values = [lead + "x"]', 'lead + "x"', "lead")),
+    ("a named flag with an unknown value asks", ('elif lead.startswith("-") and "=" in lead:', ' and "=" in lead', ' and False')),
+    ("a flag with an unknown expansion glued on stays silent",
+     ('                    elif lead.startswith("-"):', "unresolved = True", "unresolved = False", 2, 1)),
     ("a quoted expansion before the operand asks",
-     ('                        not operand and raw.startswith("$") and', ' and raw.startswith("$")', "")),
+     ('                            not operand and raw.startswith("$") and', ' and raw.startswith("$")', "")),
     ("a resolved option is dropped from the line",
      ("lines += [part[m.start():a] + v + part[b:m.end(1)] for v in values]", " + v + ", " + ")),
     ("text past the cap is read anyway",
      ("        budget -= sum(len(b) for b in frontier)", "len(b)", "0 * len(b)")),
     ("a wrapper past the depth cap is allowed",
      ("        if any(_wrapper_bodies(p) for p in frontier):", "if any", "if False and any")),
+    ("a wrapper past the depth cap gives the unresolved reason",
+     ("        if any(_wrapper_bodies(p) for p in frontier):", "WRAP_DEPTH_REASON", "UNRESOLVED_REASON", 2, 1)),
     ("assignments in a wrapper body are not read", ("    names = _assignments(parts)", "(parts)", "([command])")),
     ("every round re-adds every line", ("                if line not in seen:", "line not in seen", "True")),
     ("a line still changing after the last round is allowed",
-     ("        frontier = new", "return parts, True", "return parts, False", 2, 1)),
+     ("        frontier = new", "return parts, UNRESOLVED_REASON", "return parts, None", 2, 1)),
     ("parts are quote-stripped as one text, so quotes pair across them",
      ("        _PART_SEP.join(_stripped(p) for p in parts),", "_PART_SEP.join(_stripped(p) for p in parts)", "_stripped(_PART_SEP.join(parts))")),
-    ("the unresolved reason is never given", ("        found.append(UNRESOLVED_REASON)", "found.append(UNRESOLVED_REASON)", "pass")),
+    ("the unread reason is never given", ("        found.append(unread)", "found.append(unread)", "pass")),
     ("the merge override reads the raw text again",
      ("        or _every_merge_is_authorized(_scan(command)[1])", "[1]", "[0]")),
     ("a measured handler deadline is ignored", ("        if handler.measured:", "if handler", "if False and handler")),

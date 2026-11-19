@@ -1904,15 +1904,15 @@ def _resolve(raw: str, names: dict[str, list[str | None]]) -> list[str] | None:
         if not values or any(v is None for v in values):
             return None
         choices.append(list(dict.fromkeys(values)))
-    words: list[str] = []
+    readings: list[str] = []
     for combo in itertools.islice(itertools.product(*choices), _EXPAND_MAX_LINES + 1):
         pieces, at = [], 0
         for (a, b, _), value in zip(spans, combo):
             pieces += [raw[at:a], value]
             at = b
         pieces.append(raw[at:])
-        words.append(_unquote("".join(pieces)))
-    return list(dict.fromkeys(words))
+        readings.append(_unquote("".join(pieces)))
+    return list(dict.fromkeys(readings))
 
 
 def _rewrites(part: str, names: dict[str, list[str | None]]) -> tuple[list[str], bool]:

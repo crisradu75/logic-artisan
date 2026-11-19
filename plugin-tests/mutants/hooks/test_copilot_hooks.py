@@ -7,7 +7,8 @@ Run:
 WHAT IT COVERS. The structured flag that replaced wording markers: each
 dispatcher sets `GUARD_NOT_RUN` when it asks because a guard could not run
 (the enforcing-guard escalation in `main()`, and `_fail_closed`) and clears it
-at the start of `main()`; the adapter denies on the flag, and denies a
+at the start of `main()`; the adapter denies on the flag, before it reads
+the output, keeping the dispatcher's reason when it printed one, and denies a
 dispatcher that has no flag at all. A mutant that loses the flag turns a
 Copilot call no guard checked into an `ask` its user may approve blind.
 
@@ -60,4 +61,10 @@ MUTANTS = [
     ("the Edit/Write dispatcher keeps a flag left from an earlier call",
      EDIT, "    global GUARD_NOT_RUN\n    GUARD_NOT_RUN = False\n    stdin_text",
      "    global GUARD_NOT_RUN\n    stdin_text", TARGETS),
+    # killed by test_copilot_pretooluse_denies_a_flagged_call_whatever_it_printed
+    ("a flagged call that printed no JSON crashes the adapter",
+     ADAPTER, "    except (ValueError, KeyError, TypeError):\n", "    except (KeyError, TypeError):\n", TARGETS),
+    ("a flagged call's own reason is dropped",
+     ADAPTER, "    return reason if isinstance(reason, str) else",
+     "    return reason if False else", TARGETS),
 ]
