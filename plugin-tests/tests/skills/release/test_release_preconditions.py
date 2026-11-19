@@ -234,6 +234,85 @@ def test_the_precondition_block_names_every_command_the_documented_gate_runs():
     )
 
 
+def _bash_lines(section: str) -> list[str]:
+    """The command lines of a section's fenced bash blocks, in document order."""
+    blocks = re.findall(r"```bash\n(.*?)```", section, re.S)
+    return [line.strip() for block in blocks for line in block.splitlines() if line.strip()]
+
+
+def _section(body: str, start: str, end: str) -> str:
+    assert start in body and end in body, f"release/SKILL.md lost {start!r} or {end!r}"
+    return body.split(start, 1)[1].split(end, 1)[0]
+
+
+# requirement: plugin-distribution / A release is tagged before its catalogs name it
+def test_the_skill_tags_the_release_pr_before_merging_it_with_a_merge_commit():
+    """The order closes the window 2.0.0 and 2.4.0 fell into: merged first, the
+    catalogs named a tag `origin` did not have until someone pushed it by hand.
+    Tag the PR's head, prove the tag is on `origin`, then merge with a merge commit
+    so the tagged commit itself is on the default branch. A squash or rebase merge
+    writes a new commit, and the tag would point off the branch."""
+    body = _SKILL_MD.read_text(encoding="utf-8")
+    step_3 = _bash_lines(_section(body, "## Step 3", "## Step 4"))
+    assert not [l for l in step_3 if l.startswith("gh pr merge")], (
+        "Step 3 merges the release PR before Step 4 tags it")
+    step_4 = _bash_lines(_section(body, "## Step 4", "## Step 5"))
+
+    def first(prefix: str) -> int:
+        hits = [i for i, line in enumerate(step_4) if line.startswith(prefix)]
+        assert hits, f"Step 4 no longer runs `{prefix}`"
+        return hits[0]
+
+    mergeable = first("gh pr view release/<new> --json mergeable,mergeStateStatus")
+    tag = first("claude plugin tag .claude/plugins/cla --push")
+    assert mergeable < tag, (
+        "Step 4 must check the PR can merge before the tag push uses up the version")
+    proof = first("python3 .claude/skills/release/scripts/check_catalog_tags.py --expect cla--v<new>")
+    merge = first("gh pr merge")
+    assert tag < proof < merge, (
+        "Step 4 must push the tag, prove it is on origin, and only then merge the PR")
+    merges = [line for line in step_4 if line.startswith("gh pr merge")]
+    assert len(merges) == 1, f"expected one merge command in Step 4, found {merges}"
+    assert " --merge " in f"{merges[0]} ", f"the release PR is not merged with --merge: {merges[0]}"
+    assert "--match-head-commit" in merges[0], (
+        "the merge is not pinned to the tagged commit, so a head that moved after the "
+        "tag would merge an untagged commit")
+    for flag in ("--squash", "--rebase", "-s ", "-r "):
+        assert flag not in f"{merges[0]} ", f"the release PR merge carries {flag.strip()}"
+    # The tagged commit has to reach the default branch: the ancestry check runs
+    # after the merge, not before.
+    assert first("git fetch origin && git merge-base --is-ancestor cla--v<new>^{}") > merge
+
+
+# requirement: plugin-distribution / A release is tagged before its catalogs name it
+def test_the_skill_restarts_as_a_new_version_when_the_tagged_pr_needs_a_commit():
+    body = _SKILL_MD.read_text(encoding="utf-8")
+    step_4 = " ".join(_section(body, "## Step 4", "## Step 5").split())
+    assert "**`--merge`, never `--squash` or `--rebase`, for a release PR.**" in step_4
+    assert "**If the PR needs another commit after the tag is pushed**" in step_4
+    assert "the release restarts as a new version" in step_4
+    assert "**If the tag push fails, stop and do not merge.**" in step_4
+    assert "and `mergeStateStatus` is `CLEAN`" in step_4 and "stop before tagging" in step_4
+
+
+# requirement: plugin-distribution / A release is tagged before its catalogs name it
+def test_the_skill_expects_the_merge_prompt_and_restarts_on_a_no():
+    """`ask-destructive-git` asks before `gh pr merge` unless `ALLOW_PR_MERGE=1`
+    prefixes it, so the skill cannot promise the merge runs unasked. A no comes
+    after the tag is published, so it costs the version."""
+    body = _SKILL_MD.read_text(encoding="utf-8")
+    flat = " ".join(body.split())
+    assert "no second question" not in flat, (
+        "the skill promises no further prompt, but the merge guard asks")
+    step_2 = " ".join(_section(body, "## Step 2", "## Step 3").split())
+    assert "`ask-destructive-git` asks the user before Step 4's `gh pr merge`" in step_2
+    step_4 = " ".join(_section(body, "## Step 4", "## Step 5").split())
+    assert "`ask-destructive-git` asks the user before this command unless `ALLOW_PR_MERGE=1`" in step_4
+    assert "**If the user says no, do not merge.**" in step_4
+    assert "restart at the next patch version" in step_4
+
+
+
 def test_step_1_names_the_server_side_tag_guard_without_making_it_a_precondition():
     """`pre-push` guards only the clones that installed it; the GitHub web UI, the API and an
     unhooked clone can still move a tag. Step 1 names the tag ruleset as the server-side guard,
