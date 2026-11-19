@@ -328,6 +328,24 @@ test in `tests/skills/_shared/test_check_spec_proof.py:1380` (skips on Linux/mac
 the plugin is an installed copy rather than this repo's working tree. These are why the count differs between machines: expect a different one on
 Linux or macOS, and treat the figure above as Windows-only.
 
+**Linux, 2026-11-19.** A full parallel run (`pytest plugin-tests -q -n 4 --dist loadfile -rs`) on
+`main` at `d27a0ea` with the project-review follow-up PRs merged reported 14 skips. The reasons
+come from the run's own `-rs` lines, not from a grep:
+
+| Test(s) | Skips | Why, on Linux |
+|---|---|---|
+| `test_ask_destructive_git.py`, the `_INAPPLICABLE` table | 6 | a construct has no site in that command; the same on every platform |
+| `test_block_worktree_path_escape.py`, two cases | 2 | the file system is case-sensitive |
+| `test_manual_worktree.py`, two cases | 2 | the file system is case-sensitive; a backslash is a legal filename character |
+| `test_copilot_hooks.py`, the PowerShell wiring | 1 | PowerShell is not installed |
+| `test_cla_launcher.py`, the `cmd.exe` case | 1 | `cmd.exe` parse semantics, Windows only |
+| `test_check_spec_proof.py`, the long-path case | 1 | only Windows' 260-character path limit exercises it |
+| `test_page_in_a_browser.py` | 1 | Playwright is not installed (opt-in) |
+
+So on Linux the Windows-only paths (PowerShell wiring, `cmd.exe`, long paths, case-insensitive
+file systems) have no execution evidence, and the browser gate runs only where Playwright is
+installed.
+
 ### Stdlib-only shipped scripts: why
 
 No incident either; the reason is the rule's own. A repo installs the plugin as a copied folder and

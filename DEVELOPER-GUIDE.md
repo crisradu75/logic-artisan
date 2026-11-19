@@ -559,6 +559,7 @@ plugin-tests/                  the repo's ONE pytest scope
   scripts/check_shipped_tree.py
   scripts/check_copilot_models.py
 .claude/skills/openspec-*/     OpenSpec's generated skills
+.agents/skills/openspec-*/     the same OpenSpec skills, generated for agents that read .agents/
 .claude-plugin/                marketplace.json — the Claude Code catalog
 .github/plugin/                marketplace.json — the GitHub Copilot CLI catalog
 ```
@@ -567,7 +568,10 @@ plugin-tests/                  the repo's ONE pytest scope
 `mutants`), and a `pythonpath` that reaches into the plugin, because the scripts under test stay
 shipped and only their tests moved. A guard's batch is found by name: `mutants/hooks/` for a hook,
 `mutants/<skill>/` (no `skills/` level) for a skill's scripts. Sitting beside `tests/` keeps the
-batches from being collected as tests. A batch is optional. `plugin-tests/tests/launcher/` tests
+batches from being collected as tests. A batch is optional. A skill gets a
+`tests/skills/<name>/` folder when it has scripts or spec requirements of its own to prove; a
+prose-only skill with neither has no folder, and its text is checked by the `conformance` and
+`consistency` areas (skill lint, rule ledger, doc facts). `plugin-tests/tests/launcher/` tests
 the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin tree.
 
 ### The guards that police the fact/procedure split
@@ -602,7 +606,9 @@ cannot be justified in one line, it is not a survivor.** (Guard hooks are in sec
 
 Shipped scripts are given relative to `.claude/plugins/cla/` without that prefix: a bare top-level
 path (`lib/...`) for a script outside `skills/`, and a skill-relative path (`<skill>/scripts/...`,
-no leading `skills/`) for a script that belongs to one.
+no leading `skills/`) for a script that belongs to one. The table lists commands. A module that a
+command imports (`spec_proof_*.py`, `render_doc_*.py`, `render_change_*.py`,
+`openspec_change_*.py`) is not a command; the header of the entry point that imports it describes it.
 
 | Script | Why prose can't do it |
 |---|---|
@@ -707,8 +713,9 @@ what enforces it; read that code rather than a copy of it here.
    in the plugin.
 6. **Mutation batch.** `CLAUDE.md`, "Before shipping a change: five checks", decides when. A new case
    in an existing guard is an edit: break it by hand once and confirm a test fails. Rewriting a file
-   under `hooks/` is when `python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/<hook>.py` runs;
-   the batches sit beside the existing ones, named after the guard, outside `tests/`.
+   under `hooks/` is when `python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/test_<hook_name>.py`
+   runs; the batches sit beside the existing ones, named after the guard, outside `tests/` (two guards
+   that share a test file share a batch, as `test_commit_honesty_guards.py` does).
 7. **Document it.** Add a row to the guard table in section 8 and to the one in the plugin README
    (`.claude/plugins/cla/README.md`), and update the leaf-hook counts in the sentence above the table. Shipped guard files stay free of project tokens
    (`skills/_shared/scripts/check_no_project_tokens.py`) and import only the standard library.
