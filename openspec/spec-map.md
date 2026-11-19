@@ -22,7 +22,7 @@ is linked from no workflow step here, or a link points at a spec that does not e
 
 1. Install a pinned release under the `cla` namespace: [plugin-distribution](specs/plugin-distribution/spec.md)
 2. Load the guard hooks that block unsafe commands: [guard-hooks](specs/guard-hooks/spec.md)
-   - Ask before destructive git commands and refuse direct pushes to the default branch: [git-guards](specs/git-guards/spec.md)
+   - Ask before destructive git commands, and refuse direct pushes to the default branch and deleting or moving a remote tag: [git-guards](specs/git-guards/spec.md)
    - Warn about risky actions: [guard-warnings](specs/guard-warnings/spec.md)
 3. Run setup to create the repo's facts, overlays and economy rules, and ask the test-proof question: [cla-setup](specs/cla-setup/spec.md)
 4. Keep the repo's facts, overlays and recorded paths true: [repo-context](specs/repo-context/spec.md)
