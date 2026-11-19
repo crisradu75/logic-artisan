@@ -439,6 +439,39 @@ def test_enforcing_hooks_fit_inside_the_handler_budget(dispatcher):
     )
 
 
+def test_per_part_enforcing_hooks_spawn_nothing():
+    """The sum above counts each hook once, which holds only for a hook that
+    runs once.
+
+    The Bash dispatcher runs every hook not in `_READS_COMMAND_ONLY` on the
+    command AND on each wrapper part `_shell_read.guard_parts` finds, and the
+    part count has no cap. A skippable hook is re-admitted against the deadline
+    before each part; an enforcing one is never skipped, so its real worst case
+    is its table entry times the part count, unbounded. The only figure that
+    stays inside the budget whatever the count is zero: no subprocess.
+    """
+    lib = _load_dispatch_lib()
+    dispatcher_path = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
+    command_only = _named_collection(dispatcher_path, "_READS_COMMAND_ONLY")
+    skippable = _named_collection(dispatcher_path, "_ADVISORY_HOOKS") | _best_effort(dispatcher_path)
+    per_part_enforcing = [
+        name for name in _hook_files_list(dispatcher_path)
+        if name not in skippable and name not in command_only
+    ]
+    assert per_part_enforcing, "no enforcing hook runs per part: this test checks nothing"
+    costly = {
+        name: lib.HOOK_WORST_CASE_SECONDS[name]
+        for name in per_part_enforcing
+        if lib.HOOK_WORST_CASE_SECONDS[name] != 0.0
+    }
+    assert not costly, (
+        f"these enforcing hooks run once per wrapper part, with no cap on the "
+        f"part count, and spend time in subprocesses: {costly}. List one in "
+        "`_READS_COMMAND_ONLY` if it reads the command alone, or give it one "
+        "deadline shared across all its parts and make it best-effort."
+    )
+
+
 @pytest.mark.parametrize("dispatcher", _DISPATCHERS)
 def test_every_advisory_hook_is_admissible_on_an_idle_budget(dispatcher):
     """No advisory hook may be structurally impossible to run.
@@ -611,8 +644,10 @@ def test_skippable_hooks_run_after_every_enforcing_hook_in_the_bash_dispatcher()
 
 def test_the_bash_dispatcher_declares_the_git_probing_ask_hooks_best_effort():
     # Non-vacuity for the test above. These hooks were declared best-effort when
-    # the enforcing hooks spent the whole budget; 6s is free since
-    # `ask-destructive-git.py`'s probes share one deadline, room for one of them.
+    # the enforcing hooks spent the whole budget. 6s is free since
+    # `ask-destructive-git.py`'s probes share one deadline, but only for a hook
+    # in `_READS_COMMAND_ONLY`; both of these read wrapper parts too
+    # (`test_per_part_enforcing_hooks_spawn_nothing`).
     assert _best_effort(_HOOKS_DIR / "dispatch-bash-pretooluse.py") == {
         "ask-broad-git-add.py", "ask-staged-debug-tag.py",
     }
