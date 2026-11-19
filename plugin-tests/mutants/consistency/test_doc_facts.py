@@ -37,8 +37,8 @@ MUTANTS = [
         # README, the doc a consuming repo actually reads.
         "the plugin README names a guard hook that does not exist",
         PLUGIN / "README.md",
-        "**Blocks:** `block-cd-in-bash` (",
-        "**Blocks:** `block-cd-in-shell` (",
+        "| **Block**: the call does not run | `block-cd-in-bash` |",
+        "| **Block**: the call does not run | `block-cd-in-shell` |",
         TARGETS,
     ),
     (
@@ -105,8 +105,8 @@ MUTANTS = [
         # misaligned from that row down. Killed by the cell-count assertion.
         "an unmarked row loses its invocation cell",
         PLUGIN / "README.md",
-        "| `lite-pr` | you or Claude | Lightweight",
-        "| `lite-pr` | Lightweight",
+        "| | `lite-pr` | you or Claude | The default path",
+        "| | `lite-pr` | The default path",
         TARGETS,
     ),
     (

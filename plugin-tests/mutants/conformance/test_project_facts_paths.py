@@ -66,8 +66,8 @@ MUTANTS = [
     (
         "reporting stops at the first stale path instead of naming them all",
         CHECKER,
-        '        print(f"{rel}:{lineno}  stale path {candidate!r}")',
-        '        print(f"{rel}:{lineno}  stale path {candidate!r}"); break',
+        '        print(f"{rel}:{lineno}  stale path {candidate!r}{_stale_hint(candidate, tracked)}")',
+        '        print(f"{rel}:{lineno}  stale path {candidate!r}{_stale_hint(candidate, tracked)}"); break',
         TARGETS,
     ),
     (
@@ -139,8 +139,8 @@ MUTANTS = [
     (
         "a TRACKED machine-local-named file is skipped like an untracked one",
         CHECKER,
-        "    if tracked is None:",
-        "    if True:",
+        "    if tracked is None:" + _NL + "        return True",
+        "    if True:" + _NL + "        return True",
         TARGETS,
     ),
     (
@@ -174,7 +174,7 @@ MUTANTS = [
     (
         "the missing-index warning stops being printed",
         CHECKER,
-        '    if _tracked_paths(repo_root) is None and (repo_root / ".git").exists():',
+        '    if tracked is None and (repo_root / ".git").exists():',
         "    if False:",
         TARGETS,
     ),

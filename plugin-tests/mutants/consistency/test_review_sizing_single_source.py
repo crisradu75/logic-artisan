@@ -53,59 +53,43 @@ MUTANTS = [
     (
         "revise.md brings back round 2 after any fix commit",
         REVISE,
-        "Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it.",
-        "Round 2 runs whenever round 1 committed fixes,",
+        "Round 2 runs only after round 1 applied a protected-area fix (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`), and the cap allows it.",
+        "Round 2 runs whenever round 1 committed fixes, and the cap allows it.",
         TARGETS,
     ),
     (
         "the exit gate runs another round after any committed fix",
         REVISE,
-        "unless this round fixed a Critical, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows another round",
+        "unless this round applied a protected-area fix, and the cap allows another round",
         "unless this round committed fixes and the cap allows another round",
         TARGETS,
     ),
     (
         "the Flags row brings back round 2 after any fix commit",
         S2P,
-        "round 2 runs only after round 1 fixed a Critical, or an Important on a high-risk PR; `1` opts out",
+        "round 2 runs only after round 1 applied a fix that touches a protected area (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`); `1` opts out",
         "round 2 runs whenever round 1 committed fixes; `1` opts out",
         TARGETS,
     ),
     (
         "the Revise stub brings back round 2 after any fix commit",
         S2P,
-        "round 2 runs only after round 1 fixed a Critical, or an Important on a high-risk PR, scoped to that fix diff.",
+        "round 2 runs only after round 1 applied a fix touching a protected area, scoped to that fix diff.",
         "round 2 runs whenever round 1 committed fixes, scoped to that fix diff.",
         TARGETS,
     ),
-    (
-        "revise.md drops round 2 after a high-risk Important fix",
-        REVISE,
-        "Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it.",
-        "Round 2 runs only after round 1 fixed a Critical finding and the cap allows it.",
-        TARGETS,
-    ),
-    (
-        "the exit gate drops round 2 after a high-risk Important fix",
-        REVISE,
-        "unless this round fixed a Critical, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows another round",
-        "unless this round fixed a Critical and the cap allows another round",
-        TARGETS,
-    ),
-    (
-        "the exit gate runs round 2 after a low-risk Important fix",
-        REVISE,
-        "On a low-risk pull request, a round whose fixes were all Important or lower does not trigger another.",
-        "A round whose fixes were all Important or lower triggers another.",
-        TARGETS,
-    ),
-    (
-        "the sizing section drops round 2 after a high-risk Important fix",
-        ROUTING,
-        "fixed a Critical finding, or an Important\none on a high-risk pull request, judged at round 1's final level, after any raise or missing-line default (or a re-entry for still-open\nfindings),",
-        "fixed a Critical finding (or a re-entry for still-open\nfindings),",
-        TARGETS,
-    ),
+    # Removed: "revise.md drops round 2 after a high-risk Important fix", "the exit gate drops
+    # round 2 after a high-risk Important fix" and "the sizing section drops round 2 after a
+    # high-risk Important fix". The Critical-or-high-risk-Important trigger they planted
+    # against is gone; round 2's one trigger is now a protected-area fix, which the "...brings
+    # back round 2 after any fix commit" mutants above plant against. The prose beside it (the
+    # re-entry arm, the resume fail-safe sentence, the guard-hook item in the protected-area
+    # list) was tried as a stand-in and SURVIVED: no test pins those sentences, so they are
+    # not planted here.
+    # Removed: "the exit gate runs round 2 after a low-risk Important fix". The low-risk
+    # versus high-risk Important split it planted against is gone: round 2's one trigger is
+    # now a protected-area fix. The nearest bug, the exit gate running a round after any
+    # committed fix, is the mutant "the exit gate runs another round after any committed fix".
     (
         "the economy rules drop the long-chat handoff",
         ECONOMY,
@@ -113,25 +97,22 @@ MUTANTS = [
         "keep going in the same session and",
         TARGETS,
     ),
-    (
-        "revise.md's cap sentence judges risk by the literal Risk line again",
-        REVISE,
-        "(high at round 1's final level), and the cap allows it.",
-        "(its `Risk:` line), and the cap allows it.",
-        TARGETS,
-    ),
+    # Removed: "revise.md's cap sentence judges risk by the literal Risk line again". The cap
+    # sentence no longer names a risk level at all (it names only the protected-area trigger),
+    # so there is nothing in it to revert. The level pin lives in Round N, which
+    # "revise.md judges risk by the literal Risk line again" and "round N re-judges risk ..." cover.
     (
         "revise.md judges risk by the literal Risk line again",
         REVISE,
-        "(high at round 1's final level), and the cap allows another round",
-        "(its `Risk:` line), and the cap allows another round",
+        "at round 1's final level (never lower), per",
+        "at the literal level (its `Risk:` line), per",
         TARGETS,
     ),
     (
-        "multi-pr's caps question drops the high-risk Important arm",
+        "multi-pr's caps question brings back round 2 after any fix commit",
         DISCOVER_AND_GATE,
-        "round 2 after a fixed Critical, or a fixed Important on a high-risk PR, scoped to that fix;",
-        "round 2 after a fixed Critical, scoped to that fix;",
+        "round 2 after a protected-area fix, scoped to that fix;",
+        "round 2 after any committed fix, scoped to that fix;",
         TARGETS,
     ),
     (
@@ -291,8 +272,8 @@ MUTANTS = [
     (
         "round N re-judges risk from the smaller fix diff",
         REVISE,
-        "with the same reviewers and models as round 1, at round 1's final level (never lower),",
-        "with the same reviewers and models as round 1, for the fix diff's own risk,",
+        "gives for round 1's final level. A later round never uses a lower level than round 1.",
+        "gives for the fix diff's own risk.",
         TARGETS,
     ),
     (
@@ -305,8 +286,8 @@ MUTANTS = [
     (
         "the sizing section lets round 2 drop below round 1's level",
         ROUTING,
-        "at round 1's final level, never lower.",
-        "for the fix diff's own risk.",
+        "at round 1's final level, never lower",
+        "for the fix diff's own risk",
         TARGETS,
     ),
 ]

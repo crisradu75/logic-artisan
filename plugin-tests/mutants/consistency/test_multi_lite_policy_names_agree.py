@@ -109,8 +109,8 @@ MUTANTS = [
     (
         "a zero exit code is trusted as a merge",
         SHARED,
-        "`state` must be `MERGED`. Otherwise:",
-        "The exit code already confirmed the merge; read `mergeCommit` for the ledger. If it is empty:",
+        "`state` must be `MERGED` (exit 0), into",
+        "The exit code already confirmed the merge; read `mergeCommit` for the ledger (exit 0), into",
         TARGETS,
     ),
     (
@@ -137,7 +137,7 @@ MUTANTS = [
     (
         "8b stops requiring a clean tree before the gate",
         SHARED,
-        "Then `git status --porcelain -- . ':(exclude)cla.io/retro'` must be empty; anything listed would be tested by the gate below without being part of the merge, so do not merge; the reason is `uncommitted changes`.",
+        "- `git status --porcelain -- . ':(exclude)cla.io/retro'` must be empty; anything listed would be tested by the gate below without being part of the merge, so do not merge; the reason is `uncommitted changes`.",
         "",
         TARGETS,
     ),

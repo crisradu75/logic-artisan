@@ -141,22 +141,22 @@ MUTANTS = [
     (
         "a resumed change goes back to spec-to-pr without comparing its head",
         PR_LOOP,
-        "gets the head comparison in `chain-merge.md` \"Record the head\" before step 2 hands it back to `/cla:spec-to-pr`: a different head is `head moved since review` — a Tier A halt if a later change needs it merged, else left open with that reason.",
-        "goes to step 2, which hands it back to `/cla:spec-to-pr`.",
+        "A different head is `head moved since review`; that, any other reason exit 1 prints, and `chain check could not run",
+        "`chain check could not run",
         TARGETS,
     ),
     (
         "step 4's commit no longer becomes the recorded head",
         PR_LOOP,
-        "Push it, then run the three commit checks in `chain-merge.md` \"Record the head\", which make it the new `head_sha`.",
+        "Push it, then run `python3 \"${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/chain_check.py\" fix-pushed --notes <run notes> --id <name>`, the three commit checks in `chain-merge.md` \"Record the head\", which make it the new `head_sha`.",
         "Push it.",
         TARGETS,
     ),
     (
         "a failed commit check in step 4 neither halts nor leaves the PR open",
         PR_LOOP,
-        "with the reason `fix not committed` or `push not verified`: a change a later one needs merged is a Tier A halt (step 3); an independent one is left open with that reason in its row.",
-        "and the chain moves on.",
+        "A failed check leaves the finding unresolved, with the reason its first line prints (`fix not committed` or `push not verified`, or `chain check could not run: <first line>` on exit 2): a change a later one needs merged is a Tier A halt (step 3); an independent one is left open with that reason in its row.",
+        "A failed check and the chain moves on.",
         TARGETS,
     ),
     (
