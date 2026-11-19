@@ -48,6 +48,11 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 - **Specs for `diagnose` and `codify-learnings`** (`failure-diagnosis`, `session-learnings`) (#557).
 - **The conformance check fails a shipped file that cites this repo's issue or PR numbers** (#555).
 
+- **Hook internals are split by concern, with no behaviour change.** The shell-text helpers move from
+  `hooks/_dispatch_lib.py` to the new `hooks/_shell_text.py`; `ask-destructive-git.py` imports only
+  the names it uses; `_shell_read.py` and `_git_commit_args.py` get unit tests; a test holds the
+  per-part hook budget (#565).
+
 ### Fixed
 
 - **`save-permissions` merges into any settings file safely.** A `settings.local.json` with no
