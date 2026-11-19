@@ -4060,3 +4060,71 @@ def test_a_long_wrapped_command_is_read_inside_the_work_cap(monkeypatch, capsys)
     # A long value is walked twice, where it is assigned and in the line it fills:
     # more than the command's own length plus the slack, and inside the cap.
     assert _run("X=" + "a" * 20000 + "; git push origin $X", monkeypatch, capsys) is None
+
+
+# --- backticks that close a span opened before `git` ------------------------------
+# Prose quotes git commands in backticks. In `` run `git status` here `` the
+# backtick after `status` closes a span that opened before `git`; reading it as a
+# substitution inside the word asked on every heredoc commit message or PR body
+# that quoted a git command.
+
+
+# requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git commit -F - <<'EOF'\nfix: don't trust `git status` here\nEOF",
+        "gh pr create --title t --body-file - <<'EOF'\nIt's fixed; run `git log` to see.\nEOF",
+        "cat > notes.md <<'EOF'\nthe framework's temp dir\nextract with `git archive`, then run\nEOF",
+        "git commit -F - <<'EOF'\nsee `git branch -m`, which renamed it\nEOF",
+        # outside a heredoc the span is read: the flag ends at its backtick
+        "echo `git branch -m`, which renamed it",
+        "echo it's `git branch -a` that lists step 2's `-d` and `-D` here",
+        "git commit -F - <<'EOF'\nit's `git push origin x`, then `git reset --soft HEAD~1`\nEOF",
+    ],
+)
+def test_a_backtick_after_a_quoted_git_command_stays_silent(command, monkeypatch, capsys):
+    assert _run(command, monkeypatch, capsys) is None, command
+
+
+# requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("git `echo push` -f origin x", hook.UNRESOLVED_REASON),
+        ("git push -f`echo` origin x", _FORCE),
+        # the flag before a closing backtick is still read
+        ("echo `git branch topic -D` here", _DELETE),
+    ],
+)
+def test_a_backtick_that_opens_a_substitution_still_counts(command, expected, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is not None, command
+    assert expected in _reason(payload)
+
+
+def _shipped_prose() -> list[Path]:
+    """Every shipped `.md` in the plugin and every `docs/*.md`, read from the
+    tree at test time: the text a chain quotes in commit messages and PR bodies."""
+    root = _HOOKS_DIR.parents[3]
+    return sorted([*(_HOOKS_DIR.parent).rglob("*.md"), *(root / "docs").glob("*.md")])
+
+
+_PROSE = _shipped_prose()
+
+
+def test_the_prose_corpus_is_not_empty():
+    assert len(_PROSE) > 20, _PROSE
+
+
+# requirement: git-guards / A git subcommand or flag from an unresolved expansion asks first
+@pytest.mark.parametrize(
+    "path", _PROSE, ids=[str(p.relative_to(_HOOKS_DIR.parents[3])) for p in _PROSE]
+)
+def test_shipped_prose_in_a_heredoc_is_read_in_full(path):
+    """A commit message or PR body built from this repo's own prose is never
+    unreadable. It may still ask for a destructive command it quotes (the same
+    asks as before the expansion reading existed); only the reason `_expand`
+    adds, for text it could not read, is checked here."""
+    command = "git commit -F - <<'EOF'\n" + path.read_text(encoding="utf-8") + "\nEOF"
+    assert hook._scan(command)[2] is None
