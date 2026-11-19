@@ -232,3 +232,13 @@ def test_the_precondition_block_names_every_command_the_documented_gate_runs():
         "preconditions have drifted apart, exactly the drop this test exists "
         "to catch"
     )
+
+
+def test_step_1_names_the_server_side_tag_guard_without_making_it_a_precondition():
+    """`pre-push` guards only the clones that installed it; the GitHub web UI, the API and an
+    unhooked clone can still move a tag. Step 1 names the tag ruleset as the server-side guard,
+    and says it is the owner's setting, so a missing ruleset never blocks a release."""
+    body = _SKILL_MD.read_text(encoding="utf-8")
+    step1 = " ".join(body.split("## Step 1", 1)[1].split("## Step 2", 1)[0].split())
+    assert "server-side guard is a GitHub tag ruleset restricting updates and deletions of `cla--v*`" in step1
+    assert "It is not a precondition: the owner sets it" in step1

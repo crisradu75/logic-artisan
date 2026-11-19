@@ -54,6 +54,8 @@ python3 .claude/skills/release/scripts/check_copilot_models.py
 | `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
 | `check_copilot_models.py` exits 0 | It verifies generated Copilot agent copies stay in step with their Claude sources and inherit the session model instead of pinning account-specific IDs. A source model alias without a defined inheritance policy, a stale profile, or an explicit Copilot model refuses the release. It is local-only; exit 2 means the sources could not be checked. Fix the source alias policy and regenerate the copies in a PR first, never as part of the release. |
 
+The invariant's server-side guard is a GitHub tag ruleset restricting updates and deletions of `cla--v*` (DEVELOPER-GUIDE §8); `pre-push` covers only the clones that installed it. It is not a precondition: the owner sets it, and `gh api repos/{owner}/{repo}/rulesets` shows whether it exists.
+
 Resolve the default branch, never assume it: `git symbolic-ref --quiet refs/remotes/origin/HEAD`
 (take the segment after the last `/`); if unset, use whichever of `main` / `master`
 exists.

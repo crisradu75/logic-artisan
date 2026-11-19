@@ -60,7 +60,11 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   or moving a tag the remote already has, so a published release tag stays put. `--no-verify`
   skips it, and the documented overrides `ALLOW_PUSH_TO_MAIN=1` and `ALLOW_TAG_REWRITE=1` each lift
   one refusal; a session is asked first. A `git push --mirror` deletion never reaches the hook
-  ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet)).
+  ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet)). The hook is client-side:
+  it guards only a clone that installed it, so the GitHub web UI, the API or an unhooked clone can
+  still delete or move a tag. The server-side guard is a GitHub tag ruleset that restricts updates
+  and deletions of `cla--v*`; setting it is the owner's call
+  ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet) gives the settings).
 - **An allowlist decides what ships.** The obvious denylist was measured to miss 7 of 72 dev-only
   files, including the release skill itself. An 18-pattern allowlist is checked before every tag
   ([the script](.claude/skills/release/scripts/check_shipped_tree.py) records the measurement).

@@ -135,6 +135,14 @@ cp "<plugin>/hooks/git/pre-push" .git/hooks/pre-push && chmod +x .git/hooks/pre-
 
 Until you run that, nothing stops a direct push.
 
+**The hook guards only the clones that installed it.** The GitHub web UI, the REST API and a clone
+without the hook can still delete or move a tag, or push to the default branch. A GitHub ruleset
+is the server-side guard, set by the repo's owner: **Settings → Rules → Rulesets → New tag
+ruleset**, **Enforcement status** Active, a target that includes the pattern your release tags
+follow, and **Restrict updates** plus **Restrict deletions** on (leave **Restrict creations** off,
+so a new release can still push its tag). A branch ruleset on the default branch is the
+counterpart for direct pushes.
+
 **What the guards are, and what they are not.** They catch an agent's mistakes; they are not a
 sandbox, and a determined or confused command can get past them:
 
