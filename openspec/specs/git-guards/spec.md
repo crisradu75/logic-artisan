@@ -263,7 +263,7 @@ The guard hooks SHALL ask the user before a git command they would ask about whe
 
 ### Requirement: A git subcommand or flag from an unresolved expansion asks first
 
-The guard hooks SHALL read a git subcommand, or a push, reset or branch option, that a variable assigned a plain value in the same command supplies as that value, and SHALL ask the user when the subcommand, or an unquoted option of a push, reset or branch before its first operand, comes from an expansion they cannot resolve.
+The guard hooks SHALL read a git subcommand, or a push, reset or branch option, that is quoted, or that a variable assigned a plain value in the same command supplies, as its value, and SHALL ask the user when the subcommand, an option whose literal start is `-`, or an unquoted option of a push, reset or branch before its first operand comes from an expansion they cannot resolve.
 
 #### Scenario: A subcommand from a variable set in the command
 
@@ -279,3 +279,22 @@ The guard hooks SHALL read a git subcommand, or a push, reset or branch option, 
 
 - **WHEN** an agent runs `git push origin "$BRANCH"`
 - **THEN** no prompt is shown
+
+#### Scenario: A force flag with an unknown expansion glued on
+
+- **WHEN** an agent runs `git push --force$X origin x` and nothing in the command sets `X`
+- **THEN** the user is asked before it runs
+
+#### Scenario: A quoted force flag
+
+- **WHEN** an agent runs `git push "-f" origin x`
+- **THEN** the user is asked before it runs, as for a force-push
+
+### Requirement: A long command is read within the guard's time
+
+The guard hooks SHALL finish reading any command up to the dispatcher's scan limit well inside the hook handler's timeout, and SHALL ask the user when a command needs more reading than they allow, rather than run into the timeout, which lets the call run unchecked.
+
+#### Scenario: A long run of shell wrappers
+
+- **WHEN** an agent runs a command of hundreds of thousands of characters of repeated `eval` words followed by `git push -f origin x`
+- **THEN** the user is asked before it runs, within two seconds of the guard's processing time

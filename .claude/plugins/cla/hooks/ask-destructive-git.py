@@ -167,13 +167,15 @@ Detection scope
 - Every shape above also when a shell wrapper runs it from quoted text
   (`bash -c "..."`, `sh -c`, `zsh -c`, `eval "..."`, `pwsh -Command`,
   `-EncodedCommand`, `Invoke-Expression`/`iex`, `cmd /c`), nested up to three
-  deep, and when a git subcommand or a `push`/`reset`/`branch` flag comes from a
-  `$NAME` the same command assigns a literal (`X=push; git $X -f`). A git
-  subcommand from any other expansion (`git $X`, `git "$@"`, `git $(...)`), or
-  an unquoted unassigned `$NAME` among a push, reset or branch's options
-  (`git push $F origin x`), asks as unresolved. `_expand` has the rules and
-  the named misses; `bash -c "git status"` and `eval "$(ssh-agent)"` stay
-  silent.
+  deep (a fourth level asks), when a git subcommand or a `push`/`reset`/`branch`
+  flag is quoted (`git push "-f"`) or comes from a `$NAME` the same command
+  assigns a literal (`X=push; git $X -f`). A git subcommand from any other
+  expansion (`git $X`, `git "$@"`, `git pu$X`), a flag with an unknown
+  expansion glued on (`--force$X`), or an unquoted unassigned `$NAME` among a
+  push, reset or branch's options (`git push $F origin x`), asks as
+  unresolved. `_expand` has the rules and the named misses; `bash -c "git
+  status"` and `eval "$(ssh-agent)"` stay silent. Its reading is linear and
+  capped, so no command keeps the hook past its handler timeout.
 
 `--force-with-lease` and `--force-if-includes` are deliberately NOT matched:
 they are the guarded forms that refuse to clobber an unseen remote update, and
@@ -231,6 +233,7 @@ from __future__ import annotations
 
 import base64
 import functools
+import itertools
 import json
 import os
 import re
@@ -1121,6 +1124,8 @@ def _unquote(word: str) -> str:
     (ANSI-C escapes), `$"..."` and backslashes, at any point in the word, so
     `ma"in"`, `$'main'` and `--rebase="false"` read as `main` and `--rebase=false`.
     An unterminated quote runs to the end of the word."""
+    if "'" not in word and '"' not in word and "\\" not in word:
+        return word  # every piece would be plain text
     out: list[str] = []
     for m in _QUOTED.finditer(word):
         ansi, single, double, escaped, plain = m.groups()
@@ -1554,40 +1559,56 @@ def _history_reasons(command: str, scanned: str, cwd: str, started: float) -> li
 #
 # - A WRAPPER's argument words are read, unquoted, joined and appended to the
 #   command as a line of their own, and wrappers inside that line are read the
-#   same way, `_WRAP_DEPTH` levels deep. A body is appended only when it holds
-#   `git` or `gh`, so `eval "$(ssh-agent)"` costs nothing. A wrapper word is
-#   found outside quotes wherever it sits, so `echo bash -c 'git push -f'` asks
-#   too: one extra prompt on a command that names a destructive one, rather than
-#   a list of every prefix that can run a command.
-# - A git at a command's start whose SUBCOMMAND is quoted or comes from `$...`
-#   or a backtick is rewritten with the value: a quoted literal is unquoted,
-#   and a `$NAME` assigned a literal in the same command (`NAME=v`, `export`,
-#   PowerShell `$NAME = 'v'`) is tried with each value it is given. Anything
-#   else (an unassigned, computed or positional name, `$(...)`) asks:
-#   `UNRESOLVED_REASON`.
-# - The same for a `$NAME` in the arguments of `git push`, `git reset` and
-#   `git branch`, whose flags alone decide a prompt. An unquoted name that
-#   cannot be resolved asks only while no plain operand has been seen
-#   (`git push $F origin x`); after one (`git push origin $BRANCH`, the common
-#   shape) it is left alone. A quoted `"$NAME"` is one word, the way a value is
-#   passed (`git branch "$NAME"`), and a `$(...)` is a computed value; neither
-#   asks. Known misses, named: a flag from an expansion after an operand or in
-#   double quotes, a refspec from one (`+main`), a command name from one
-#   (`$CMD push -f`), a
-#   quoted `git` (`'git' push -f`), and a prefix command that takes a value
-#   (`timeout 60 git $X`), which hides the command's start.
+#   same way, `_WRAP_DEPTH` levels deep; a wrapper deeper than that asks
+#   (`WRAP_DEPTH_REASON`). A body is appended only when it holds `git` or `gh`,
+#   so `eval "$(ssh-agent)"` costs nothing. A wrapper word is found outside
+#   quotes wherever it sits, so `echo bash -c 'git push -f'` asks too: one extra
+#   prompt on a command that names a destructive one, rather than a list of
+#   every prefix that can run a command. A wrapper among the words of the
+#   wrapper before it is read at the next depth, not again at this one.
+# - A git at a command's start whose SUBCOMMAND word holds a quote, a `$` or a
+#   backtick anywhere (`git "push"`, `git $X`, `git pu$X"sh"`) is rewritten
+#   with the word's value: quotes are removed, and each `$NAME` assigned a
+#   literal in the same command (`NAME=v`, `export`, PowerShell `$NAME = 'v'`)
+#   is tried with each value it is given. Anything else (an unassigned,
+#   computed or positional name, `$(...)`) asks: `UNRESOLVED_REASON`.
+# - The same for the words of `git push`, `git reset` and `git branch`, whose
+#   flags alone decide a prompt. A quoted or escaped word whose value starts
+#   with `-` or `+` (`"-f"`, `'+main'`) is read unquoted. A word with an
+#   expansion is resolved the same way; when it cannot be, its literal start
+#   decides: `+` is a forced refspec whatever follows, `--name=` names the flag
+#   whatever follows, any other `-` (`--force$X`, `-D$X`) asks. A word that
+#   starts with the expansion asks only when it is an unquoted `$NAME` before
+#   any plain operand (`git push $F origin x`); after one
+#   (`git push origin $BRANCH`, the common shape) it is left alone. A quoted
+#   `"$NAME"` is one word, the way a value is passed (`git branch "$NAME"`),
+#   and a `$(...)` is a computed value; neither asks. Known misses, named: a
+#   flag from a whole-word expansion after an operand or in double quotes, a
+#   refspec from one (`git push origin $REF` holding `+main`), a command name
+#   from one (`$CMD push -f`), a quoted or escaped `git` (`'git' push -f`), a
+#   subcommand word that starts with a backslash (`git \push -f`), and a prefix
+#   command that takes a value (`timeout 60 git $X`), which hides the
+#   command's start.
 #
 # Appended text goes after a blank line, so no line continuation or tail joins
 # it to the line before, and each part is quote-stripped on its own, so an odd
 # quote in one part cannot pair with one in the next. The result is the command
 # itself whenever nothing was appended, so every other command reads exactly as
 # before. Appended text is capped at the command's own length plus
-# `_EXPAND_SLACK`; past that, or past `_WRAP_DEPTH`, the command asks rather
-# than being read partly.
+# `_EXPAND_SLACK`, and the characters the readers walk at `_WORK_FACTOR` times
+# that; past either, the command asks rather than being read partly.
 _WRAP_DEPTH = 3
 _EXPAND_ROUNDS = 4
 _EXPAND_SLACK = 4096
 _EXPAND_MAX_LINES = 64
+# Every reader below is linear in what it is handed. This bounds a shape that
+# makes them walk the same text again and again: the first version walked the
+# rest of the command once per `eval` in `eval eval eval ...`, and per `X=$(`
+# in `X=$(X=$(...`, and a 20 kB command took longer than the 15 s the handler
+# is given, which Claude Code then ALLOWS. A command that needs these readers
+# walks its text about three times (wrapper words, assignments, rewrites) over
+# at most twice its length, so 8 leaves room for every real one.
+_WORK_FACTOR = 8
 _PART_SEP = "\n\n"
 # Where a command word may start: after a path separator inside the word, or
 # after whitespace, an operator or the start of the text.
@@ -1600,9 +1621,12 @@ _WRAPPER = re.compile(
 # `-EncodedCommand` and its PowerShell spellings: `-e`, `-ec`, `-en` onward.
 _PS_ENCODED = re.compile(r"(?i)-(?:ec|" + _abbrev("encodedcommand", 1) + ")")
 _HAS_GIT = re.compile(r"(?i)git|gh")
-# A `$NAME` or `${NAME}`, optionally inside double quotes: the one expansion
-# shape `_expand` resolves.
+# A `$NAME` or `${NAME}`, optionally inside double quotes: the whole-word
+# expansion shape that asks while it comes before an operand.
 _SINGLE_VAR = re.compile(r'"?\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})"?')
+# The name after a `$`, bare or braced.
+_VAR_NAME = re.compile(r"[A-Za-z_]\w*")
+_VAR_BRACED = re.compile(r"\{([A-Za-z_]\w*)\}")
 # A shell assignment word (`X=`, `export X=`), and a PowerShell one (`$X =`).
 _ASSIGN = re.compile(
     r"(?:^|(?<=[\s;&|(){}`]))(?:(?:export|local|declare|readonly|typeset)[ \t]+"
@@ -1616,12 +1640,33 @@ _LITERAL_VALUE = re.compile(r"[\w ./:+=,@%~^-]*")
 _COMMAND_PREFIXES = frozenset(
     "sudo env command exec time nohup nice xargs builtin then do else elif if while until".split()
 )
-_GIT_SUBCOMMAND_EXPANDED = GitInvocation(r"(?=[$`\"'])", capture_opts=True)
+# A subcommand word holding a quote, a `$` or a backtick anywhere. It does not
+# start with `-`, which is an option the matcher did not take as one
+# (`--git-dir="$D"`), or with a backslash, where `GitInvocation` refuses a
+# pattern that matches.
+_GIT_SUBCOMMAND_EXPANDED = GitInvocation(r"(?!-)(?=[^\s;&|<>()\\]*?[$`\"'])", capture_opts=True)
 # Global options that take the next word as their value. The matcher may read
 # one as a bare flag, which makes its value look like the subcommand.
 _GIT_VALUE_OPT = re.compile(r"-[cC]|--(?:git-dir|work-tree|namespace|super-prefix)")
 _TAIL_RE = re.compile(_TAIL)
 _STOP = frozenset(" \t\r\n;&|<>()")
+# A run of characters `_word_end` steps over one at a time, matched at once.
+_PLAIN_RUN = re.compile(r"[^\\'\"`$ \t\r\n;&|<>()]+")
+
+
+class _OverBudget(Exception):
+    """The readers walked more than `_WORK_FACTOR` allows for this command."""
+
+
+# Characters the readers may still walk; set by `_expand` for each command and
+# unlimited outside it.
+_WORK_LEFT = [float("inf")]
+
+
+def _spend(chars: int) -> None:
+    _WORK_LEFT[0] -= chars
+    if _WORK_LEFT[0] < 0:
+        raise _OverBudget
 
 
 @functools.lru_cache(maxsize=128)
@@ -1631,24 +1676,47 @@ def _stripped(part: str) -> str:
     return _strip_quoted_spans(part)
 
 
+@functools.lru_cache(maxsize=16)
+def _paren_close(text: str) -> dict[int, int]:
+    """The offset of the `)` that closes each `(` in `text`, counted by depth
+    alone, as `_word_end` reads a `$(...)`; an unclosed `(` is absent. One pass
+    per text, so a run of unclosed `$(` is not walked to the end once each."""
+    close: dict[int, int] = {}
+    stack: list[int] = []
+    for m in re.finditer(r"[()]", text):
+        if m.group() == "(":
+            stack.append(m.start())
+        elif stack:
+            close[stack.pop()] = m.start()
+    return close
+
+
 UNRESOLVED_REASON = (
     "a git command whose subcommand or flags come from a shell expansion this "
     "guard cannot resolve (`git $X ...`, `git push $F ...`), so it cannot tell "
     "whether this force-pushes, hard-resets or force-deletes a branch"
 )
 
+WRAP_DEPTH_REASON = (
+    f"a shell wrapper nested more than {_WRAP_DEPTH} deep (`bash -c \"eval '...'\"`), "
+    "whose innermost command this guard does not read, so it cannot tell whether "
+    "it force-pushes, hard-resets or force-deletes a branch"
+)
 
-def _word_end(text: str, i: int) -> int:
-    """End of the shell word that starts at `i`: quotes, backslash escapes,
-    `$(...)` and backtick spans are part of the word; unquoted whitespace or an
-    operator ends it. An unterminated quote runs to the end of the text."""
-    n = len(text)
+
+def _word_end(text: str, i: int, limit: int | None = None) -> int:
+    """End of the shell word that starts at `i`, reading no further than
+    `limit` (the end of `text` when None): quotes, backslash escapes, `$(...)`
+    and backtick spans are part of the word; unquoted whitespace or an operator
+    ends it. An unterminated quote runs to the limit."""
+    n = len(text) if limit is None else limit
+    start = i
     while i < n:
         ch = text[i]
         if ch == "\\":
             i += 2
         elif ch == "'":
-            j = text.find("'", i + 1)
+            j = text.find("'", i + 1, n)
             i = n if j < 0 else j + 1
         elif ch == '"':
             j = i + 1
@@ -1656,36 +1724,33 @@ def _word_end(text: str, i: int) -> int:
                 j += 2 if text[j] == "\\" else 1
             i = j + 1
         elif ch == "`":
-            j = text.find("`", i + 1)
+            j = text.find("`", i + 1, n)
             i = n if j < 0 else j + 1
         elif text.startswith("$(", i):
-            depth, j = 0, i + 1
-            while j < n:
-                depth += (text[j] == "(") - (text[j] == ")")
-                if depth == 0:
-                    break
-                j += 1
-            i = j + 1
+            i = _paren_close(text).get(i + 1, n) + 1
         elif ch in _STOP:
             break
         else:
-            i += 1
-    return min(i, n)
+            plain = _PLAIN_RUN.match(text, i, n)
+            i = plain.end() if plain else i + 1
+    end = min(i, n)
+    _spend(end - start)
+    return end
 
 
-def _command_words(text: str, i: int) -> list[tuple[int, int]]:
+def _command_words(text: str, i: int, limit: int | None = None) -> list[tuple[int, int]]:
     """The `(start, end)` of each word from `i` to the end of its simple
-    command. A redirection operator is skipped (its target stays a word); a
-    line continuation is not an end."""
+    command, or to `limit`. A redirection operator is skipped (its target stays
+    a word); a line continuation is not an end."""
     spans: list[tuple[int, int]] = []
-    n = len(text)
+    n = len(text) if limit is None else limit
     while i < n:
         ch = text[i]
         if ch in " \t":
             i += 1
-        elif ch == "\\" and text.startswith("\n", i + 1):
+        elif ch == "\\" and text.startswith("\n", i + 1, n):
             i += 2
-        elif ch == "\\" and text.startswith("\r\n", i + 1):
+        elif ch == "\\" and text.startswith("\r\n", i + 1, n):
             i += 3
         elif ch in "<>":
             i += 1
@@ -1694,17 +1759,22 @@ def _command_words(text: str, i: int) -> list[tuple[int, int]]:
         elif ch in _STOP:
             break
         else:
-            end = _word_end(text, i)
+            end = _word_end(text, i, n)
             spans.append((i, end))
             i = end
     return spans
 
 
-def _has_expansion(word: str) -> bool:
-    """True when the shell substitutes part of `word`: a `$` that starts a
-    parameter or command substitution, or a backtick, outside single quotes.
-    `$'...'` is a literal: the `'` after its `$` starts no expansion, and the
-    single-quote rule then skips its text."""
+def _expansions(word: str) -> tuple[int, list[tuple[int, int, str]] | None]:
+    """Where the shell substitutes into `word`: the offset of the first
+    expansion (-1 when there is none), and the `(start, end, NAME)` of each
+    `$NAME` or `${NAME}` in it, or None when one is of any other kind (`$(...)`,
+    a backtick, `$1`, `${X:-y}`). An expansion is a `$` that starts a parameter
+    or command substitution, or a backtick, outside single quotes. `$'...'` is
+    a literal: the `'` after its `$` starts no expansion, and the single-quote
+    rule then skips its text."""
+    first = -1
+    names: list[tuple[int, int, str]] = []
     i, n, double = 0, len(word), False
     while i < n:
         ch = word[i]
@@ -1718,11 +1788,24 @@ def _has_expansion(word: str) -> bool:
         if ch == '"':
             double = not double
         elif ch == "`":
-            return True
+            return (i if first < 0 else first), None
         elif ch == "$" and i + 1 < n and (word[i + 1].isalnum() or word[i + 1] in "_{(@*#?!$-"):
-            return True
+            if first < 0:
+                first = i
+            bare = _VAR_NAME.match(word, i + 1)
+            braced = bare is None and _VAR_BRACED.match(word, i + 1)
+            if not bare and not braced:
+                return first, None
+            names.append((i, (bare or braced).end(), bare.group() if bare else braced.group(1)))
+            i = (bare or braced).end()
+            continue
         i += 1
-    return False
+    return first, names
+
+
+def _has_expansion(word: str) -> bool:
+    """True when the shell substitutes part of `word` (see `_expansions`)."""
+    return _expansions(word)[0] >= 0
 
 
 def _at_command_start(scanned: str, start: int) -> bool:
@@ -1739,6 +1822,7 @@ def _at_command_start(scanned: str, start: int) -> bool:
         while i > 0 and scanned[i - 1] in " \t":
             i -= 1
         if i == 0 or scanned[i - 1] in "\n;&|(){}`!":
+            _spend(start - i)
             return True
         end = i
         while i > 0 and scanned[i - 1] not in " \t\n;&|(){}`!":
@@ -1749,6 +1833,7 @@ def _at_command_start(scanned: str, start: int) -> bool:
             or word.startswith("-")
             or re.fullmatch(r"[A-Za-z_]\w*=\S*", word)
         ):
+            _spend(start - i)
             return False
 
 
@@ -1759,8 +1844,14 @@ def _assignments(parts: list[str]) -> dict[str, list[str | None]]:
     for part in parts:
         scanned = _stripped(part)
         for pattern in (_ASSIGN, _PS_ASSIGN):
+            read_to = -1
             for m in pattern.finditer(scanned):
-                end = _word_end(part, m.end())
+                if m.start() < read_to:
+                    # Inside the value before it (`X=$(Y=v)`), which is not a
+                    # literal: its names are not read, and in `X=$(X=$(...`
+                    # each would run to the end of the text.
+                    continue
+                end = read_to = _word_end(part, m.end())
                 raw = part[m.end():end]
                 value: str | None = None
                 # A bare word after PowerShell's `=` is a command it runs
@@ -1778,8 +1869,16 @@ def _wrapper_bodies(part: str) -> list[str]:
     """The text each shell wrapper in `part` hands to a shell: its words after
     the wrapper, unquoted and joined, plus a decoded `-EncodedCommand`."""
     bodies: list[str] = []
+    read_to = -1
     for m in _WRAPPER.finditer(_stripped(part)):
-        words = [_unquote(part[a:b]) for a, b in _command_words(part, m.end())]
+        if m.start() < read_to:
+            # Among the words of the wrapper before it, so in that body, where
+            # the next depth finds it. Reading it here too walked the rest of
+            # the command once per wrapper.
+            continue
+        spans = _command_words(part, m.end())
+        read_to = spans[-1][1] if spans else m.end()
+        words = [_unquote(part[a:b]) for a, b in spans]
         bodies.append(" ".join(words))
         for flag, value in zip(words, words[1:]):
             if _PS_ENCODED.fullmatch(flag):
@@ -1791,27 +1890,42 @@ def _wrapper_bodies(part: str) -> list[str]:
 
 
 def _resolve(raw: str, names: dict[str, list[str | None]]) -> list[str] | None:
-    """The values word `raw` can take, or None when one cannot be known."""
-    if not _has_expansion(raw):
+    """The values word `raw` can take, unquoted, at most `_EXPAND_MAX_LINES + 1`
+    of them; None when one cannot be known: an expansion other than `$NAME`, or
+    a name with no value or one that is not a plain literal."""
+    first, spans = _expansions(raw)
+    if first < 0:
         return [_unquote(raw)]
-    var = _SINGLE_VAR.fullmatch(raw)
-    if var is None:
+    if spans is None:
         return None
-    values = names.get(var.group(1) or var.group(2))
-    if not values or any(v is None for v in values):
-        return None
-    return list(dict.fromkeys(values))
+    choices: list[list[str]] = []
+    for _, _, name in spans:
+        values = names.get(name)
+        if not values or any(v is None for v in values):
+            return None
+        choices.append(list(dict.fromkeys(values)))
+    words: list[str] = []
+    for combo in itertools.islice(itertools.product(*choices), _EXPAND_MAX_LINES + 1):
+        pieces, at = [], 0
+        for (a, b, _), value in zip(spans, combo):
+            pieces += [raw[at:a], value]
+            at = b
+        pieces.append(raw[at:])
+        words.append(_unquote("".join(pieces)))
+    return list(dict.fromkeys(words))
 
 
 def _rewrites(part: str, names: dict[str, list[str | None]]) -> tuple[list[str], bool]:
-    """Lines `part` can stand for once one expansion in a git command is
-    filled in, and whether some expansion could not be resolved."""
+    """Lines `part` can stand for once one expansion or quoted flag in a git
+    command is filled in, and whether some expansion could not be resolved."""
     scanned = _stripped(part)
     lines: list[str] = []
     unresolved = False
 
     def tail_end(at: int) -> int:
-        return _TAIL_RE.match(scanned, at).end()
+        stop = _TAIL_RE.match(scanned, at).end()
+        _spend(stop - at)
+        return stop
 
     for m in _GIT_SUBCOMMAND_EXPANDED.finditer(scanned):
         opts = scanned[m.start(1):m.end(1)].split()
@@ -1834,17 +1948,31 @@ def _rewrites(part: str, names: dict[str, list[str | None]]) -> tuple[list[str],
             if not _at_command_start(scanned, m.start()):
                 continue
             operand = False
-            for a, b in _command_words(part[: m.end(1)], m.start(1)):
+            for a, b in _command_words(part, m.start(1), m.end(1)):
                 raw = part[a:b]
-                if not _has_expansion(raw):
-                    operand = operand or not _unquote(raw).startswith("-")
-                    continue
-                values = _resolve(raw, names)
+                first, _ = _expansions(raw)
+                if first < 0:
+                    value = _unquote(raw)
+                    if value == raw or not value.startswith(("-", "+")):
+                        operand = operand or not value.startswith("-")
+                        continue
+                    values = [value]  # a quoted or escaped flag or refspec
+                else:
+                    values = _resolve(raw, names)
                 if values is None:
-                    unresolved = unresolved or (
-                        not operand and raw.startswith("$") and _SINGLE_VAR.fullmatch(raw) is not None
-                    )
-                    continue
+                    lead = _unquote(raw[:first])
+                    if lead.startswith("+"):
+                        values = [lead + "x"]  # a forced refspec, whatever follows
+                    elif lead.startswith("-") and "=" in lead:
+                        values = [lead[: lead.index("=") + 1] + "x"]  # the flag is named
+                    elif lead.startswith("-"):
+                        unresolved = True
+                        continue
+                    else:
+                        unresolved = unresolved or (
+                            not operand and raw.startswith("$") and _SINGLE_VAR.fullmatch(raw) is not None
+                        )
+                        continue
                 lines += [part[m.start():a] + v + part[b:m.end(1)] for v in values]
                 if len(lines) > _EXPAND_MAX_LINES:
                     return lines, True
@@ -1852,11 +1980,25 @@ def _rewrites(part: str, names: dict[str, list[str | None]]) -> tuple[list[str],
     return lines, unresolved
 
 
-def _expand(command: str) -> tuple[list[str], bool]:
+def _expand(command: str) -> tuple[list[str], str | None]:
     """`command` as a list of parts to read: the command itself, then each
-    wrapper body and each rewritten git line. The flag is True when an
-    expansion could not be resolved or the reading stopped at its cap."""
+    wrapper body and each rewritten git line; and the reason to ask when it
+    could not be read in full (an expansion it could not resolve, a cap it
+    reached), else None."""
     parts = [command]
+    _WORK_LEFT[0] = _WORK_FACTOR * (len(command) + _EXPAND_SLACK)
+    try:
+        return _expand_into(parts)
+    except _OverBudget:
+        return parts, UNRESOLVED_REASON
+    finally:
+        _WORK_LEFT[0] = float("inf")
+
+
+def _expand_into(parts: list[str]) -> tuple[list[str], str | None]:
+    """`_expand`'s reading, adding to `parts` (which holds the command) as it
+    goes, so a reading cut short by `_OverBudget` keeps what it found."""
+    command = parts[0]
     budget = len(command) + _EXPAND_SLACK
     frontier = [command]
     for _ in range(_WRAP_DEPTH):
@@ -1866,10 +2008,10 @@ def _expand(command: str) -> tuple[list[str], bool]:
         parts += frontier
         budget -= sum(len(b) for b in frontier)
         if budget < 0:
-            return parts, True
+            return parts, UNRESOLVED_REASON
     else:
         if any(_wrapper_bodies(p) for p in frontier):
-            return parts, True
+            return parts, WRAP_DEPTH_REASON
     names = _assignments(parts)
     unresolved = False
     seen = set(parts)
@@ -1884,26 +2026,27 @@ def _expand(command: str) -> tuple[list[str], bool]:
                     seen.add(line)
                     new.append(line)
         if not new:
-            return parts, unresolved
+            return parts, UNRESOLVED_REASON if unresolved else None
         parts += new
         budget -= sum(len(line) for line in new)
         if budget < 0 or len(parts) > _EXPAND_MAX_LINES:
-            return parts, True
+            return parts, UNRESOLVED_REASON
         frontier = new
-    return parts, True
+    return parts, UNRESOLVED_REASON
 
 
 @functools.lru_cache(maxsize=4)
-def _scan(command: str) -> tuple[str, str, bool]:
+def _scan(command: str) -> tuple[str, str, str | None]:
     """The text every check reads, its quote-stripped twin (offsets agree),
-    and whether `_expand` met an expansion it could not resolve."""
-    parts, unresolved = _expand(command)
+    and the reason to ask when `_expand` could not read all of it (None when
+    it could)."""
+    parts, unread = _expand(command)
     if len(parts) == 1:
-        return command, _stripped(command), unresolved
+        return command, _stripped(command), unread
     return (
         _PART_SEP.join(parts),
         _PART_SEP.join(_stripped(p) for p in parts),
-        unresolved,
+        unread,
     )
 
 
@@ -1919,7 +2062,7 @@ def _reasons(command: str, cwd: str) -> list[str]:
     lines are part of it from here on, so every check below covers them too.
     """
     started = time.monotonic()
-    command, scanned, unresolved = _scan(command)
+    command, scanned, unread = _scan(command)
     found: list[str] = []
     if any(
         _FORCE_FLAG.search(m.group(1)) or _FORCE_REFSPEC.search(m.group(1))
@@ -1947,8 +2090,8 @@ def _reasons(command: str, cwd: str) -> list[str]:
             "`--force`) — if its commit exists nowhere else it is destroyed, "
             "recoverable only from the reflog and only within its expiry window"
         )
-    if unresolved:
-        found.append(UNRESOLVED_REASON)
+    if unread:
+        found.append(unread)
     # Operands are collected across EVERY matching invocation in the command and
     # asked in one `git status` each, so a `&&` chain of six checkouts is two
     # subprocesses, not twelve. Three is the ceiling: those two plus the shared

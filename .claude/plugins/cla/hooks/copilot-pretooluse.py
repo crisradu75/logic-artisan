@@ -89,6 +89,15 @@ def _dispatch(path: Path, payload: dict) -> tuple[int, str, str, object]:
     return code, stdout.getvalue(), stderr.getvalue(), getattr(module, _FLAG, None)
 
 
+def _flagged_reason(stdout_text: str) -> str:
+    """The reason a dispatcher that set its flag printed, when it printed one."""
+    try:
+        reason = json.loads(stdout_text)["hookSpecificOutput"]["permissionDecisionReason"]
+    except (ValueError, KeyError, TypeError):
+        reason = None
+    return reason if isinstance(reason, str) else "A CLA guard could not run; refusing the call."
+
+
 def _normalize(stdout_text: str, stderr_text: str, code: int, not_run: object) -> int:
     if code == 2:
         return _deny(stderr_text)
@@ -96,6 +105,10 @@ def _normalize(stdout_text: str, stderr_text: str, code: int, not_run: object) -
         return _deny(f"CLA guard dispatcher exited with status {code}; refusing an unchecked call.")
     if not isinstance(not_run, bool):
         return _deny(f"CLA guard dispatcher reports no `{_FLAG}` flag; refusing an unchecked call.")
+    if not_run:
+        # Before the output is read: a call no guard checked is denied whatever
+        # the dispatcher printed, nothing or malformed text included.
+        return _deny(_flagged_reason(stdout_text))
     if not stdout_text.strip():
         return 0
 
@@ -114,8 +127,6 @@ def _normalize(stdout_text: str, stderr_text: str, code: int, not_run: object) -
 
     decision = nested.get("permissionDecision")
     reason = nested.get("permissionDecisionReason")
-    if not_run:
-        return _deny(reason if isinstance(reason, str) else "A CLA guard could not run; refusing the call.")
     if decision == "ask":
         if not isinstance(reason, str) or not reason.strip():
             return _deny("CLA guard dispatcher requested confirmation without a reason; refusing the call.")

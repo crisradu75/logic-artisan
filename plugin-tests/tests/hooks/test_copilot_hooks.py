@@ -551,6 +551,15 @@ def test_copilot_pretooluse_denies_a_dispatcher_without_the_flag(tmp_path):
             "GUARD_NOT_RUN")
 
 
+@pytest.mark.parametrize("printed", ["", "not json", "[1]"])
+def test_copilot_pretooluse_denies_a_flagged_call_whatever_it_printed(tmp_path, printed):
+    """The flag is read before the output: a dispatcher that flags a guard as not
+    run and prints nothing, or no decision, is denied, not allowed."""
+    body = "GUARD_NOT_RUN = False\ndef main():\n    global GUARD_NOT_RUN\n    GUARD_NOT_RUN = True\n"
+    body += f"    print({printed!r}, end='')\n    return 0\n"
+    _denied(_pre_with_fake(tmp_path, body), "could not run")
+
+
 def test_copilot_pretooluse_keeps_the_oversize_ask_an_ask(tmp_path):
     """The one unchecked call that stays an ask: it sets no flag."""
     root, adapter = _copy_adapter_tree(tmp_path)

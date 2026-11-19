@@ -358,11 +358,10 @@ def _swept_files(invocations: list[_Invocation]) -> list[str]:
 
 
 def _quote_name(path: str) -> str:
-    """A file name with whitespace and control characters escaped.
-
-    The Copilot adapter turns an ask whose reason contains "did not run" or
-    "could not run" into a deny; an escaped space (`\\x20`) keeps a file name
-    from spelling either phrase.
+    """A file name with whitespace and control characters escaped (a space as
+    `\\x20`), so a name cannot break the reason's line or pass for text of its
+    own. The Copilot adapter reads the dispatcher's `GUARD_NOT_RUN` flag, not the
+    reason's words, so no name can turn this ask into a deny.
     """
     escaped = path[:200].encode("unicode_escape").decode("ascii", "replace")
     return escaped.replace(" ", "\\x20")
