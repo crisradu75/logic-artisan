@@ -160,7 +160,7 @@ _MACHINE_LOCAL_SEGMENT_RE = re.compile(r"[^/]\.local(?:\.|$)")
 # not contain — a general bare-filename check false-positives on exactly that (seen
 # for real: `package-lock.json` in a "no longer exists" sentence, `telemetry.json`
 # and `journal.jsonl` as external-tool artifacts). Only `/`-bearing repo-relative
-# paths, whose intent is unambiguous, are checked. (See PR #158.)
+# paths, whose intent is unambiguous, are checked.
 
 
 def _repo_root_from_here() -> Path | None:
@@ -177,7 +177,7 @@ def _repo_root_from_here() -> Path | None:
     `.claude` ancestor is the user's GLOBAL one and the function returned the
     user's HOME DIRECTORY. Both guards in this scope then looked for
     `cla.io/…` under `~`, found nothing, and skipped — green while checking
-    nothing, in every marketplace install simultaneously (upstream issue #52).
+    nothing, in every marketplace install simultaneously.
 
     Two things made that unrecoverable rather than merely wrong: the `.claude`
     walk SUCCEEDED, so the git fallback below was never reached; and the
@@ -233,7 +233,7 @@ def _strip_wrapping(token: str) -> str:
         # `claude/hooks/…`, whose first segment matches no tracked top-level
         # entry, so `_keep_if_path` dropped it and the guard never checked it.
         # Measured: 183 candidates checked, 0 stale, while four genuinely dead
-        # `.claude/`-rooted paths sat in the scanned files (upstream issue #53).
+        # `.claude/`-rooted paths sat in the scanned files.
         # A TRAILING dot is still decoration (a sentence-ending period).
         if token and token[0] in _WRAP_CHARS and token[0] != ".":
             token = token[1:]

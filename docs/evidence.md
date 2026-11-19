@@ -328,6 +328,24 @@ test in `tests/skills/_shared/test_check_spec_proof.py:1380` (skips on Linux/mac
 the plugin is an installed copy rather than this repo's working tree. These are why the count differs between machines: expect a different one on
 Linux or macOS, and treat the figure above as Windows-only.
 
+**Linux, 2026-11-19.** A full parallel run (`pytest plugin-tests -q -n 4 --dist loadfile -rs`) on
+`main` at `d27a0ea` with the project-review follow-up PRs merged reported 14 skips. The reasons
+come from the run's own `-rs` lines, not from a grep:
+
+| Test(s) | Skips | Why, on Linux |
+|---|---|---|
+| `test_ask_destructive_git.py`, the `_INAPPLICABLE` table | 6 | a construct has no site in that command; the same on every platform |
+| `test_block_worktree_path_escape.py`, two cases | 2 | the file system is case-sensitive |
+| `test_manual_worktree.py`, two cases | 2 | the file system is case-sensitive; a backslash is a legal filename character |
+| `test_copilot_hooks.py`, the PowerShell wiring | 1 | PowerShell is not installed |
+| `test_cla_launcher.py`, the `cmd.exe` case | 1 | `cmd.exe` parse semantics, Windows only |
+| `test_check_spec_proof.py`, the long-path case | 1 | only Windows' 260-character path limit exercises it |
+| `test_page_in_a_browser.py` | 1 | Playwright is not installed (opt-in) |
+
+So on Linux the Windows-only paths (PowerShell wiring, `cmd.exe`, long paths, case-insensitive
+file systems) have no execution evidence, and the browser gate runs only where Playwright is
+installed.
+
 ### Stdlib-only shipped scripts: why
 
 No incident either; the reason is the rule's own. A repo installs the plugin as a copied folder and
@@ -362,7 +380,7 @@ setting, which would also have changed `chain-merge.md`.
 
 **Commands inside backticks or `"$(...)"` stay invisible to `ask-destructive-git`.** The guard
 scans the command after `strip_quoted_spans` has blanked every quoted and backtick span
-(`ask-destructive-git.py:897`; `_dispatch_lib.py:484-525`). A command inside such a span is blanked
+(`ask-destructive-git.py:897`; `_dispatch_lib.py:484-525`, since moved to `_shell_text.py`). A command inside such a span is blanked
 with it. An unquoted `$(...)` is not blanked, so it is still scanned. The accepted weakness: a
 `gh pr merge` or a `git push --no-verify` inside backticks or inside a double-quoted `$(...)` runs
 with no ask. The owner decided to leave it. No incident count
@@ -388,3 +406,27 @@ One more item, mutation batches for the `warn-*` hooks, stays opt-in under the 2
 
 The never-move-a-tag rule, the no-local-marketplace rule, and why a release is a five-file edit
 are each told in [the release and distribution history](history.md).
+
+### Shipped files cite no tracker numbers
+
+`check_no_project_tokens.py` check (e) fails a shipped file that cites this repo's issue or PR
+number: the number opens nothing in the repo that installs the plugin. Measured with that check's
+pattern over the tree before the rewrite (`python3 .claude/plugins/cla/skills/_shared/scripts/check_no_project_tokens.py`,
+2026-11-19): 33 citing lines in 16 files, 20 of them outside the guard hooks. The sentences now state
+the lesson; the numbers they carried, for anyone who needs the tracker entry:
+
+- Chain stalls with nothing in flight (the idle-turn rule in `multi-pr`, `multi-lite`,
+  `multi-spec`): issue 130, a chain that lost about 4.5 hours with 4 of 6 changes unstarted.
+- Blockers filed as issues and bounded retries (`multi-pr`): issues 284 and 287. Prompts for
+  force-style git mid-chain: issue 281.
+- Carried obligations and `--inherits` (`multi-pr`, `spec-to-pr`): issues 98, 100 and 102.
+  Cite-drift recheck: issue 272.
+- Post-check and the withdrawn ticked-task scan (`spec-to-pr`): issues 111 and 105. Sweep that
+  reported zero stale references over 9 real hits: issue 279.
+- Review-fix weight worked case (`lite-pr`): PR 186. Stale cross-references between sibling
+  changes (`multi-spec`): PR 119.
+- Annotate server connection-reset race: issue 187. Fact-path checker anchoring: issues 52 and 53,
+  PR 158. Hook wiring rationale moved into `probe-python.sh`: issue 254.
+- Still cited in the guard hooks, to be rewritten there: issues 123, 184, 218, 220, 221, 236, 398,
+  PR 64, PR 231 and the regex-cost fix 526.
+

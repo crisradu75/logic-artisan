@@ -5,7 +5,7 @@ sentence; this is the run behind it.
 
 ## The run
 
-Source repo, PR #186. A guard hook gained a new detection rule.
+Worked case: a guard hook gained a new detection rule.
 
 | commit | what it was | insertions |
 |---|---|---|

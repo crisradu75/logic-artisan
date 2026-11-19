@@ -8,6 +8,58 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ## [Unreleased]
 
+### Changed
+
+- **An implementer's model is stated once.** `model-routing.md` holds one implementer table, inside
+  the review-sizing span that `cla-setup` renders into a repo's `.claude/rules/cla-economy.md`:
+  Sonnet at low risk, Opus at high risk, judged by the review-sizing signals. spec-to-pr's
+  Implement delegate and Revise fix-delegate, which had said sonnet whatever the risk, now point
+  at it, as do the economy rules and the routing table. multi-spec's per-change authoring dispatch
+  has its own routing-table row. spec-to-pr delegates a high-risk change whatever its size when the
+  session runs below the table's model for it, instead of building it inline. A new test fails on
+  any second statement of an implementer model, in prose, a table row or a diagram box.
+- **The push guard's docs say it is client-side.** The root and plugin READMEs and DEVELOPER-GUIDE
+  §8 say `pre-push` guards only the clones that installed it, and give the GitHub tag ruleset
+  (restrict updates and deletions of the release-tag pattern) as the server-side guard;
+  `/release` Step 1 names it without making it a precondition.
+- **The four largest shipped scripts are split by concern.** `render_doc.py`, `render_change.py`,
+  `openspec_change.py` and `check_spec_proof.py` now import 15 smaller modules beside them; every
+  entry point keeps its name, flags, exit codes and byte-identical output. `check_spec_proof.py`
+  exits 2 ("could not run"), not 1, when one of its parts is missing or half-written (#550).
+- **The plugin README states what the guards are not.** A new note lists the limits of reading
+  command text, running without Python and the time budget; the Copilot install, update and
+  troubleshooting steps live in one place with one set of update commands (#546).
+
+- **`save-permissions` and `cla-setup` run scripts, not copied snippets.** The allowlist merge is
+  `save-permissions/scripts/merge_permissions.py` (the PowerShell form is gone; the hooks already
+  need Python) and the economy-rules file is rendered by `cla-setup/scripts/render_economy_rules.py`;
+  both refuse a symlinked `.claude/`, rules folder or target, and replace atomically (#557).
+- **`ALLOW_PUSH_TO_MAIN=1` lifts only the default-branch refusal** of `pre-push`, no longer the
+  whole hook (#556).
+- **`/release` tags the release PR's head, then merges it with a merge commit,** after checking the
+  PR can merge, so the catalogs never name a tag that is not yet published (#556).
+
+- **Every Bash guard checks a shell wrapper's body as if it were typed bare** (all but
+  `block-cd-in-bash`, since a child shell does not move the session's directory):
+  `bash -c "echo hi > ../../outside.txt"` now asks and a wrapped `Measured-by: none` commit is
+  blocked, as their bare forms were. The reading lives in `hooks/_shell_read.py`, and
+  `ask-destructive-git` is split into three files; its history probes share one 6 s deadline, down
+  from 12 s, which frees budget for another enforcing guard. The wrapper's own options are dropped
+  first (`bash -c 'cp a ../b'` asks like `cp a ../b`); heredoc text is data except its `$(...)`
+  spans; a wrapper behind `docker exec`, `kubectl exec` or `ssh` is not read as local; a body too
+  long to read asks (#560).
+- **`ask-destructive-git` asks before `ALLOW_TAG_REWRITE=1` (and PowerShell's `$env:` form of
+  either override) and before `git push --mirror`,** whose
+  deletions git never reports to `pre-push` (#560).
+
+### Added
+
+- **`pre-push` refuses deleting or moving a tag the remote already has,** for any tag name;
+  override `ALLOW_TAG_REWRITE=1`. Re-copy the hook into each clone to pick it up. A `git push
+  --mirror` deletion is never reported to the hook, which is a git limit (#556).
+- **Specs for `diagnose` and `codify-learnings`** (`failure-diagnosis`, `session-learnings`) (#557).
+- **The conformance check fails a shipped file that cites this repo's issue or PR numbers** (#555).
+
 ### Fixed
 
 - **`check_spec_proof.py` no longer asks proof for a requirement the same branch adds and then
@@ -17,6 +69,33 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
   and counts it on the `changed requirements:` line. The final heading is still checked. A
   requirement that is only missing from the live spec, with no removal on the branch, is still
   reported. ([#563](https://github.com/crisradu75/logic-artisan/pull/563))
+- **`save-permissions` merges into any settings file safely.** A `settings.local.json` with no
+  `permissions` or `allow` key no longer crashes the merge; a file that is not valid JSON, or whose
+  allowlist is not a list, is left byte-identical with a `stopped, nothing written` message; both
+  the Python and PowerShell forms write a temporary file and replace the original in one step
+  (#549).
+- **`report-upstream` can write its issue body.** It told the model to write a body file but had no
+  tool to; `Write` is now allowed, and the file goes in a temp directory outside the repo (#549).
+- **The Copilot catalog no longer says the guard hooks are Claude-only**; they have been wired for
+  Copilot CLI since 2.3.0 (#546).
+- **`ask-destructive-git` sees through shell wrappers.** A force-push, hard reset or forced branch
+  delete inside a `bash -c`, `sh -c`, `zsh -c`, `eval`, `pwsh -Command`/`-EncodedCommand`,
+  `Invoke-Expression` or `cmd /c` body now asks, three levels deep, as does one whose subcommand or
+  flag comes from a variable it cannot resolve (`X=push; git $X -f`, `git push "-f"`,
+  `git push --force$X`). The reading stays linear in the command's length (#552).
+- **Hook timing is measured, not guessed.** `probe-python.sh` stamps the start time, so the guards'
+  shared time budget counts the interpreter's real startup; the Copilot adapter denies on a flag the
+  dispatchers set when a guard could not run, not on words in the reason (#552).
+- **`warn-stacked-pr-merge` sees clustered short flags.** `gh pr merge 3 -sd` squashes and deletes
+  the branch; it now gets the stacked-PR warning, while `-bd` (a body of "d") stays silent (#554).
+
+### Development
+
+Not shipped: `/release` refuses to start while a catalog names a tag `origin` lacks, and reports a
+release done only once `check_catalog_tags.py --expect cla--v<new>` passes (#548); specs for the
+eight skills that had none, so every shipped skill now has a spec (#549); mutation batches for
+`guard-bash-text`, `warn-stacked-pr-merge`, `warn-wholesale-rewrite`, `probe-python.sh` and the
+Copilot adapter, and full branch coverage of `sweep_changes.py` and `setup_guard.py` (#552, #554).
 
 ## [2.4.0] — 2026-11-18
 

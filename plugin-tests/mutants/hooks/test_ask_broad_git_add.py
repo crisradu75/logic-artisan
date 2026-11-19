@@ -243,8 +243,8 @@ MUTANTS = [
     (
         "a load failure of the best-effort hook escalates to the enforcing-guard ask",
         DISPATCHER,
-        "        if result.errored and filename not in _SKIPPABLE_HOOKS:",
-        "        if result.errored and filename not in _ADVISORY_HOOKS:",
+        "            if result.errored and filename not in _SKIPPABLE_HOOKS and",
+        "            if result.errored and filename not in _ADVISORY_HOOKS and",
         DISPATCH_TARGETS,
     ),
     (
@@ -255,10 +255,10 @@ MUTANTS = [
         DISPATCH_TARGETS,
     ),
     (
-        "the best-effort hook runs ahead of the 12 s enforcing hook",
+        "the best-effort hook runs ahead of the enforcing destructive-git hook",
         DISPATCHER,
-        '    "ask-destructive-git.py",\n    "block-unsafe-recursive-delete.py",\n    "ask-broad-git-add.py",\n',
-        '    "ask-broad-git-add.py",\n    "ask-destructive-git.py",\n    "block-unsafe-recursive-delete.py",\n',
+        '    "block-cd-in-bash.py",\n    "ask-destructive-git.py",\n',
+        '    "block-cd-in-bash.py",\n    "ask-broad-git-add.py",\n    "ask-destructive-git.py",\n',
         DISPATCH_TARGETS,
     ),
 ]

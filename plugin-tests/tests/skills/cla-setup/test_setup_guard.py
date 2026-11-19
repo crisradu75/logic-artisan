@@ -727,3 +727,482 @@ def test_a_repo_with_no_commit_yet_is_checked(tmp_path: Path) -> None:
     _write(fresh, "CLAUDE.md", "# made by the run\n")
     r = _verify(fresh, out)
     assert r.returncode == 1 and _problems(r)[0].startswith("PROBLEM created: CLAUDE.md (")
+
+
+# ---------------------------------------------------------------- refusal paths, one by one
+
+
+def _module(name: str):
+    spec = importlib.util.spec_from_file_location(name, _SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _fake_git(tmp_path: Path, needle: str, code: int = 128) -> dict[str, str]:
+    """An env whose `git` fails with `code` when called with `needle`, and is real otherwise."""
+    real = shutil.which("git")
+    fake = tmp_path / "fakebin"
+    fake.mkdir(exist_ok=True)
+    (fake / "git").write_text(
+        "#!/bin/sh\n"
+        f'for a in "$@"; do [ "$a" = "{needle}" ] && {{ echo "fatal: simulated" >&2; exit {code}; }}; done\n'
+        f'exec "{real}" "$@"\n',
+        encoding="utf-8",
+    )
+    (fake / "git").chmod(0o755)
+    return {**os.environ, "PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_missing_git_binary_is_unchecked(work: Path, tmp_path: Path) -> None:
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    r = _run("snapshot", "--root", str(work), "--out", str(tmp_path / "s.json"), env={**os.environ, "PATH": str(empty)})
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED git: the git binary was not found"), r.stdout
+    assert not (tmp_path / "s.json").exists()
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_root_that_is_not_a_directory_is_unchecked(work: Path, tmp_path: Path) -> None:
+    r = _run("snapshot", "--root", str(work / "CLAUDE.md"), "--out", str(tmp_path / "s.json"))
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED repo:") and "is not a directory" in r.stdout, r.stdout
+    r = _run("verify", "--root", str(tmp_path / "nowhere"), "--snapshot", str(tmp_path / "s.json"))
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED repo:"), r.stdout
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the stand-in git is a shell script")
+@pytest.mark.parametrize(
+    "needle, words",
+    [
+        ("ls-files", "UNCHECKED git: git ls-files failed"),
+        ("--absolute-git-dir", "UNCHECKED git: git rev-parse --absolute-git-dir failed"),
+        ("--verify", "UNCHECKED git: git rev-parse HEAD failed"),
+    ],
+)
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_git_command_that_fails_is_unchecked(work: Path, tmp_path: Path, needle: str, words: str) -> None:
+    out = tmp_path / "s.json"
+    r = _run("snapshot", "--root", str(work), "--out", str(out), env=_fake_git(tmp_path, needle))
+    assert r.returncode == 2 and r.stdout.startswith(words), r.stdout
+    assert not out.exists()
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_snapshot_reports_what_it_recorded(work: Path) -> None:
+    out = _snap(work)
+    files = json.loads(out.read_text(encoding="utf-8"))["files"]
+    present = sorted(k for k, v in files.items() if v is not None)
+    assert present == sorted(PRESENT)
+    r = _run("snapshot", "--root", str(work), "--out", str(out))
+    assert r.stdout.strip() == (f"OK snapshot: {len(files)} protected path(s) recorded, {len(present)} present, "
+                                f"1 overlay(s), in {out}")
+    assert _verify(work, out).stdout.startswith(f"OK verify: {len(files)} protected path(s) as promised")
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_verify_counts_every_problem_in_its_first_line(work: Path) -> None:
+    snap = _snap(work)
+    _write(work, "CLAUDE.md", "# one\n")
+    _write(work, NOTES, "# two\n")
+    _write(work, ".claude/settings.json", "{}\n")
+    r = _verify(work, snap)
+    assert r.returncode == 1
+    assert r.stdout.splitlines()[0] == "FAIL verify: 3 protected file problem(s)"
+    assert len(_problems(r)) == 3
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_an_edit_past_the_first_read_chunk_is_seen(work: Path) -> None:
+    big = "x" * 200_000 + "\n"
+    _write(work, "CLAUDE.md", big)
+    snap = _snap(work)
+    _write(work, "CLAUDE.md", big[:-2] + "y\n")  # same length, same first 64 KiB
+    r = _verify(work, snap)
+    assert r.returncode == 1 and _problems(r)[0].startswith("PROBLEM changed: CLAUDE.md (")
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@_symlinks
+def test_two_unreadable_files_are_both_reported_and_never_pass(work: Path) -> None:
+    snap = _snap(work)
+    for name in ("CLAUDE.md", "AGENTS.md"):
+        (work / name).unlink()
+        os.symlink(name, work / name)
+    r = _verify(work, snap)
+    lines = r.stdout.splitlines()
+    assert r.returncode == 2, r.stdout
+    assert len(lines) == 2 and all(ln.startswith("UNCHECKED read: ") for ln in lines), r.stdout
+    assert {ln.split()[2].rstrip(":") for ln in lines} == {"CLAUDE.md", "AGENTS.md"}
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_directory_that_cannot_be_listed_is_unchecked(work: Path, monkeypatch, capsys, tmp_path: Path) -> None:
+    mod = _module("setup_guard_listdir")
+    (work / ".claude").mkdir()
+    real = os.listdir
+
+    def listdir(path):
+        if Path(path).name == ".claude":
+            raise PermissionError("planted: no access")
+        return real(path)
+
+    monkeypatch.setattr(mod.os, "listdir", listdir)
+    assert mod.main(["snapshot", "--root", str(work), "--out", str(tmp_path / "s.json")]) == 2
+    out = capsys.readouterr().out
+    assert out.startswith("UNCHECKED read: cannot list .claude: ") and "planted" in out
+    assert not (tmp_path / "s.json").exists()
+
+
+# ---------------------------------------------------------------- the snapshot file, field by field
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_snapshot_that_is_not_utf8_is_unchecked(work: Path) -> None:
+    snap = _snap(work)
+    snap.write_bytes(b"\xff\xfe\x00 not text")
+    r = _verify(work, snap)
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED snapshot:") and "not valid JSON" in r.stdout, r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_snapshot_path_that_is_a_directory_is_unchecked(work: Path, tmp_path: Path) -> None:
+    folder = tmp_path / "a-folder"
+    folder.mkdir()
+    r = _verify(work, folder)
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED snapshot: cannot read"), r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize(
+    "files_edit, ok",
+    [
+        ({"CLAUDE.md": "A" * 64}, False),                        # upper-case hex
+        ({"CLAUDE.md": "a" * 63}, False),                        # one short
+        ({"CLAUDE.md": 7}, False),                               # not a string
+        ({"CLAUDE.md": "not-a-file:something-new"}, True),       # a marker is a digest
+        ({"CLAUDE.md": "0" * 64}, True),                         # any 64 lower-case hex is shaped right
+    ],
+    ids=["upper-hex", "short-hex", "int", "marker", "hex"],
+)
+def test_only_a_real_digest_or_marker_is_accepted_in_a_snapshot(work: Path, files_edit: dict, ok: bool) -> None:
+    snap = _snap(work)
+    data = json.loads(snap.read_text(encoding="utf-8"))
+    data["files"].update(files_edit)
+    snap.write_text(json.dumps(data), encoding="utf-8")
+    r = _verify(work, snap)
+    if ok:  # shaped right, so it is compared and found changed
+        assert r.returncode == 1 and _problems(r)[0].startswith("PROBLEM changed: CLAUDE.md ("), r.stdout
+    else:
+        assert r.returncode == 2 and "has no valid 'files' map" in r.stdout, r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize(
+    "edit, words",
+    [
+        ({"head": "A" * 40}, "has no valid 'head'"),             # not lower-case hex
+        ({"head": "a" * 39}, "has no valid 'head'"),             # a length no object format has
+        ({"head": 12345}, "has no valid 'head'"),
+        ({"head": "a" * 64}, "cannot relate"),                   # a SHA-256 id is well-formed; git does not know it
+        ({"root": None}, "has no 'root'"),
+        ({"root": 5}, "has no 'root'"),
+        ({"created": None}, "has no 'created' time"),
+    ],
+)
+def test_each_snapshot_field_is_checked(work: Path, edit: dict, words: str) -> None:
+    snap = _snap(work)
+    _edit_snapshot(snap, **edit)
+    r = _verify(work, snap)
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED snapshot:") and words in r.stdout, r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_snapshot_that_is_a_little_in_the_future_still_counts(work: Path) -> None:
+    snap = _snap(work)
+    _edit_snapshot(snap, created=time.time() + 200)  # inside the 300 s skew allowance (clock drift)
+    assert _verify(work, snap).returncode == 0
+    _edit_snapshot(snap, created=time.time() + 400)
+    r = _verify(work, snap)
+    assert r.returncode == 2 and "in the future" in r.stdout, r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_branch_that_lost_its_commit_is_unchecked(work: Path) -> None:
+    snap = _snap(work)
+    _git(work, "update-ref", "-d", "refs/heads/main")  # HEAD now names a branch with no commit
+    r = _verify(work, snap)
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED snapshot: HEAD was "), r.stdout
+    assert "the branch now has no commit" in r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_snapshot_taken_before_the_first_commit_still_checks_after_it(tmp_path: Path) -> None:
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    _git(fresh, "init", "-q", "-b", "main")
+    _git(fresh, "config", "user.email", "test@example.com")
+    _git(fresh, "config", "user.name", "Test")
+    out = tmp_path / "s.json"
+    assert _run("snapshot", "--root", str(fresh), "--out", str(out)).returncode == 0
+    _write(fresh, "README.md", "# hi\n")
+    _git(fresh, "add", ".")
+    _git(fresh, "commit", "-q", "-m", "first")
+    assert _verify(fresh, out).returncode == 0  # a null head means there was nothing to compare
+
+
+# ---------------------------------------------------------------- --out, the rest of the refusals
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize(
+    "content, words",
+    [
+        (b"\xff\xfe not utf-8", "is not JSON"),
+        (b"[]", "is not a version-1 setup snapshot"),
+        (b'{"version": 2, "files": {}}', "is not a version-1 setup snapshot"),
+        (b'{"version": 1, "files": {}}', "has no valid 'files' map"),
+    ],
+)
+def test_an_existing_file_that_is_not_a_snapshot_is_never_replaced(work: Path, tmp_path: Path, content: bytes, words: str) -> None:
+    target = tmp_path / "keep-me"
+    target.write_bytes(content)
+    r = _run("snapshot", "--root", str(work), "--out", str(target))
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED out:") and words in r.stdout, r.stdout
+    assert target.read_bytes() == content
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_relative_out_is_written_beside_the_working_directory(work: Path, tmp_path: Path) -> None:
+    here = tmp_path / "cwd"
+    here.mkdir()
+    r = subprocess.run(
+        [sys.executable, str(_SCRIPT), "snapshot", "--root", str(work), "--out", "rel-snap.json"],
+        cwd=here, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    assert r.returncode == 0, r.stdout
+    assert (here / "rel-snap.json").is_file() and not (work / "rel-snap.json").exists()
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize("argv", [[], ["snapshot"], ["verify", "--root", "."], ["unknown"]])
+def test_a_bad_command_line_is_never_a_pass(argv: list[str]) -> None:
+    r = _run(*argv)
+    assert r.returncode == 2 and r.stdout == "" and "usage:" in r.stderr, (r.stdout, r.stderr)
+
+
+# ---------------------------------------------------------------- approval, the rest
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_an_approval_spelled_with_dots_names_the_same_file(work: Path) -> None:
+    snap = _snap(work)
+    _write(work, TERMS, "# reconciled\n")
+    r = _verify(work, snap, "cla.io/overlays/../terminology.md")
+    assert r.returncode == 0 and f"approved: {TERMS} changed" in r.stdout, r.stdout
+    r = _verify(work, snap, "./cla.io/terminology.md")
+    assert r.returncode == 0, r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@_symlinks
+def test_an_approval_through_a_linked_root_names_the_same_file(work: Path, tmp_path: Path) -> None:
+    link = tmp_path / "linked-work"
+    os.symlink(work, link)
+    snap = _snap(work)
+    _write(work, TERMS, "# reconciled\n")
+    r = _verify(work, snap, str(link / TERMS))
+    assert r.returncode == 0 and f"approved: {TERMS} changed" in r.stdout, r.stdout
+    # a path through a link that leaves the repo names a different file, so it approves nothing
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    os.symlink(elsewhere, work / "out-link")
+    r = _verify(work, snap, "out-link/terminology.md")
+    assert r.returncode == 1 and len(_problems(r)) == 1, r.stdout
+    # and a linked path that resolves outside the repo is refused, not guessed at
+    r = _verify(work, snap, str(link / ".." / "elsewhere" / "x.md"))
+    assert r.returncode == 2 and r.stdout.startswith("UNCHECKED approved:"), r.stdout
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_an_approval_for_an_unprotected_path_changes_nothing(work: Path) -> None:
+    snap = _snap(work)
+    _write(work, "CLAUDE.md", "# rewritten\n")
+    r = _verify(work, snap, "README.md", "cla.io/project-facts.md")
+    assert r.returncode == 1 and len(_problems(r)) == 1, r.stdout
+
+
+# ---------------------------------------------------------------- what is and is not protected
+
+
+@pytest.mark.parametrize(
+    "rel, kind",
+    [
+        ("CLAUDE.md", "instruction"), ("AGENTS.md", "instruction"), ("CLAUDE.local.md", "instruction"),
+        ("packages/app/CLAUDE.md", "instruction"), (".claude/claude.md", "instruction"),
+        (".claude/settings.json", "settings"), (".claude-plugin/plugin.json", "settings"),
+        (".claude/rules/a.md", "rules"), (".claude/rules/deep/er/a.md", "rules"),
+        ("cla.io/feedback/notes.md", "notes"),
+        ("cla.io/fleet.local.md", "local"), ("cla.io/overlays/x.local.md", "local"), ("cla.io/sub/y.local.md", "local"),
+        ("cla.io/terminology.md", "terminology"),
+        ("cla.io/overlays/review-change.md", "overlay"),
+    ],
+)
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_each_protected_path_has_the_class_the_header_promises(rel: str, kind: str) -> None:
+    mod = _module("setup_guard_kinds")
+    assert mod.kind_of(rel) == kind
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        ".claude/rules/cla-economy.md",       # the skill owns it
+        ".claude/rules/notes.txt",            # not markdown
+        ".claude/settings.local.json",        # Claude Code's own writes
+        "cla.io/overlays/sub/deep.md",        # an overlay is a direct child of overlays/
+        "cla.io/overlays/notes.txt",
+        "cla.io/project-facts.md",
+        "cla.io/retro/run.jsonl",
+        "sub/claude.md",                      # another letter case only counts at the root and in .claude/
+        "docs/claude.md",
+        "CLAUDE.md.bak",
+        "src/settings.json",
+        "README.md",
+    ],
+)
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_these_paths_are_not_protected(rel: str) -> None:
+    mod = _module("setup_guard_not_protected")
+    with pytest.raises(ValueError):
+        mod.kind_of(rel)
+    assert mod._is_protected(rel) is False
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_unprotected_files_beside_protected_ones_may_change_freely(work: Path) -> None:
+    _write(work, ".claude/rules/notes.txt", "a\n")
+    _write(work, "cla.io/overlays/sub/deep.md", "a\n")
+    snap = _snap(work)
+    files = json.loads(snap.read_text(encoding="utf-8"))["files"]
+    assert ".claude/rules/notes.txt" not in files and "cla.io/overlays/sub/deep.md" not in files
+    _write(work, ".claude/rules/notes.txt", "b\n")
+    _write(work, "cla.io/overlays/sub/deep.md", "b\n")
+    _write(work, "docs/claude.md", "made by the run\n")
+    assert _verify(work, snap).returncode == 0
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_gitignored_instruction_file_below_the_claude_folder_is_not_recorded(work: Path) -> None:
+    _write(work, "temp/CLAUDE.md", "# in an ignored folder\n")  # `temp/` is ignored by the template
+    snap = _snap(work)
+    assert "temp/CLAUDE.md" not in json.loads(snap.read_text(encoding="utf-8"))["files"]
+    _write(work, "temp/CLAUDE.md", "# edited\n")
+    assert _verify(work, snap).returncode == 0
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_local_file_in_a_subfolder_of_cla_io_is_protected(work: Path) -> None:
+    _write(work, "cla.io/sub/y.local.md", "# mine\n")
+    snap = _snap(work)
+    _write(work, "cla.io/sub/y.local.md", "# changed\n")
+    r = _verify(work, snap)
+    assert r.returncode == 1 and _problems(r)[0].startswith("PROBLEM changed: cla.io/sub/y.local.md (a machine-read")
+    assert _verify(work, snap, "cla.io/sub/y.local.md").returncode == 0
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@_symlinks
+def test_an_out_reached_through_a_linked_folder_is_judged_by_where_it_lands(work: Path, tmp_path: Path) -> None:
+    link = tmp_path / "link-into-git"
+    os.symlink(work / ".git", link)
+    r = _run("snapshot", "--root", str(work), "--out", str(link / "snap.json"))
+    assert r.returncode == 2 and "inside the git directory" in r.stdout, r.stdout
+    assert not (work / ".git" / "snap.json").exists()
+    # and a path that climbs back into the checkout is the checkout's, not the scratch folder's
+    r = _run("snapshot", "--root", str(work), "--out", str(tmp_path / "x" / ".." / "work" / "snap.json"))
+    assert r.returncode == 2 and "git does not ignore it" in r.stdout, r.stdout
+
+
+# ---------------------------------------------------------------- the boundaries of each refusal
+
+
+def _load_guard():
+    spec = importlib.util.spec_from_file_location("setup_guard_boundaries", _SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _stub_git(mod, monkeypatch, returncode: int, stdout: str = "", stderr: str = "") -> None:
+    monkeypatch.setattr(
+        mod, "_git",
+        lambda cwd, *args: subprocess.CompletedProcess(["git", *args], returncode, stdout, stderr),
+    )
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_snapshot_at_exactly_the_age_limit_or_skew_limit_still_counts(work: Path, tmp_path: Path) -> None:
+    mod = _load_guard()
+    snap = _snap(work)
+    root = Path(json.loads(snap.read_text(encoding="utf-8"))["root"])
+    limit = mod.MAX_AGE_HOURS * 3600
+    _edit_snapshot(snap, created=1_000_000.0)
+    assert mod.load_snapshot(snap, root, now=1_000_000.0 + limit)["created"] == 1_000_000.0
+    with pytest.raises(mod.Unchecked, match="h ago"):
+        mod.load_snapshot(snap, root, now=1_000_000.0 + limit + 1)
+    assert mod.load_snapshot(snap, root, now=1_000_000.0 - mod.FUTURE_SKEW_SECONDS)
+    with pytest.raises(mod.Unchecked, match="in the future"):
+        mod.load_snapshot(snap, root, now=1_000_000.0 - mod.FUTURE_SKEW_SECONDS - 1)
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize(
+    "returncode, stdout",
+    [(0, ""), (0, "  \n"), (128, "/some/path\n")],
+)
+def test_a_toplevel_answer_must_be_a_success_with_a_path(
+    monkeypatch, tmp_path: Path, returncode: int, stdout: str
+) -> None:
+    mod = _load_guard()
+    _stub_git(mod, monkeypatch, returncode, stdout, "fatal: planted")
+    with pytest.raises(mod.Unchecked) as exc:
+        mod._toplevel(tmp_path)
+    assert exc.value.kind == "repo" and "is not inside a git working tree: fatal: planted" in exc.value.detail
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+@pytest.mark.parametrize("flag_rc, flag_out", [(0, ""), (128, "/some/dir\n")])
+def test_a_git_dir_answer_must_be_a_success_with_a_path(
+    monkeypatch, tmp_path: Path, flag_rc: int, flag_out: str
+) -> None:
+    mod = _load_guard()
+    _stub_git(mod, monkeypatch, flag_rc, flag_out, "fatal: planted")
+    with pytest.raises(mod.Unchecked) as exc:
+        mod._git_dirs(tmp_path)
+    assert exc.value.kind == "git" and exc.value.detail.endswith("failed: fatal: planted")
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_head_is_read_only_from_a_success_with_output(monkeypatch, tmp_path: Path) -> None:
+    mod = _load_guard()
+    _stub_git(mod, monkeypatch, 0, "abc123\n")
+    assert mod._head(tmp_path) == "abc123"
+    _stub_git(mod, monkeypatch, 1, "")  # no commit yet
+    assert mod._head(tmp_path) is None
+    _stub_git(mod, monkeypatch, 1, "abc123\n")  # a failure never hands back its stdout as a commit
+    assert mod._head(tmp_path) is None
+    for rc, out in ((0, ""), (128, "")):
+        _stub_git(mod, monkeypatch, rc, out, "fatal: planted")
+        with pytest.raises(mod.Unchecked, match="git rev-parse HEAD failed: fatal: planted"):
+            mod._head(tmp_path)
+
+
+# requirement: cla-setup / Setup checks that its protected files were left alone
+def test_a_git_failure_is_reported_with_its_own_words_else_its_exit_code(monkeypatch, tmp_path: Path) -> None:
+    mod = _load_guard()
+    done = lambda rc, out, err: subprocess.CompletedProcess([], rc, out, err)  # noqa: E731
+    assert mod._first_err(done(1, "from stdout\nsecond", "from stderr\nsecond")) == "from stderr"
+    assert mod._first_err(done(1, "from stdout\nsecond", "")) == "from stdout"
+    assert mod._first_err(done(7, "", "")) == "exit 7"
+    assert mod._first_err(done(7, "", "  \n")) == "exit 7"

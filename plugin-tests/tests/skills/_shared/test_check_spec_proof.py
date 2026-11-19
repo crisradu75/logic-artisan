@@ -1133,6 +1133,15 @@ def test_the_limits_are_read_from_any_valid_layout_of_rules_specs(repo, text):
     assert csp.read_format_limits(repo) == ({"chars": 500, "scenarios": 3, "requirements": 8}, [])
 
 
+# requirement: spec-proof / A checker reports a change over its whole-change budget
+def test_a_yml_config_is_read_for_the_change_budget_too(repo):
+    # The budget reader has its own config lookup; a repo with only config.yml must not read as
+    # "no budget stated, none enforced".
+    _write(repo, "openspec/config.yml",
+           "rules:\n  proposal:\n    - \"at most 7 requirements across all its specs and at most 900 words in total.\"\n")
+    assert csp.read_change_budget(repo) == ({"requirements": 7, "words": 900}, {})
+
+
 # requirement: spec-proof / A checker reports specs over the repo's format limits
 def test_a_yml_config_is_read_too(repo):
     _write(repo, "openspec/config.yml", f"rules:\n  specs:\n    - \"{_RULE}\"\n")
@@ -2399,3 +2408,30 @@ def test_a_requirement_with_a_closing_hash_run_is_proven_by_its_bare_name(repo, 
     _write(repo, "tests/test_h.py", _marker("requirement", "alpha", "Hashed"))
     code, out, _ = run(repo, capsys)
     assert code == 0, out
+
+
+@pytest.mark.parametrize("damage", ["missing", "syntax"])
+def test_a_missing_part_module_exits_2_not_1(tmp_path, damage):
+    """Review of the split (PR 550): a part that cannot be imported, as in a partial or stale
+    install, must read as "could not run" (exit 2). Callers treat exit 1 as "problems found"
+    and exit 2 as unchecked, so a crash on exit 1 would pass as a finding list."""
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / "skills" / "_shared" / "scripts"
+    dst = tmp_path / "scripts"
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
+    part = dst / "spec_proof_notes.py"
+    if damage == "missing":
+        part.unlink()
+    else:  # a half-written file, e.g. an interrupted install
+        part.write_text(part.read_text(encoding="utf-8") + "\ndef broken(:\n", encoding="utf-8")
+    r = subprocess.run(
+        [sys.executable, "-I", str(dst / "check_spec_proof.py"), "--root", str(tmp_path)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+    )
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "cannot load its parts" in r.stderr
+    assert "spec_proof_notes" in r.stderr or damage == "syntax"

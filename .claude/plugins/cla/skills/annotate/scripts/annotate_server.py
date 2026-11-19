@@ -90,7 +90,7 @@ class Handler(SimpleHTTPRequestHandler):
     #     races that RST, and loses often enough to matter: posting to the 404
     #     path with an 8 MiB body raised `ConnectionAbortedError` (WinError
     #     10053) on the client while this server logged its 404 normally. The
-    #     same race with a 2-byte body is what issue #187 saw about once per
+    #     same race with a 2-byte body is what the suite saw about once per
     #     full-suite run and never in isolation.
     #   * If the reply KEEPS the connection alive, the leftover bytes sit in the
     #     stream and the NEXT request on that connection is parsed starting from
@@ -115,7 +115,7 @@ class Handler(SimpleHTTPRequestHandler):
     # Draining it in full would be attacker-controlled work — up to `MAX_BODY`
     # buffered plus as much again to join it, per connection, on a
     # `ThreadingHTTPServer` with no concurrency bound. Draining NOTHING was the
-    # other error: it re-created #187's own race for the refused client, measured
+    # other error: it re-created that same reset race for the refused client, measured
     # at 2 of 30 posts of 200 KB raising `ConnectionAbortedError` while this
     # server logged its 403. A small bounded drain covers every real body and
     # leaves an attacker exactly one RST.
@@ -229,7 +229,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def send_error(self, code, message=None, explain=None):
         """Every error reply sends `Connection: close`, so every error reply is a
-        close on a possibly-unread body — #187's exact shape.
+        close on a possibly-unread body, the exact shape of the reset race.
 
         `do_POST` drains its own body before dispatching, but the base class
         answers 501 to a `PUT`/`PATCH`/`DELETE` that this server never parses,
@@ -434,7 +434,7 @@ class Handler(SimpleHTTPRequestHandler):
         # The guard runs BEFORE the drain, so a refused cross-origin request
         # never makes this server buffer attacker-chosen bytes; it is answered
         # and the connection closed, which is what stops the unread body from
-        # desyncing a reused one. Draining first closed the #187 hole by opening
+        # desyncing a reused one. Draining first closed the reset race by opening
         # a memory one — see `_read_body`'s comment for both.
         ok, why = self._local_request()
         if not ok:
@@ -457,7 +457,7 @@ class Handler(SimpleHTTPRequestHandler):
             # this branch missed: on the malformed-`Content-Length` path
             # `_read_body` returns without consuming a single byte, so this was
             # the one branch where leftover bytes were GUARANTEED, closing on all
-            # of them. That is #187 again, in the code fixing #187.
+            # of them. That is the reset race again, in the code fixing it.
             self._discard_pending(self.REFUSED_DRAIN)
             self.close_connection = True
             return self._json({"error": "request body too large or malformed"}, 400)

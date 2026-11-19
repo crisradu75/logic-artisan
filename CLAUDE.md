@@ -99,6 +99,9 @@ openspec validate --specs --strict
   repo's own facts go in its own `cla.io/project-facts.md`; a rule for one skill in that repo goes
   in an optional `cla.io/overlays/<skill>.md`. A skill reads an overlay only if it is present, and
   nothing ships or seeds one.
+  A shipped file also cites no issue or PR number of this repo (it means nothing in the repo that
+  installs the plugin): state the lesson in words; the same checker fails it, and `docs/evidence.md`
+  says where the numbers went.
 - **Quote a token cost from `plugin-tests/scripts/meter.py`, never from a word count.**
   `plugin-tests/scripts/measure_load.py` counts words; `meter.py` totals the billed tokens a
   transcript records, by model.

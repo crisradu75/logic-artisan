@@ -24,8 +24,8 @@ rule below saves some without dropping quality.
    rebases and version-bump clashes.
 5. **Hand off a long chat.** When the orchestrating chat grows long, write a handoff file and
    continue in a fresh session instead of carrying the old context.
-6. **Put high-risk implementers on Opus.** A task is high risk when it shows one of the risk signals
-   in the review-sizing rules. Other implementers use Sonnet.
+6. **Give each implementer the model the implementer table sets.** That table sits with the
+   review-sizing rules and judges a task by the same risk signals.
 7. **Check for debris when you run the tests.** Before the final test run, save the output of
    `git status --porcelain --ignored --untracked-files=all` outside the repo, in a scratch or temp
    directory. Run it again after, and diff the two. Any new line is debris, so report it. Ignored

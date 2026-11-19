@@ -3,8 +3,8 @@
 
 A generic, repo-agnostic checker enforcing the cla plugin's fact/procedure
 separation (``cla-overlay-convention`` + ``cla-skill-context-extraction``): a
-project-specific token must live behind an overlay (``project-context.md`` /
-``*.local.md``), never baked into a synced-core ``SKILL.md`` or
+project-specific token must live in the repo's own facts (``cla.io/project-facts.md``)
+or a ``*.local.md`` overlay, never baked into a synced-core ``SKILL.md`` or
 ``references/**/*.md``, or the marketplace install would carry it verbatim into
 every destination repo. The token list itself is a per-repo overlay
 (``project-tokens.local.md``) read as data — the checker hard-codes no token.
@@ -23,7 +23,7 @@ RUN IT AS A PROGRAM, from anywhere inside the repo it should check::
 
     python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/check_no_project_tokens.py
 
-FOUR CHECKS, ALL IN ONE RUN. A single invocation performs every check this guard
+FIVE CHECKS, ALL IN ONE RUN. A single invocation performs every check this guard
 is responsible for and never stops at the first that fails — surfacing one
 violation at a time turns a run into a fix-and-rerun loop:
 
@@ -34,17 +34,28 @@ violation at a time turns a run into a fix-and-rerun loop:
       the one statement of them. Spelling them out here was a defect in its own
       right: this list was already stale ONE COMMIT after ``.sh`` was added,
       inside the change that added it, and because (c) and (d) iterate the SAME
-      function, one stale sentence understated three of the four checks at once;
+      function, one stale sentence understated four of the five checks at once;
   (c) the hardcoded absolute-DEVELOPER-PATH scan over that same source — a
       different scanner with its own regexes and its own exemption marker, and
-      the only one of the four that needs no token list;
+      one of the three ((c), (d), (e)) that need no token list;
   (d) the READABILITY check that every file the scans claim to have inspected
-      was actually readable.
+      was actually readable;
+  (e) the TRACKER-REFERENCE scan: a shipped file may not cite the source repo's
+      own issue or pull-request numbers. Such a number resolves only in the
+      repo that develops the plugin and reads as noise in every repo that
+      installs it. Like (c) it needs no token list. It reads every file the
+      prose and source scans reach; the patterns are ``TRACKER_REF_PATTERNS``.
+      What (e) does not catch: ``see #12``, ``GH-12``, ``issue: #12``, an
+      ``owner/repo#12`` shorthand, and a non-breaking space before the ``#``.
+      Its known false positives: a short all-digit hex colour written right after
+      an opening round bracket, and a bracketed "number sign, then 1" ranking
+      phrase ("1 of 3"). Both are narrow on purpose; write around them.
 
-Check (d) is not optional and is not plumbing. All three scanners above swallow
+Check (d) is not optional and is not plumbing. All four scanners above, (a), (b), (c) and (e),
+swallow
 a decode/IO error per file so one odd file cannot take the guard down — which
 means an unreadable file returns "no violations", exactly what a clean file
-returns. (d) is what keeps the other three from passing vacuously.
+returns. (d) is what keeps those four from passing vacuously.
 
 EXIT CODES:
   - ``0`` — clean, or a trivial pass. One summary line names what was scanned and
@@ -131,7 +142,7 @@ def _repo_root() -> Path | None:
     consuming repo. This used to walk to the first `.claude` ancestor of
     `__file__`, which under a marketplace install is the user's GLOBAL
     `~/.claude` — so it returned the home directory, found no token list, and
-    the guard skipped green in every consuming repo (upstream issue #52).
+    the guard skipped green in every consuming repo.
     """
     import subprocess
 
@@ -372,7 +383,7 @@ def _iter_scanned_source_files(plugin_root: Path):
     by the source repo's marketplace-manifest guard; nothing token-scans it, by
     design.
 
-    `.sh` was added for the same reason and on the same terms, by issue #254.
+    `.sh` was added for the same reason and on the same terms.
     The plugin ships exactly one, `hooks/probe-python.sh`, and that file is the
     declared home of the wiring rationale that used to sit in `hooks.json`'s
     `_comment` array — rationale the plugin loader rejected, so it had to move
@@ -565,10 +576,109 @@ def find_absolute_path_leaks(plugin_root: Path):
     return leaks
 
 
+# ---------- tracker-reference guard: the list-free second half ----------
+#
+# A shipped sentence such as "(see the tracker entry for the stall)" is worth
+# keeping; the same sentence with the entry's NUMBER in it points into the
+# source repo's tracker, which a consuming repo cannot open. This check is
+# closed-form, like the absolute-path one, so it needs no curated list.
+#
+# The pattern is deliberately narrow, so it flags no heading, shebang, hex
+# colour or `#`-comment: a number counts only when a word or a bracket says it
+# is a tracker entry.
+#   - a tracker word right before it: "issue", "issues", "PR", "PRs", "pull" or
+#     "pull request", any case, with optional space (`#`, digits, up to five);
+#   - an opening bracket right before it, that opens a number, the habit of
+#     citing one in parentheses. An all-digit hex colour in brackets would match
+#     too; none ships, and a real one can be written without the bracket;
+#   - a GitHub issue or pull-request URL naming the source repo, which is read
+#     from the plugin's own manifest, so no repo name is hard-coded here. A URL
+#     into some OTHER project's tracker is an interface a consumer can follow
+#     and is allowed.
+# A bare "Closes #N" in a commit-trailer example is documentation of a syntax,
+# not a reference, and is not matched either.
+TRACKER_REF_PATTERNS = (
+    re.compile(r"\b(?:issues?|PRs?|pull(?:[ \t]+requests?)?)[ \t]*#\d{1,5}(?!\w)", re.IGNORECASE),
+    re.compile(r"\(#\d{1,5}(?!\w)"),
+)
+MANIFEST_RELPATH = Path(".claude-plugin") / "plugin.json"
+_GITHUB_REPO_URL = re.compile(
+    r"github\.com[/:]([^/\s\"']+)/([^/\s\"'#?]+?)(?:\.git)?(?:/(?:tree|blob)/\S*)?/?$",
+    re.IGNORECASE,
+)
+
+
+def _source_repo_url_pattern(plugin_root: Path):
+    """A pattern for issue/PR URLs of the repo the manifest names, or ``None``
+    when the manifest is absent, unreadable or names no GitHub repo.
+
+    A manifest that is present but yields no repo (unreadable, bad JSON, no
+    ``repository`` field, not a GitHub address) prints one stderr note and
+    leaves the exit code alone, so the URL rule never switches off silently. A
+    missing manifest stays silent: that is a consumer's copy of the plugin."""
+    import json
+
+    manifest = plugin_root / MANIFEST_RELPATH
+    if not manifest.is_file():
+        return None
+    note = (
+        "check_no_project_tokens: note: .claude-plugin/plugin.json names no "
+        "GitHub repository; tracker URLs not checked"
+    )
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        print(note, file=sys.stderr)
+        return None
+    repository = data.get("repository") if isinstance(data, dict) else None
+    if isinstance(repository, dict):
+        repository = repository.get("url")
+    match = _GITHUB_REPO_URL.search(repository.strip()) if isinstance(repository, str) else None
+    if not match:
+        print(note, file=sys.stderr)
+        return None
+    owner, repo = (re.escape(g) for g in match.groups())
+    return re.compile(
+        rf"github\.com/{owner}/{repo}/(?:issues|pull)/\d+", re.IGNORECASE
+    )
+
+
+def find_tracker_references(plugin_root: Path):
+    """Return ``(rel_path, kind, line_number, excerpt)`` for every citation of the
+    source repo's own issue or pull-request number in a shipped file, over the
+    same files the prose and source scans read (each once)."""
+    patterns = [("tracker-reference", pat) for pat in TRACKER_REF_PATTERNS]
+    url_pattern = _source_repo_url_pattern(plugin_root)
+    if url_pattern is not None:
+        patterns.append(("tracker-url", url_pattern))
+    hits: list[tuple[str, str, int, str]] = []
+    seen: set[Path] = set()
+    for path in list(_iter_scanned_files(plugin_root / "skills")) + list(
+        _iter_scanned_source_files(plugin_root)
+    ):
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue  # reported by `find_unreadable_files`, not here
+        rel = path.relative_to(plugin_root).as_posix()
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for kind, pattern in patterns:
+                if pattern.search(line):
+                    excerpt = line.strip()
+                    if len(excerpt) > MAX_EXCERPT:
+                        excerpt = excerpt[: MAX_EXCERPT - 3] + "..."
+                    hits.append((rel, kind, lineno, excerpt))
+                    break
+    return hits
+
+
 def find_unreadable_files(plugin_root: Path):
     """Every scanned file that cannot be decoded as UTF-8, as ``(rel, reason)``.
 
-    All three scanners swallow a decode/IO error per file so one odd file cannot
+    All four scanners swallow a decode/IO error per file so one odd file cannot
     take the whole guard down. That is the right robustness choice and the wrong
     reporting one: an unreadable file returns "no violations", which is exactly
     what a clean file returns. The counters the scanners assert on
@@ -636,8 +746,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=_PROG,
         description=(
-            "Fail when a synced-core file leaks a project-specific token or a "
-            "hardcoded absolute developer path, or when a file the scans claim "
+            "Fail when a synced-core file leaks a project-specific token, a "
+            "hardcoded absolute developer path or a source-repo issue/PR "
+            "number, or when a file the scans claim "
             "to have inspected cannot actually be read."
         ),
     )
@@ -654,16 +765,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run all four checks as one program and return the exit code.
+    """Run all five checks as one program and return the exit code.
 
     This carries the four assertions the original pytest module made against the
-    real repo — `test_no_project_tokens_in_synced_core`,
+    real repo (check (e) was added after them) — `test_no_project_tokens_in_synced_core`,
     `test_no_project_tokens_in_synced_source`,
     `test_no_absolute_developer_paths_in_synced_source` and
     `test_every_scanned_file_is_actually_readable` — with pytest's skip/fail
     replaced by the pinned exit-code contract in the module docstring.
 
-    Violations accumulate ACROSS all four checks. There is no short-circuit: the
+    Violations accumulate ACROSS all five checks. There is no short-circuit: the
     original guards' "surface all violations in a single run" rule exists
     because a fix-one-rerun loop wastes a consumer's time, and check (d) in
     particular is invisible to every other assertion, so skipping it because an
@@ -759,7 +870,7 @@ def main(argv: list[str] | None = None) -> int:
         blockers.append(
             f"guard scanned zero files under {skills_root} — the scan root or "
             "filters may be broken (a scan with nothing to check is a silent "
-            "no-op for every one of the four checks, not only the token scans)"
+            "no-op for every one of the five checks, not only the token scans)"
         )
     if tokens:
         for rel, tok, lineno, excerpt in find_violations(skills_root, plugin_root, tokens):
@@ -770,7 +881,7 @@ def main(argv: list[str] | None = None) -> int:
         blockers.append(
             f"source guard scanned zero files under {plugin_root} — the scan "
             "roots or filters may be broken (a scan with nothing to check is a "
-            "silent no-op for every one of the four checks, not only the token "
+            "silent no-op for every one of the five checks, not only the token "
             "scans)"
         )
     if tokens:
@@ -787,6 +898,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # ---- (c) absolute developer paths — always armed, no token list needed ----
     for rel, kind, lineno, excerpt in find_absolute_path_leaks(plugin_root):
+        violations.append(f"{rel}:{lineno}  [{kind}]  → {excerpt}")
+
+    # ---- (e) tracker references — always armed, no token list needed ----
+    for rel, kind, lineno, excerpt in find_tracker_references(plugin_root):
         violations.append(f"{rel}:{lineno}  [{kind}]  → {excerpt}")
 
     # ---- (d) readability — the check that keeps (a), (b) and (c) honest ----
@@ -834,7 +949,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"{len(violations)} conformance violation(s) in synced core — move the "
             "fact behind an overlay, rename the fixture value, curate the token out, "
-            f"or mark a deliberate path fixture with `{ABS_PATH_EXEMPT_MARKER}`."
+            f"state a tracker reference's lesson in words, or mark a deliberate path fixture with `{ABS_PATH_EXEMPT_MARKER}`."
         )
         return EXIT_VIOLATIONS  # branch: confirmed violations win over a blocker
 
