@@ -146,8 +146,8 @@ MUTANTS = [
         # and part-way down a larger repo-root tree in the other.
         "the shipped README's diagram lists a directory that does not ship",
         PLUGIN_README,
-        "  output-styles/               the project's writing convention",
-        "  conformance-checks/          portable guards\n  output-styles/               the project's writing convention",
+        "  output-styles/               CLA.md applies to Claude Code",
+        "  conformance-checks/          portable guards\n  output-styles/               CLA.md applies to Claude Code",
         TARGETS,
     ),
     (

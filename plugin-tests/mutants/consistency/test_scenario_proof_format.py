@@ -106,8 +106,8 @@ MUTANTS = [
         # The retired-form scan skips cla-setup's RETIRED list and nothing else.
         "cla-setup asks for the old manual form outside its retired list",
         CLA_SETUP,
-        "Each item that contains `: ` stays double-quoted",
-        "Note a hand-checked rule as `manual: <reason>`. Each item that contains `: ` stays double-quoted",
+        "Each item in the script's `rules:` block that contains `: ` stays double-quoted",
+        "Note a hand-checked rule as `manual: <reason>`. Each item in the script's `rules:` block that contains `: ` stays double-quoted",
         TARGETS,
     ),
     (
@@ -120,8 +120,8 @@ MUTANTS = [
     (
         "the requirement-heading pattern stops matching",
         GUARD,
-        'r"^### Requirement: (.+)$"',
-        'r"^### Requirements: (.+)$"',
+        'r"^###\\s+Requirement:\\s*(.+?)\\s*$"',
+        'r"^###\\s+Requirements:\\s*(.+?)\\s*$"',
         TARGETS,
     ),
     (

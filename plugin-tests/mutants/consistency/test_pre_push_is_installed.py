@@ -58,8 +58,8 @@ MUTANTS = [
         # alone.
         "the source hook gains a line the installed copy does not have",
         SOURCE,
-        "# CLA guard: refuse a push that targets the default branch directly.",
-        "# CLA guard: refuse a push that targets the default branch directly. (revised)",
+        "# CLA guard: refuse a push that targets the default branch directly,",
+        "# CLA guard: refuse a push that targets the default branch directly, (revised)",
         TARGETS,
     ),
     (

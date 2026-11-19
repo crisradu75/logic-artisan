@@ -82,8 +82,8 @@ MUTANTS = [
     (
         "shape-decision points back at cla-setup for the terminology format",
         SHAPE,
-        "Follow the entry format in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/terminology-format.md`",
-        "Follow the entry format in `${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/SKILL.md`",
+        "in the format of `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/terminology-format.md`",
+        "in the format of `${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/SKILL.md`",
         TARGETS,
     ),
 ]

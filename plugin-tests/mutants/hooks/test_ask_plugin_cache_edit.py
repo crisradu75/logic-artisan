@@ -298,23 +298,25 @@ MUTANTS = [
     ),
     (
         "the dispatcher re-emits every decision as an ask, allow included",
-        DISPATCHER,
+        LIB,
         '    if not isinstance(nested, dict) or nested.get("permissionDecision") != "ask":',
         "    if not isinstance(nested, dict):",
         DISPATCH_TARGETS,
     ),
     (
         "an ask with no reason gets an empty one",
-        DISPATCHER,
+        LIB,
         '    return str(nested.get("permissionDecisionReason") or "A guard requested confirmation.")',
         '    return str(nested.get("permissionDecisionReason") or "")',
         DISPATCH_TARGETS,
     ),
     (
+        # The extraction moved from the dispatcher to `_dispatch_lib.py`; the anchor is one
+        # line (no `\n`) so it matches on a CRLF checkout too.
         "a hook's stdout that is a JSON list crashes the extraction",
-        DISPATCHER,
-        "        return None\n    nested = payload.get(\"hookSpecificOutput\")\n    if not isinstance(nested, dict) or nested.get(\"permissionDecision\") != \"ask\":",
-        "        pass\n    nested = payload.get(\"hookSpecificOutput\")\n    if not isinstance(nested, dict) or nested.get(\"permissionDecision\") != \"ask\":",
+        LIB,
+        "    if not isinstance(payload, dict):",
+        "    if False:",
         DISPATCH_TARGETS,
     ),
     (
