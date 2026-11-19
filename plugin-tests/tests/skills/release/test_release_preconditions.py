@@ -263,7 +263,10 @@ def test_the_skill_tags_the_release_pr_before_merging_it_with_a_merge_commit():
         assert hits, f"Step 4 no longer runs `{prefix}`"
         return hits[0]
 
+    mergeable = first("gh pr view release/<new> --json mergeable,mergeStateStatus")
     tag = first("claude plugin tag .claude/plugins/cla --push")
+    assert mergeable < tag, (
+        "Step 4 must check the PR can merge before the tag push uses up the version")
     proof = first("python3 .claude/skills/release/scripts/check_catalog_tags.py --expect cla--v<new>")
     merge = first("gh pr merge")
     assert tag < proof < merge, (
@@ -289,4 +292,22 @@ def test_the_skill_restarts_as_a_new_version_when_the_tagged_pr_needs_a_commit()
     assert "**If the PR needs another commit after the tag is pushed**" in step_4
     assert "the release restarts as a new version" in step_4
     assert "**If the tag push fails, stop and do not merge.**" in step_4
+    assert "and `mergeStateStatus` is `CLEAN`" in step_4 and "stop before tagging" in step_4
+
+
+# requirement: plugin-distribution / A release is tagged before its catalogs name it
+def test_the_skill_expects_the_merge_prompt_and_restarts_on_a_no():
+    """`ask-destructive-git` asks before `gh pr merge` unless `ALLOW_PR_MERGE=1`
+    prefixes it, so the skill cannot promise the merge runs unasked. A no comes
+    after the tag is published, so it costs the version."""
+    body = _SKILL_MD.read_text(encoding="utf-8")
+    flat = " ".join(body.split())
+    assert "no second question" not in flat, (
+        "the skill promises no further prompt, but the merge guard asks")
+    step_2 = " ".join(_section(body, "## Step 2", "## Step 3").split())
+    assert "`ask-destructive-git` asks the user before Step 4's `gh pr merge`" in step_2
+    step_4 = " ".join(_section(body, "## Step 4", "## Step 5").split())
+    assert "`ask-destructive-git` asks the user before this command unless `ALLOW_PR_MERGE=1`" in step_4
+    assert "**If the user says no, do not merge.**" in step_4
+    assert "restart at the next patch version" in step_4
 

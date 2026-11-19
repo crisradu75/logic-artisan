@@ -75,7 +75,7 @@ version, propose that. Otherwise propose the bump the changes call for:
 - **minor** — a skill added or removed, a new guard, a restructure consumers will notice.
 - **major** — a change that breaks a consuming repo's existing usage.
 
-**This is the release's only question.** Call `AskUserQuestion` one time, before any file is
+**This is the release's one `AskUserQuestion`.** Call it one time, before any file is
 edited, any branch is made or anything is pushed. It shows:
 
 - the proposed version, with the patch, minor and major alternatives as the other options, and a
@@ -86,8 +86,10 @@ edited, any branch is made or anything is pushed. It shows:
 
 Choosing a version approves the release at that version. "Don't release", or any other answer,
 stops: nothing is edited,
-branched, pushed, merged or tagged. Once a version is chosen, Step 3 and Step 4 run with no second
-question, including the merge and the tag push.
+branched, pushed, merged or tagged. Once a version is chosen, Step 3 and Step 4 run without another
+`AskUserQuestion`. One more prompt can still come, from a guard: `ask-destructive-git` asks the user
+before Step 4's `gh pr merge` unless `ALLOW_PR_MERGE=1` prefixes it (a `/cla:multi-*` chain sets it).
+Step 4 says what to do on a no.
 
 ## Step 3 — The five-file edit, in one commit
 
@@ -158,12 +160,18 @@ no moment when a consumer's `marketplace update` fetches a missing tag. The old 
 (merge, then tag the merged commit) left that window open whenever the tag push failed,
 and 2.0.0 and 2.4.0 both sat merged and untagged until the owner pushed the tag by hand.
 
-**1. Tag the release commit, the PR's head.** Stay on `release/<new>`. The two shas
-below must be equal; if they differ, the branch you are on is not what the PR will
-merge, so stop. Then dry-run, which prints the exact git commands it will run, the last
-cheap moment before an irreversible step:
+**1. Tag the release commit, the PR's head.** Stay on `release/<new>`. First check the
+PR can merge, because a pushed tag uses up the version: a PR that then cannot merge
+costs a restart at the next patch version. Go on only when `mergeable` is `MERGEABLE`
+and `mergeStateStatus` is `CLEAN`; `UNKNOWN` means GitHub is still computing, so ask
+again after a few seconds. On anything else, stop before tagging. Nothing is published
+yet, so the branch can still take a fix: make it, re-run Step 3's checks, and come back.
+The two shas below must also be equal; if they differ, the branch you are on is not
+what the PR will merge, so stop. Then dry-run, which prints the exact git commands it
+will run, the last cheap moment before an irreversible step:
 
 ```bash
+gh pr view release/<new> --json mergeable,mergeStateStatus
 git rev-parse HEAD
 gh pr view release/<new> --json headRefOid --jq .headRefOid
 claude plugin tag .claude/plugins/cla --dry-run
@@ -188,8 +196,11 @@ only its own branch, so a tag push there returns HTTP 403. Nothing is published:
 default branch's catalogs still name the previous tag. Leave the PR open, hand the owner
 this step's commands and the merge below, and report the release as not done.
 
-**2. Merge the PR with a merge commit, pinned to the tagged commit.** Step 2's answer
-already approved it:
+**2. Merge the PR with a merge commit, pinned to the tagged commit.** `ask-destructive-git`
+asks the user before this command unless `ALLOW_PR_MERGE=1` prefixes it. **If the user
+says no, do not merge.** The tag is already published, so this version is used up: close
+the PR, leave the tag, restart at the next patch version as described below, and say so
+in the report.
 
 ```bash
 gh pr merge release/<new> --merge --match-head-commit "$(git rev-parse 'cla--v<new>^{commit}')"
