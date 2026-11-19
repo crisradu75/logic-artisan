@@ -12,7 +12,8 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 - **`check_spec_proof.py` asks for proof from the branch's net effect on the specs.** A requirement
   one change archived on the branch adds and a later one removes (such as a `REMOVED` plus `ADDED`
-  rewrite) is no longer reported as unproven, so the two changes no longer need folding into one.
+  rewrite) is no longer reported as unproven, so the two changes no longer need folding into one
+  (#559).
 
 ## [2.4.0] — 2026-11-18
 
