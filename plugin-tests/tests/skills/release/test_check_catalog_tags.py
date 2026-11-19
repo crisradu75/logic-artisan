@@ -149,6 +149,37 @@ def test_the_real_catalogs_each_pin_a_release_tag():
     assert all(ref.startswith("cla--v") for _, _, ref in refs)
 
 
+# requirement: plugin-distribution / A catalog never names a missing tag
+def test_expect_fails_a_stale_tree_whose_old_tag_is_on_the_remote(work: Path):
+    """The review-found hole: the new tag exists only locally, the tree still names the
+    old one, and the old one is on origin. Without --expect this passes; with it, not."""
+    _git(work, "tag", "cla--v1.1.0")
+    assert _run(work).returncode == 0
+    r = _run(work, "--expect", "cla--v1.1.0")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "pins `cla--v1.0.0`, not `cla--v1.1.0`" in r.stdout
+    assert "`cla--v1.1.0` is missing on origin" in r.stdout
+
+
+# requirement: plugin-distribution / A catalog never names a missing tag
+def test_expect_fails_when_the_refs_match_but_the_tag_never_left_the_clone(work: Path):
+    _write_catalogs(work, "cla--v1.1.0", "cla--v1.1.0")
+    _git(work, "tag", "cla--v1.1.0")
+    r = _run(work, "--expect", "cla--v1.1.0")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "`cla--v1.1.0` is missing on origin" in r.stdout
+    assert "not `cla--v1.1.0`" not in r.stdout
+
+
+# requirement: plugin-distribution / A catalog never names a missing tag
+def test_expect_passes_once_the_tree_and_the_remote_hold_the_new_tag(work: Path):
+    _write_catalogs(work, "cla--v1.1.0", "cla--v1.1.0")
+    _git(work, "tag", "cla--v1.1.0")
+    _git(work, "push", "-q", "origin", "cla--v1.1.0")
+    r = _run(work, "--expect", "cla--v1.1.0")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
 def _step(body: str, start: str, end: str) -> str:
     assert start in body and end in body, f"release/SKILL.md lost {start!r} or {end!r}"
     return body.split(start, 1)[1].split(end, 1)[0]
@@ -163,6 +194,9 @@ def test_the_skill_runs_the_check_before_and_after_the_tag():
     for start, end in (("## Step 1", "## Step 2"), ("## Step 4", "## Step 5")):
         blocks = "\n".join(re.findall(r"```bash\n(.*?)```", _step(body, start, end), re.S))
         assert command in blocks, f"release/SKILL.md {start} no longer runs {command}"
+    step_4 = "\n".join(re.findall(r"```bash\n(.*?)```", _step(body, "## Step 4", "## Step 5"), re.S))
+    assert f"{command} --expect cla--v<new>" in step_4, (
+        "the postcondition must name the new tag, or a stale tree passes on the old one")
     step_5 = _step(body, "## Step 5", "## When NOT to use")
     assert "only after Step 4's `check_catalog_tags.py` exited 0" in step_5
 

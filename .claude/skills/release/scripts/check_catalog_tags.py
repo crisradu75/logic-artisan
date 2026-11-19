@@ -19,7 +19,10 @@ So this check closes it from both ends instead:
                    still dangling, so one missed tag push cannot be buried under
                    the next version;
     postcondition  `/release` reports nothing as done until the ref it just
-                   published resolves on the remote.
+                   published resolves on the remote. Run it there with
+                   `--expect cla--v<new>`: without it, a working tree that still
+                   holds the OLD ref passes on the old tag while the new one
+                   never left the local clone.
 
 WHAT IT READS. The catalogs in the working tree at `--root` (default: the repo
 this script sits in, whatever the cwd). `/release` runs it on
@@ -29,8 +32,11 @@ exists only in the local clone is MISSING, because a consumer cannot fetch it.
 
 EXIT CONTRACT, three-valued on purpose:
 
-    0  every catalog ref names a tag the remote has
-    1  one or more refs name a tag the remote lacks; every one is named
+    0  every catalog ref names a tag the remote has (and, with `--expect`, every
+       ref is that tag)
+    1  one or more refs name a tag the remote lacks, or (with `--expect`) a ref
+       is not the expected tag or the expected tag is not on the remote; every
+       one is named
     2  could not check: a catalog is missing, unreadable or names no ref, or the
        remote could not be asked (unreachable, refused, timed out)
 
@@ -140,6 +146,12 @@ def main(argv: list[str] | None = None) -> int:
         help="repo root holding the catalogs (default: the repo this script is in)",
     )
     parser.add_argument("--remote", default="origin", help="remote to ask (default: origin)")
+    parser.add_argument(
+        "--expect",
+        metavar="TAG",
+        help="also require every catalog ref to be TAG, and TAG to be on the remote "
+             "(the release's postcondition: `--expect cla--v<new>`)",
+    )
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
 
@@ -151,6 +163,23 @@ def main(argv: list[str] | None = None) -> int:
         print("A check that could not run is not a pass; no release is done until it exits 0.",
               file=sys.stderr)
         return EXIT_CANNOT_RUN
+
+    if args.expect is not None:
+        stale = [(rel, name, ref) for rel, name, ref in refs if ref != args.expect]
+        expect_missing = args.expect not in tags
+        if stale or expect_missing:
+            print(f"check_catalog_tags: the release `{args.expect}` is not published")
+            for rel, name, ref in stale:
+                print(f"{rel}: plugin `{name}` pins `{ref}`, not `{args.expect}` "
+                      "(is this tree up to date with the merged release?)")
+            if expect_missing:
+                print(f"`{args.expect}` is missing on {args.remote}")
+            print(
+                "\nPull the default branch so the catalogs hold the released ref, push "
+                "the tag if it is missing (never move a published tag), then re-run.",
+                file=sys.stderr,
+            )
+            return EXIT_MISSING
 
     missing = [(rel, name, ref) for rel, name, ref in refs if ref not in tags]
     if missing:

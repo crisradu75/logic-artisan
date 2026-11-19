@@ -179,14 +179,16 @@ that the tool is wrong. `--push` sends the tag to `origin`; without it, tag and 
 hand. Then confirm it resolves, and that it points where you think:
 
 ```bash
-python3 .claude/skills/release/scripts/check_catalog_tags.py
+python3 .claude/skills/release/scripts/check_catalog_tags.py --expect cla--v<new>
 git fetch origin && git merge-base --is-ancestor cla--v<new>^{} origin/<default-branch>
 ```
 
 **This is the release's postcondition: the release is not done until
 `check_catalog_tags.py` exits 0.** It asks `origin` for its tags and fails on every
 catalog `ref` that names one `origin` lacks. A tag that exists only in the local clone
-counts as missing, because a consumer cannot fetch it. Exit 1 means the tag did not reach
+counts as missing, because a consumer cannot fetch it. `--expect` also fails a
+catalog still naming the old tag, so a checkout that was not pulled cannot pass on the
+previous release. Exit 1 means the tag did not reach
 the remote, and consumers get an install failure with nothing visibly wrong in the
 catalog: push the tag (never a different commit under the same name) and re-run it.
 Exit 2 means `origin` could not be asked, which proves nothing. Treat either as a failed
