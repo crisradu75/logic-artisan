@@ -1,6 +1,6 @@
 # Spec map
 
-How the plugin's capabilities, the workflows a user runs and the specs fit together. Links only: a
+How the plugin's capabilities, the workflows a user runs, the shipped skills and the specs fit together. Links only: a
 rule lives in its spec, and a value lives in its config. `check_spec_proof.py` fails when a spec
 is linked from no workflow step here, or a link points at a spec that does not exist.
 
@@ -72,3 +72,29 @@ is linked from no workflow step here, or a link points at a spec that does not e
 
 1. Check, review and grade the whole repo without changing it: [project-review](specs/project-review/spec.md)
 2. Pick the cheapest model and effort that do a task well: [model-advice](specs/model-advice/spec.md)
+
+## Skills
+
+Each shipped skill and the specs that cover it.
+
+| Skill | Specs |
+|---|---|
+| `/cla:annotate` | [annotate](specs/annotate/spec.md) |
+| `/cla:checkpoint` | [session-records](specs/session-records/spec.md) |
+| `/cla:cla-setup` | [cla-setup](specs/cla-setup/spec.md), [repo-context](specs/repo-context/spec.md), [spec-map](specs/spec-map/spec.md) |
+| `/cla:codify-learnings` | [session-learnings](specs/session-learnings/spec.md), [instruction-files](specs/instruction-files/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:diagnose` | [failure-diagnosis](specs/failure-diagnosis/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:feedback` | [session-records](specs/session-records/spec.md) |
+| `/cla:lite-pr` | [change-workflow](specs/change-workflow/spec.md), [review-agents](specs/review-agents/spec.md), [docs-currency](specs/docs-currency/spec.md) |
+| `/cla:multi-lite` | [small-change-chains](specs/small-change-chains/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:multi-pr` | [change-chains](specs/change-chains/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:multi-spec` | [change-chains](specs/change-chains/spec.md) |
+| `/cla:new-worktree` | [worktree-setup](specs/worktree-setup/spec.md) |
+| `/cla:project-review` | [project-review](specs/project-review/spec.md) |
+| `/cla:report-upstream` | [upstream-reports](specs/upstream-reports/spec.md) |
+| `/cla:review-change` | [change-workflow](specs/change-workflow/spec.md) |
+| `/cla:right-model` | [model-advice](specs/model-advice/spec.md) |
+| `/cla:save-permissions` | [permission-saving](specs/permission-saving/spec.md) |
+| `/cla:shape-decision` | [session-records](specs/session-records/spec.md) |
+| `/cla:spec-to-pr` | [change-workflow](specs/change-workflow/spec.md), [spec-proof](specs/spec-proof/spec.md), [docs-currency](specs/docs-currency/spec.md), [review-agents](specs/review-agents/spec.md), [run-ledgers](specs/run-ledgers/spec.md) |
+| `/cla:spec-to-pr-retro` | [run-ledgers](specs/run-ledgers/spec.md) |
