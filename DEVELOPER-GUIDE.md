@@ -561,6 +561,7 @@ plugin-tests/                  the repo's ONE pytest scope
   SKILL.md
   scripts/check_shipped_tree.py
   scripts/check_copilot_models.py
+  scripts/check_catalog_tags.py
 .claude/skills/openspec-*/     OpenSpec's generated skills
 .agents/skills/openspec-*/     the same OpenSpec skills, generated for agents that read .agents/
 .claude-plugin/                marketplace.json — the Claude Code catalog
@@ -632,6 +633,7 @@ command imports (`spec_proof_*.py`, `render_doc_*.py`, `render_change_*.py`,
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against an 18-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
 | `.claude/skills/release/scripts/check_copilot_models.py` *(repo-local)* | Verifies the Copilot agent copies match their Claude sources, have a mapped source-model alias, and omit account-specific model IDs so Copilot inherits the session model. An explicit model can silently fall back for an account that cannot select it, so this check runs locally before a tag; its tests cover invalid aliases, stale copies and explicit model pins. |
+| `.claude/skills/release/scripts/check_catalog_tags.py` *(repo-local)* | Fails while either marketplace catalog's `ref` names a tag `origin` lacks: the catalogs are read from the default branch, and the release merge lands before the tag push, so a missed push breaks every consumer's `marketplace update` (2.0.0, 2.4.0). Runs as `/release`'s precondition and as its postcondition after the tag push; a tag only in the local clone counts as missing, and an unreachable remote exits 2, never a pass. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
 | `annotate/scripts/render_doc.py` | Markdown → an annotatable page whose every block carries a source line, plus the anchor check that says which annotations the last edit orphaned. |
 | `annotate/scripts/render_html.py` | Instruments an author's own HTML in place — attributes spliced at source offsets, so stripping them returns the original bytes and the document under review stays the document under review. Refuses a file whose markup already uses those attributes, because that collision mis-anchors every annotation in the element and is invisible on the page. |

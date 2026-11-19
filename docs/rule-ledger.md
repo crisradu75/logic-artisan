@@ -114,7 +114,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/diagnose/SKILL.md
 - guidance | none | #299 2026-10-07 (reworded; skill added #233) | and does not stop to ask. Either way,
 - guidance | none | #233 2026-09-12, diagnose skill added | Do not keep editing on a falsified hypothesis because
-- keep | honesty | #233 2026-09-12; Ship scan in ship.md §2a must match the tag | a rename must touch both.
+- keep | honesty | #233 2026-09-12; Ship scan in ship.md §2a and the staged-debug-tag hook must match the tag | a rename must touch all three.
 - not-a-rule | - | - | never matched. Confirmed by [DEBUG-a3f1] logging both sides of the compare.
 
 ## skills/diagnose/references/strategies.md
@@ -310,7 +310,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | d452a82d 2026-07-28 (#11) branch collision preflight and rename-in-place guard; `ship_check.py preflight` holds the checks since add-ship-check-script 2026-11-18 | `origin/<base-branch>..HEAD` must hold 0 commits — no commits to lose
 - keep | user's files | add-ship-check-script review 2026-11-18: a stacked run on the default branch was approved for `git branch -m`; `ship_check.py preflight` refuses it | the default branch or the parent, which is never renamed.
 - keep | user's files | 9cd5f32f 2026-10-08 slim spec-to-pr (moved); diagnose's debug tag leaking into a commit; ask-staged-debug-tag enforces it | must return nothing; remove any tagged line before staging
-- keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | a rename must touch both, or this grep searches for a string nothing writes
+- keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr); the staged-debug-tag hook added as a third home | a rename must touch all three, or this grep searches for a string nothing writes
 - keep | user's files | ee4034ad 2026-07-23 extract; tool-redirect bug wrote a scratch file into the repo root | Never fold it into the commit
 - keep | user's files | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | never skip this because Implement's delegate reported success
 - keep | honesty | eaa579b0 2026-08-24 (#145) a measurement names its command; block-dishonest-commit enforces it | never `Measured-by: none`
@@ -754,13 +754,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; a protected file changed without a yes is not a clean run | never call the run clean, and leave the files as they are for the user
 - keep | honesty | 2026-11-18 rule-enforcement audit check 5, setup_guard.py; exit 2 means the guard could not look | and never treat that exit as a pass
 - keep | user's files | 2.0.0 (016203d7), overlays become optional | Does **NOT** create overlays, and never writes a fact into one.
-
-## skills/cla-setup/references/economy-rules-block.md
-- not-a-rule | - | - | the item's replace-whole and never-stops rules are repeated there
-- keep | user's files | #326 (2.1.0), cla-economy-rules-file | ordinary diff; if `.claude/` is ignored it stays local. This skill never touches
-- keep | shipped to other repos | #326 (2.1.0), a rules-file failure stops only its own block | A failure here never stops the
-- not-a-rule | - | - | fail "model-routing.md must hold the review-sizing begin and end comments exactly once each"
-- not-a-rule | - | - | fail "economy-rules-file.md must hold each include marker alone on a line exactly once, and no other comment"
 
 ## skills/cla-setup/references/facts-file.md
 - not-a-rule | - | - | since most skills never read the lessons log

@@ -19,7 +19,7 @@ tag (this plugin's own diagnose skill does) is legitimate. The user decides.
 Detection
 ---------
 For each `git commit` in the command that is not a `--dry-run` (found with
-`_dispatch_lib.GitInvocation`, arguments read by `_git_commit_args`), the lines
+`_shell_text.GitInvocation`, arguments read by `_git_commit_args`), the lines
 the commit would add are read from git, in the commit's directory (the payload
 `cwd` moved by each `-C`):
 
@@ -67,7 +67,7 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GitInvocation, strip_quoted_spans  # noqa: E402
+from _shell_text import GitInvocation, strip_quoted_spans  # noqa: E402
 from _git_commit_args import COMMIT_OR_ADD, Add, Commit, find_invocations  # noqa: E402
 
 # Built from two halves so that this file's own added lines never hold the tag.

@@ -163,12 +163,14 @@ grep -rn "\[DEBUG-" <the paths this run touched>
 A non-zero hit count is a halt, not a warning. A leaked debug log ships noise
 into production output and reads as deliberate to the next person.
 
-**The tag pattern now lives in two files, and a rename must touch both.** This
-skill is one; `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/ship.md` §2a
-is the other, where the same grep runs at the commit choke point so a tag leaked
-by an *interrupted* run is still caught. Changing the tag here without changing
-it there leaves the Ship scan searching for a string nothing writes — it passes,
-and it checks nothing.
+**The tag pattern lives in three files, and a rename must touch all three.**
+This skill is one; `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/ship.md` §2a
+is another, where the same grep runs at the commit choke point so a tag leaked
+by an *interrupted* run is still caught; the guard hook
+`${CLAUDE_PLUGIN_ROOT}/hooks/ask-staged-debug-tag.py` is the third, which asks
+before a commit that stages one. Changing the tag here without changing it there
+leaves the Ship scan and the hook searching for a string nothing writes — they
+pass, and they check nothing.
 
 **The commit message states the confirmed hypothesis**, not the symptom and not
 the edit:

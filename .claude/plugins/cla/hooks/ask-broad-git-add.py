@@ -21,8 +21,8 @@ Detection
 ---------
 A `git add` invocation anywhere in the command (behind global options such as
 `git -C <dir>`, in any `&&` / `;` / `|` / newline / `(` / backtick segment, and
-under the `git.exe` spellings `_dispatch_lib.GIT_CMD` accepts), after quoted
-spans are blanked by `_dispatch_lib.strip_quoted_spans`, is BROAD when:
+under the `git.exe` spellings `_shell_text.GIT_CMD` accepts), after quoted
+spans are blanked by `_shell_text.strip_quoted_spans`, is BROAD when:
 
 - it carries `-A`, `--all` or `--no-ignore-removal` (or any abbreviation git
   resolves) and names no positive pathspec, or only broad ones; or
@@ -78,8 +78,8 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import GIT_CMD  # noqa: E402
-from _dispatch_lib import strip_quoted_spans  # noqa: E402
+from _shell_text import GIT_CMD  # noqa: E402
+from _shell_text import strip_quoted_spans  # noqa: E402
 
 # Total wall time for every `git status` this hook runs on one call, shared
 # across them. `status` walks the working tree, so it gets the 4 s that
@@ -358,11 +358,10 @@ def _swept_files(invocations: list[_Invocation]) -> list[str]:
 
 
 def _quote_name(path: str) -> str:
-    """A file name with whitespace and control characters escaped.
-
-    The Copilot adapter turns an ask whose reason contains "did not run" or
-    "could not run" into a deny; an escaped space (`\\x20`) keeps a file name
-    from spelling either phrase.
+    """A file name with whitespace and control characters escaped (a space as
+    `\\x20`), so a name cannot break the reason's line or pass for text of its
+    own. The Copilot adapter reads the dispatcher's `GUARD_NOT_RUN` flag, not the
+    reason's words, so no name can turn this ask into a deny.
     """
     escaped = path[:200].encode("unicode_escape").decode("ascii", "replace")
     return escaped.replace(" ", "\\x20")
