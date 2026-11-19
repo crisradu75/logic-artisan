@@ -40,6 +40,7 @@ pytest plugin-tests -q -n 4 --dist loadfile
 openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 python3 .claude/skills/release/scripts/check_copilot_models.py
+python3 .claude/skills/release/scripts/check_catalog_tags.py
 ```
 
 | Precondition | Why it is not negotiable |
@@ -53,6 +54,7 @@ python3 .claude/skills/release/scripts/check_copilot_models.py
 | The docs match the code since the last tag | Re-check every count and present-tense claim in `README.md`, `DEVELOPER-GUIDE.md` and `.claude/plugins/cla/README.md` against `git log <last-tag>..HEAD`, and fix them in a PR first. A release that ships stale counts needs a docs PR after it. |
 | `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
 | `check_copilot_models.py` exits 0 | It verifies generated Copilot agent copies stay in step with their Claude sources and inherit the session model instead of pinning account-specific IDs. A source model alias without a defined inheritance policy, a stale profile, or an explicit Copilot model refuses the release. It is local-only; exit 2 means the sources could not be checked. Fix the source alias policy and regenerate the copies in a PR first, never as part of the release. |
+| `check_catalog_tags.py` exits 0 | Every `ref` in both catalogs names a tag `origin` has. Exit 1 means an earlier release was merged but its tag never reached `origin`, so every consuming repo's `marketplace update` is failing now: stop, and have the owner push that tag from its merged release commit before any new version. Exit 2 means `origin` could not be asked, which is not a pass. |
 
 Resolve the default branch, never assume it: `git symbolic-ref --quiet refs/remotes/origin/HEAD`
 (take the segment after the last `/`); if unset, use whichever of `main` / `master`
@@ -147,7 +149,8 @@ until Step 4's tag reaches `origin` that `ref` names a tag that does not exist, 
 push only its own branch, and a tag push there returns HTTP 403 — which is how 2.0.0 sat
 merged and untagged until the owner pushed the tag by hand. In such a session, Step 2's
 question is asked first, as everywhere. On no, stop before anything is pushed. On a chosen
-version, open the PR and stop: hand the owner the merge and Step 4's commands.
+version, open the PR and stop: hand the owner the merge and Step 4's commands, including
+the `check_catalog_tags.py` postcondition, and report the release as not done.
 
 **Why a PR and not `git push`.** `hooks/git/pre-push` refuses a direct push to the default
 branch. The hook's message names an `ALLOW_PUSH_TO_MAIN=1` override, and it is not the
@@ -176,13 +179,18 @@ that the tool is wrong. `--push` sends the tag to `origin`; without it, tag and 
 hand. Then confirm it resolves, and that it points where you think:
 
 ```bash
-git ls-remote --tags origin cla--v<new>
+python3 .claude/skills/release/scripts/check_catalog_tags.py
 git fetch origin && git merge-base --is-ancestor cla--v<new>^{} origin/<default-branch>
 ```
 
-**An empty result from `git ls-remote` means the tag did not reach the remote**, and
-consumers will get an install failure with nothing visibly wrong in the catalog. Treat
-it as a failed release, not a cosmetic problem.
+**This is the release's postcondition: the release is not done until
+`check_catalog_tags.py` exits 0.** It asks `origin` for its tags and fails on every
+catalog `ref` that names one `origin` lacks. A tag that exists only in the local clone
+counts as missing, because a consumer cannot fetch it. Exit 1 means the tag did not reach
+the remote, and consumers get an install failure with nothing visibly wrong in the
+catalog: push the tag (never a different commit under the same name) and re-run it.
+Exit 2 means `origin` could not be asked, which proves nothing. Treat either as a failed
+release, not a cosmetic problem, and do not go on to Step 5's success report.
 
 The second command asserts the tag is *on* the default branch — the property that actually
 matters. Do not compare the two shas for equality instead: that breaks the moment any
@@ -191,6 +199,9 @@ an apparent failure. The `git fetch` is not optional, because step 1's fetch pre
 merge being checked.
 
 ## Step 5 — Report
+
+Report success only after Step 4's `check_catalog_tags.py` exited 0. If it did not, report
+the release as not done, with its output and the commands still to run.
 
 State: the version cut, the five files bumped plus `CHANGELOG.md`, the tag pushed and confirmed, and the
 commands a consumer runs to pick it up (`claude plugin marketplace update cris-logic-artisan`, then
