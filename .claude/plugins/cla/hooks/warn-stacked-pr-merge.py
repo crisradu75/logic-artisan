@@ -56,7 +56,10 @@ if _HOOKS_DIR not in sys.path:
 # letter-colon-backslash run that the conformance guard reads as a hardcoded
 # Windows path. Same match either way.
 _GH_MERGE = re.compile(r"\b(?i:gh)(?:\.(?i:exe|cmd|bat|com|ps1))?\s+pr\s+merge\b")
-_DELETE_BRANCH = re.compile(r"(?:^|\s)(?:--delete-branch|-d)(?:\s|=|$)")
+# gh parses flags with pflag, so short boolean flags cluster: `-sd`, `-ds`, `-md` all delete the
+# branch. Only the boolean merge-mode flags (-s, -m, -r) may sit before the `d`; after a value
+# flag such as `-b`, the rest of the token is its value, so `-bd` is a body of "d", not a delete.
+_DELETE_BRANCH = re.compile(r"(?:^|\s)(?:--delete-branch(?=\s|=|$)|-[smr]*d\S*(?=\s|$))")
 # A standalone PR-number token after `gh pr merge` (whitespace-bounded so a branch
 # name like `feature/foo-2` is not misread as PR "2"). Absent → current-branch PR.
 _PR_NUMBER = re.compile(r"(?:^|\s)(\d+)(?:\s|$)")
