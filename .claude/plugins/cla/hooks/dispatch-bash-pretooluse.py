@@ -33,21 +33,24 @@ asks before any guard runs, and a guard sees what a shell wrapper hands on.
   - WRAPPED FORMS. Before the first hook, `_shell_read.guard_parts` reads the
     command once: each shell wrapper's body (`bash -c "..."`, `sh -c`, `eval
     "..."`, `pwsh -Command`, `Invoke-Expression`, `cmd /c`, nested up to three
-    deep) and each git line whose subcommand the command fills in (`X=commit;
-    git $X ...`) becomes an extra PART. Every guard except those in `_READS_COMMAND_ONLY` then
-    runs on the command and again on each part, as if the part had been typed
-    bare, so `bash -c "echo hi > ../x"` asks and `eval 'git commit -m "Measured-by:
-    none"'` blocks like their bare forms. The parts are handed on whole, one run
+    deep) becomes an extra PART: the command the wrapper's shell runs, its own
+    option words dropped (`bash -c 'cp a ../b'` is `cp a ../b`). Heredoc text is
+    data but for an unquoted body's `$(...)` and backticks, and a wrapper behind
+    a remote runner (`docker exec`, `ssh <host>`, ...) is not read, since its
+    body does not run here; `_shell_read.py` names the rules. Every guard
+    except those in `_READS_COMMAND_ONLY` then runs on the command and again on
+    each part, as if the part had been typed bare, so `bash -c "echo hi > ../x"`
+    asks and `eval 'git commit -m "Measured-by: none"'` blocks like their bare
+    forms. The parts are handed on whole, one run
     each, not joined: a quote left open in one part cannot pair with one in the
     next. Same order, same precedence: the first block wins, asks and warnings
     from every run merge (a repeated text once). A skippable hook's runs each
-    need room in the budget, like its first. When the reading raises, or the
-    command plus its parts would pass `MAX_SCANNED_COMMAND_CHARS`, the guards get
-    the command alone, as before; `ask-destructive-git.py` reads the same cached
-    expansion itself and keeps the asks for what could not be read (an
-    unresolved expansion, the depth or work cap), so those reasons, and a
-    reading that raises (an enforcing hook that could not run), ask exactly as
-    they did.
+    need room in the budget, like its first. When the reading raises, stops at
+    a cap, or the command plus its parts would pass `MAX_SCANNED_COMMAND_CHARS`,
+    the call asks (`_unread_parts_ask`) on top of what the guards decide, since
+    part of what the wrapper runs went unchecked. `ask-destructive-git.py`
+    reads its own cached expansion and keeps its own asks for what it could
+    not read, with reasons unchanged.
   - Any hook returning 2 blocks: its stderr message is shown, prefixed with any
     non-blocking warning text already produced by an earlier hook in this same
     run (not silently dropped), then this process exits 2.
@@ -216,33 +219,53 @@ def _oversize_ask(stdin_text: str) -> str | None:
     )
 
 
-def _part_inputs(stdin_text: str) -> list[str]:
-    """The hook input for each extra part of the command, in order: the same
-    payload with `tool_input.command` replaced by the part. Empty when there is
-    no command, nothing to add, the reading raised (`ask-destructive-git.py`
-    raises it again and asks), or the command and its parts together are longer
-    than `MAX_SCANNED_COMMAND_CHARS`, the length the guards are timed for."""
+def _unread_parts_ask(why: str) -> str:
+    """The ask reason when the guards could not read every wrapper body."""
+    return (
+        "this command hands text to a shell wrapper (`bash -c`, `eval`, `pwsh -Command`, "
+        f"...) and {why}, so the cla guards checked the command itself but not all of what "
+        "the wrapper runs. Confirm only if you know it is safe, or split it into smaller "
+        "commands. (hook: dispatch-bash-pretooluse.py)"
+    )
+
+
+def _part_inputs(stdin_text: str) -> tuple[list[str], str | None]:
+    """The hook input for each extra part of the command, in order (the same
+    payload with `tool_input.command` replaced by the part), and the reason to
+    ask when the guards cannot read all of them, else None.
+
+    No parts and no reason when there is no command or nothing to add. A reason
+    when the reading stopped at a cap (the parts it found are still read), when
+    the command and its parts together are longer than
+    `MAX_SCANNED_COMMAND_CHARS`, the length the guards are timed for (none is
+    read), or when the reading raised (none is read). Each of those asks rather
+    than allowing what no guard checked."""
     if _guard_parts is None:
-        return []
+        return [], None  # `ask-destructive-git.py` fails to load on the same import and asks
     try:
         payload = json.loads(stdin_text)
         tool_input = payload["tool_input"]
         command = tool_input["command"]
     except (ValueError, RecursionError, TypeError, KeyError):
-        return []  # no command to read: the guards handle the input as it is
+        return [], None  # no command to read: the guards handle the input as it is
     if not isinstance(command, str) or not command:
-        return []
+        return [], None
     try:
-        extra = _guard_parts(command)
-    except Exception:  # noqa: BLE001 -- see the docstring
-        return []
+        extra, complete = _guard_parts(command)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring
+        return [], _unread_parts_ask(f"reading those bodies failed ({type(exc).__name__}: {exc})")
     if len(command) + sum(len(p) for p in extra) > MAX_SCANNED_COMMAND_CHARS:
-        return []
-    return [
+        return [], _unread_parts_ask(
+            f"the command and those bodies together are over the {MAX_SCANNED_COMMAND_CHARS:,}-character "
+            "limit the guards scan"
+        )
+    inputs = [
         json.dumps({**payload, "tool_input": {**tool_input, "command": part}})
         for part in extra
     ]
-
+    return inputs, None if complete else _unread_parts_ask(
+        "its bodies are longer than the guards read within their time"
+    )
 
 def main() -> int:
     global GUARD_NOT_RUN
@@ -259,9 +282,9 @@ def main() -> int:
         }}))
         return 0
     deadline = Deadline()
-    part_inputs = _part_inputs(stdin_text)
+    part_inputs, unread_parts = _part_inputs(stdin_text)
     warnings: list[str] = []
-    asks: list[str] = []
+    asks: list[str] = [unread_parts] if unread_parts else []
     skipped: list[str] = []
     errored = False
     errored_enforcing: list[str] = []

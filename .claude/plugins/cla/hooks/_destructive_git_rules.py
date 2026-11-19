@@ -88,9 +88,13 @@ _NO_VERIFY = re.compile(r"(?:^|\s)--" + _abbrev("no-verify", 7) + _END)
 # beside a push asks too, which fails in the safe direction.
 _HOOKS_PATH = re.compile(r"(?i)\bcore\.hookspath\b")
 # On the stripped text, where a quoted `"1"` reads `"#"`; the value may be followed
-# by any separator (`export ALLOW_PUSH_TO_MAIN=1;git push`).
+# by any separator (`export ALLOW_PUSH_TO_MAIN=1;git push`). PowerShell sets one as
+# `$env:ALLOW_PUSH_TO_MAIN=1` or `$env:ALLOW_TAG_REWRITE = '1'`, with spaces allowed
+# around the `=` and the name in any case, as PowerShell reads it.
 _ALLOW_PUSH_TO_MAIN = re.compile(
-    r"(?:^|[\s;&|({])ALLOW_(?:PUSH_TO_MAIN|TAG_REWRITE)=(?:1|\"#\"|'#')(?=[\s;&|)]|$)"
+    r"(?:(?:^|[\s;&|({])ALLOW_(?:PUSH_TO_MAIN|TAG_REWRITE)="
+    r"|(?i:\$env:ALLOW_(?:PUSH_TO_MAIN|TAG_REWRITE))[ \t]*=[ \t]*)"
+    r"(?:1|\"#\"|'#')(?=[\s;&|)]|$)"
 )
 PUSH_GUARD_SKIP_REASON = (
     "a push that skips the pre-push guard (`--no-verify`, `core.hooksPath`, "

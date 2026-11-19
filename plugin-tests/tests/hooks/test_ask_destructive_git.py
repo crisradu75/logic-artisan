@@ -903,6 +903,10 @@ def test_the_prefix_still_authorizes_every_merge_it_heads(command, monkeypatch, 
         "ALLOW_TAG_REWRITE='1' git push origin v1",
         "export ALLOW_TAG_REWRITE=1;git push origin v1",
         'bash -c "ALLOW_TAG_REWRITE=1 git push origin :refs/tags/v1"',
+        # PowerShell's form of either override, any case, spaces around `=`
+        "$env:ALLOW_TAG_REWRITE='1'; git push origin v1",
+        "$env:ALLOW_PUSH_TO_MAIN=1; git push origin main",
+        '$Env:allow_push_to_main = "1"; git push origin main',
         # every other way to point git's hooks elsewhere for the push
         'git -c "core.hooksPath=/dev/null" push origin main',
         "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/x git push origin main",
@@ -926,6 +930,8 @@ def test_a_push_that_skips_the_pre_push_guard_asks(command, monkeypatch, capsys)
         'git commit -m "note: ALLOW_TAG_REWRITE=1 is the override" && git push',
         "ALLOW_TAG_REWRITE=0 git push origin v1",
         "ALLOW_TAG_REWRITES=1 git push origin v1",
+        "$env:ALLOW_PUSH_TO_MAIN=0; git push origin main",
+        "$env:NOT_ALLOW_PUSH_TO_MAIN=1; git push origin x",
         "git -c core.hooksPath=/dev/null commit -m x",
     ],
 )

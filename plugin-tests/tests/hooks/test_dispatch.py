@@ -1314,6 +1314,17 @@ def _decide(command: str, cwd: Path) -> tuple[int, dict, str]:
         'eval "echo hi > ../../outside.txt"',
         "sh -c 'echo hi >> ../../log.txt'",
         "bash -c \"sh -c 'echo hi > ../../outside.txt'\"",
+        # the wrapper's own option words are not the body's command word
+        "bash -c 'cp a ../../b'",
+        "sh -c 'mkdir ../../newdir'",
+        "bash -c 'mv a ../../b'",
+        "bash -lc 'cp \"$1\" ../../b' _ a",  # `_ a` are the inner $0 and $1
+        "pwsh -NoProfile -NonInteractive -Command 'cp a ../../b'",
+        "cmd /s /c 'mkdir ../../newdir'",
+        "su root -c 'cp a ../../b'",
+        # a substitution in an unquoted heredoc body is run
+        "cat <<EOF\n$(bash -c 'echo hi > ../../outside.txt')\nEOF",
+        "cat <<EOF\n`sh -c 'cp a ../../b'`\nEOF",
     ],
 )
 def test_a_wrapped_write_outside_the_checkout_asks(tmp_path, command):
@@ -1336,6 +1347,21 @@ def test_a_wrapped_measured_by_none_commit_is_blocked(tmp_path, command):
     rc, _, err = _decide(command, tmp_path)
     assert rc == 2, command
     assert "block-dishonest-commit.py" in err
+
+
+# requirement: guard-hooks / A command run through a shell wrapper is checked as typed bare
+def test_a_wrapped_multi_line_inline_body_warns(tmp_path):
+    """A guard keyed on the command word (`gh pr create`) sees it once the
+    wrapper's `-c` is dropped."""
+    rc, nested, _ = _decide("bash -c 'gh pr create --body \"a\nb\"'", tmp_path)
+    assert rc == 0
+    assert "[guard-bash-text] `gh pr create --body`" in nested["additionalContext"]
+
+
+def test_a_force_push_substituted_in_an_unquoted_heredoc_asks(tmp_path):
+    rc, nested, _ = _decide("cat <<EOF\n$(bash -c 'git push -f origin x')\nEOF", tmp_path)
+    assert rc == 0
+    assert "force-push" in nested["permissionDecisionReason"]
 
 
 # requirement: guard-hooks / A command run through a shell wrapper is checked as typed bare
@@ -1379,11 +1405,31 @@ def test_a_wrapped_broad_git_add_asks(tmp_path):
         "CLAUDE_PLUGIN_ROOT=/opt/p bash -c 'python3 $CLAUDE_PLUGIN_ROOT/x.py'",
         # prose in a quoted heredoc names wrappers; it is data, not a command
         "git commit -F - <<'EOF'\nrun bash -c 'python3 ${CLAUDE_PLUGIN_ROOT}/x.py' and\neval \"echo > ../../x\"\nEOF",
+        # ...and in an unquoted one, outside its substitutions (review round 1)
+        "gh pr create --title t --body-file - <<EOF\nWe now read bash -c 'git commit -m \"Measured-by: none\"' as a commit.\nEOF",
+        "git commit -F - <<EOF\nfeat: read eval 'echo hi > ../../x' bodies\nRef: $(git rev-parse --short HEAD)\nEOF",
+        'cat > run.sh <<EOF\nsh -c "echo \\$1 > ../../out.log"\nEOF',
+        # an assignment the body names is inherited by the inner shell
+        "export CLAUDE_PLUGIN_ROOT=/opt/p; bash -c 'python3 ${CLAUDE_PLUGIN_ROOT}/x.py'",
+        "CLAUDE_PLUGIN_ROOT=/opt/p; bash -c 'python3 $CLAUDE_PLUGIN_ROOT/x.py'",
+        # a body run in a container or on another host is not the checkout's
+        "docker exec web sh -c 'cd /app && echo ok > ../../log.txt'",
+        "ssh build-host bash -c 'cp a ../../b'",
+        "kubectl exec pod -- sh -c 'mkdir ../../x'",
     ],
 )
 def test_a_harmless_wrapped_command_stays_silent(tmp_path, command):
     rc, nested, err = _decide(command, _checkout(tmp_path))
     assert (rc, nested.get("permissionDecision")) == (0, None), (command, err)
+
+
+def test_prose_naming_a_link_delete_in_an_unquoted_heredoc_is_not_blocked(tmp_path, make_dir_alias):
+    """Review round 1: the body is text, though `link` really is a link."""
+    _unsafe_delete_target(tmp_path, make_dir_alias)
+    rc, nested, err = _decide("cat > notes.md <<EOF\nCleanup: bash -c 'rm -rf the-link'\nEOF", tmp_path)
+    assert (rc, nested.get("permissionDecision")) == (0, None), err
+    rc, _, err = _decide("bash -c 'rm -rf the-link'", tmp_path)
+    assert rc == 2, "non-vacuity: the wrapped delete itself is blocked"
 
 
 def test_a_wrapped_cd_is_left_to_its_own_shell(tmp_path):
@@ -1402,15 +1448,37 @@ def test_a_guard_repeating_one_reason_on_a_part_says_it_once(tmp_path):
     assert nested["permissionDecisionReason"].count("writes outside the checkout") == 1
 
 
-def test_parts_over_the_scan_cap_leave_the_guards_on_the_command_alone(monkeypatch, capsys):
+def test_parts_over_the_scan_cap_ask_unread(monkeypatch, capsys):
     """The guards are timed for `MAX_SCANNED_COMMAND_CHARS` of text, so a command
-    whose parts would take the total past it is read as before: without them."""
+    whose parts would take the total past it has them read by no guard, and
+    asks rather than letting that pass."""
     mod = _load_dispatcher("dispatch-bash-pretooluse.py")
     command = 'bash -c "echo hi > ../../outside.txt"'
     stdin = json.dumps({"tool_input": {"command": command}})
-    assert mod._part_inputs(stdin), "non-vacuity: the body is a part under the real cap"
+    parts, unread = mod._part_inputs(stdin)
+    assert parts and unread is None, "non-vacuity: the body is a part under the real cap"
     monkeypatch.setattr(mod, "MAX_SCANNED_COMMAND_CHARS", len(command) + 5)
-    assert mod._part_inputs(stdin) == []
+    parts, unread = mod._part_inputs(stdin)
+    assert parts == []
+    assert "over the" in unread and "dispatch-bash-pretooluse.py" in unread
+    rc, nested = _dispatch_inprocess(mod, monkeypatch, command)
+    assert rc == 0 and nested["permissionDecision"] == "ask"
+    assert "checked the command itself but not all of what" in nested["permissionDecisionReason"]
+
+
+def test_a_long_wrapped_body_past_the_scan_cap_asks(tmp_path):
+    """End to end, the review's shape: a delete hidden ahead of padding."""
+    rc, nested, _ = _decide("bash -c 'rm -rf link; " + "x" * 260_000 + "'", tmp_path)
+    assert rc == 0
+    assert "over the 500,000-character limit" in nested["permissionDecisionReason"]
+
+
+def test_a_reading_stopped_at_a_cap_asks_and_still_hands_on_what_it_found(monkeypatch):
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    monkeypatch.setattr(mod, "_guard_parts", lambda command: (("echo a",), False))
+    parts, unread = mod._part_inputs(json.dumps({"tool_input": {"command": "bash -c 'echo a'"}}))
+    assert [json.loads(p)["tool_input"]["command"] for p in parts] == ["echo a"]
+    assert "longer than the guards read" in unread
 
 
 @pytest.mark.parametrize(
@@ -1420,27 +1488,31 @@ def test_parts_over_the_scan_cap_leave_the_guards_on_the_command_alone(monkeypat
 )
 def test_no_parts_for_an_input_with_no_wrapped_command(stdin):
     mod = _load_dispatcher("dispatch-bash-pretooluse.py")
-    assert mod._part_inputs(stdin) == []
+    assert mod._part_inputs(stdin) == ([], None)
 
 
 def test_each_part_is_handed_on_with_the_rest_of_the_payload():
     mod = _load_dispatcher("dispatch-bash-pretooluse.py")
     stdin = json.dumps({"tool_input": {"command": "bash -c 'echo hi'", "timeout": 5}, "cwd": "/w"})
-    (part,) = mod._part_inputs(stdin)
-    assert json.loads(part) == {"tool_input": {"command": "-c echo hi", "timeout": 5}, "cwd": "/w"}
+    (part,), unread = mod._part_inputs(stdin)
+    assert unread is None
+    assert json.loads(part) == {"tool_input": {"command": "echo hi", "timeout": 5}, "cwd": "/w"}
 
 
-def test_a_reading_that_raises_still_runs_the_guards_on_the_command(monkeypatch, capsys):
-    """The shell reading failing is not a guard failing: the guards run on the
-    command, and `ask-destructive-git`, which reads the same module, is the one
-    that asks when ITS reading raises."""
+def test_a_reading_that_raises_asks_and_still_runs_the_guards_on_the_command(monkeypatch, capsys):
+    """The parts reading failing leaves the bodies unchecked, so the call asks;
+    the guards still run on the command, and a block there still wins."""
     mod = _load_dispatcher("dispatch-bash-pretooluse.py")
 
     def boom(command):
         raise RuntimeError("reading exploded")
 
     monkeypatch.setattr(mod, "_guard_parts", boom)
-    assert mod._part_inputs(json.dumps({"tool_input": {"command": "bash -c 'echo hi'"}})) == []
+    parts, unread = mod._part_inputs(json.dumps({"tool_input": {"command": "bash -c 'echo hi'"}}))
+    assert parts == []
+    assert "reading those bodies failed (RuntimeError: reading exploded)" in unread
+    rc, nested = _dispatch_inprocess(mod, monkeypatch, "bash -c 'echo hi'")
+    assert rc == 0 and nested["permissionDecision"] == "ask"
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"tool_input": {"command": "cd /tmp"}})))
     assert mod.main() == 2  # the command itself is still read
     assert "block-cd-in-bash.py" in capsys.readouterr().err
@@ -1576,32 +1648,62 @@ def _shell_read():
 @pytest.mark.parametrize(
     "command,parts",
     [
-        ("bash -c 'echo a'; bash -c 'echo a'", ("-c echo a",)),
-        ("X=1 sudo bash -c 'echo a'", ("-c echo a",)),
-        ("A=1 B=2 bash -c 'echo a'", ("export A=1; export B=2; -c echo a",)),
-        ("git commit -F - <<'EOF'\nsee bash -c 'x'\nEOF\nbash -c 'echo a'", ("-c echo a",)),
+        ("bash -c 'echo a'; bash -c 'echo a'", ("echo a",)),
+        ("X=1 sudo bash -c 'echo a'", ("echo a",)),
+        ("A=1 B=2 bash -c 'echo $B $A $C'", ("export B=2; export A=1; echo $B $A $C",)),
+        ("A=1; export A=2; bash -c 'echo ${A}'", ("export A=2; echo ${A}",)),
+        ("bash -c 'echo $A'; A=1", ("echo $A",)),  # assigned after: not inherited
+        ("git commit -F - <<'EOF'\nsee bash -c 'x'\nEOF\nbash -c 'echo a'", ("echo a",)),
         ("git commit -F - <<\"EOF\"\nsee bash -c 'x'\nEOF", ()),
         ("git commit -F - <<\\EOF\nsee bash -c 'x'\nEOF", ()),
+        ("git commit -F - <<EOF\nsee bash -c 'x'\nEOF", ()),
         # an operator inside a body is text: the body still ends at its own line
-        ("git commit -F - <<'EOF'\nsee <<'NEVER' here\nEOF\nbash -c 'echo a'", ("-c echo a",)),
-        ("cat <<-'EOF'\n\tsee bash -c 'x'\n\tEOF\nbash -c 'echo a'", ("-c echo a",)),
-        # an unquoted delimiter's body runs its substitutions
-        ("cat <<EOF\n$(bash -c 'echo a')\nEOF", ("-c echo a",)),
-        ('bash -c "sh -c \'echo a\'"', ("-c sh -c 'echo a'", "-c echo a")),
+        ("git commit -F - <<'EOF'\nsee <<'NEVER' here\nEOF\nbash -c 'echo a'", ("echo a",)),
+        ("cat <<-'EOF'\n\tsee bash -c 'x'\n\tEOF\nbash -c 'echo a'", ("echo a",)),
+        # an unquoted delimiter's body runs its substitutions, and only those
+        ("cat <<EOF\nsh -c 'y' $(bash -c 'echo a') sh -c 'z'\nEOF", ("echo a",)),
+        ("cat <<EOF\n`bash -c 'echo a'` and \\`sh -c 'z'\\`\nEOF", ("echo a",)),
+        ("cat <<EOF\n$(bash -c 'echo a'\nEOF", ("echo a",)),
+        ('bash -c "sh -c \'echo a\'"', ("sh -c 'echo a'", "echo a")),
+        # option words
+        ("bash --norc -x -o pipefail -c 'echo a' zero one", ("echo a",)),
+        ("bash -- script.sh arg", ("script.sh arg",)),
+        ("bash --rcfile rc -c 'echo a'", ("echo a",)),
+        ("pwsh -ExecutionPolicy Bypass -NoProfile -Command 'echo a'", ("echo a",)),
+        ("powershell -c 'echo a'", ("echo a",)),
+        ("pwsh -File run.ps1 x", ("run.ps1 x",)),
+        ("Invoke-Expression -Command 'echo a'", ("echo a",)),
+        ("iex 'echo a'", ("echo a",)),
+        ("cmd /d /s /c 'echo a'", ("echo a",)),
+        ("su - root -c 'echo a'", ("echo a",)),
+        ("su --command='echo a'", ("echo a",)),
+        ("su root", ()),
+        ("eval 'echo a' 'b'", ("echo a b",)),
+        # a remote runner's body is not local
+        ("docker run img sh -c 'echo a'; bash -c 'echo b'", ("echo b",)),
+        ("ssh host \"sh -c 'bash -c echo'\"", ()),
     ],
 )
 def test_the_parts_a_wrapper_hands_on(command, parts):
-    assert _shell_read().guard_parts(command) == parts
+    assert _shell_read().guard_parts(command) == (parts, True)
+
+
+def test_an_encoded_powershell_body_is_read_decoded():
+    import base64
+
+    encoded = base64.b64encode("cp a ../b".encode("utf-16-le")).decode()
+    assert _shell_read().guard_parts(f"pwsh -NoProfile -EncodedCommand {encoded}") == (("cp a ../b",), True)
 
 
 def test_the_parts_stop_at_the_appended_text_cap(monkeypatch):
     """A nested body that takes the appended text past the cap is not read."""
     shell = _shell_read()
     command = 'bash -c "sh -c \'echo a\'"'
-    monkeypatch.setattr(shell, "_EXPAND_SLACK", 0)
+    # Room for the first body (14 characters) and not the second.
+    monkeypatch.setattr(shell, "_EXPAND_SLACK", 15 - len(command))
     shell.guard_parts.cache_clear()
     try:
-        assert shell.guard_parts(command) == ("-c sh -c 'echo a'",)
+        assert shell.guard_parts(command) == (("sh -c 'echo a'",), False)
     finally:
         shell.guard_parts.cache_clear()
 
@@ -1611,6 +1713,6 @@ def test_the_parts_stop_at_the_work_cap(monkeypatch):
     monkeypatch.setattr(shell, "_WORK_FACTOR", 0)
     shell.guard_parts.cache_clear()
     try:
-        assert shell.guard_parts("bash -c 'echo a'") == ()
+        assert shell.guard_parts("bash -c 'echo a'") == ((), False)
     finally:
         shell.guard_parts.cache_clear()

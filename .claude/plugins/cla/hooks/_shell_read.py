@@ -9,8 +9,10 @@ allowed by every guard but one, and so was a git whose subcommand the shell
 fills in (`X=commit; git $X ...`). `expand()` returns the command as a list of
 parts: the command itself, then each wrapper body that holds git and each
 rewritten git line, each a command a guard can read as if it had been typed
-bare. `guard_parts()` is the other guards' reading: every wrapper body,
-whatever it runs, and no rewritten git line.
+bare. `guard_parts()` is the other guards' reading: the command each wrapper
+runs, whatever it is, without the wrapper's own option words, skipping heredoc
+text and a wrapper run by a remote runner (`docker exec`, `ssh <host>`), and
+no rewritten git line.
 
 Two readers use it, once per call:
   - `dispatch-bash-pretooluse.py` calls `guard_parts()` before any guard runs,
@@ -25,8 +27,8 @@ Stdlib only, import-cheap and side-effect-free, like `_dispatch_lib`.
 The reading is linear in the command's length: the readers spend from one work
 cap (`_WORK_FACTOR`), appended text is capped at the command's own length plus
 `_EXPAND_SLACK`, and a command past either cap asks (`UNRESOLVED_REASON`) rather
-than being read partly; `guard_parts()` stops at the same caps and returns what
-it found. The section comments above `_WRAP_DEPTH` and `_HEREDOC_START` hold
+than being read partly; `guard_parts()` stops at the same caps, returns what it
+found and says it stopped, and the dispatcher then asks. The section comments above `_WRAP_DEPTH` and `_HEREDOC_START` hold
 the rules and the named misses.
 """
 
@@ -509,41 +511,28 @@ def _assignments(parts: list[str]) -> dict[str, list[str | None]]:
     return found
 
 
-def _wrapper_bodies(part: str, every: bool = False) -> list[str]:
+def _wrapper_bodies(part: str) -> list[str]:
     """The text each shell wrapper in `part` hands to a shell: its words after
-    the wrapper, unquoted and joined, plus a decoded `-EncodedCommand`. Only
-    the bodies that hold `git` or `gh`, unless `every`, the reading for the
-    other guards (`_every_body`), which also skips quoted-heredoc data and
-    carries the wrapper's assignment prefix."""
+    the wrapper, unquoted and joined, plus a decoded `-EncodedCommand`."""
     bodies: list[str] = []
     read_to = -1
-    scanned = _stripped(part)
-    data = _quoted_heredoc_bodies(part, scanned) if every else []
-    starts = [a for a, _ in data]
-    for m in _WRAPPER.finditer(scanned):
+    for m in _WRAPPER.finditer(_stripped(part)):
         if m.start() < read_to:
             # Among the words of the wrapper before it, so in that body, where
             # the next depth finds it. Reading it here too walked the rest of
             # the command once per wrapper.
             continue
-        k = bisect.bisect_right(starts, m.start()) - 1
-        if k >= 0 and m.start() < data[k][1]:
-            continue  # heredoc data, not a command
         spans = _command_words(part, m.end())
         read_to = spans[-1][1] if spans else m.end()
         words = [_unquote(part[a:b]) for a, b in spans]
-        prefix = _env_prefix(part, scanned, m.start()) if every else ""
-        bodies.append(prefix + " ".join(words))
+        bodies.append(" ".join(words))
         for flag, value in zip(words, words[1:]):
             if _PS_ENCODED.fullmatch(flag):
                 try:
-                    bodies.append(prefix + base64.b64decode(value).decode("utf-16-le"))
+                    bodies.append(base64.b64decode(value).decode("utf-16-le"))
                 except (ValueError, UnicodeDecodeError):
                     pass
-    if every:
-        return bodies
     return [b for b in bodies if _HAS_GIT.search(b)]
-
 
 def _resolve(raw: str, names: dict[str, list[str | None]]) -> list[str] | None:
     """The values word `raw` can take, unquoted, at most `_EXPAND_MAX_LINES + 1`
@@ -715,38 +704,59 @@ def expand(command: str) -> tuple[tuple[str, ...], str | None]:
 # --- The parts the other guards read ----------------------------------------
 # `expand` reads only what can hold a git command, and its verdicts must not
 # move, so the bodies every other guard needs (`bash -c "echo hi > ../x"`) are a
-# second reading: `_every_body`, under the same caps, with `_wrapper_bodies`'
-# `every`. That differs from `expand`'s reading in three ways, each because a
-# guard reads the part as a command typed bare:
+# second reading, `_every_body`, under the same caps. Each body it returns is
+# the command the wrapper's shell runs, so a guard can read it as typed bare:
 #   - every body, whatever it runs;
-#   - a wrapper inside the body of a heredoc with a QUOTED delimiter
-#     (`<<'EOF'`, `<<"EOF"`, `<<\EOF`) is data and is skipped: a commit message
-#     that names `bash -c` in prose is no command, and a guard that knows the
-#     body is literal (`${CLAUDE_PLUGIN_ROOT}` in it is text) would read the
-#     part bare and block. `strip_quoted_spans` leaves most bodies visible, so
-#     this reading finds them itself. An unquoted delimiter's body is read: its
-#     `$(...)` and backticks run;
-#   - assignment words right before the wrapper (`X=1 bash -c '...'`) are put
-#     in front of the body as `export X=1;`, since they are set in the shell
-#     that runs it. Named miss: an assignment or `export` earlier in the
-#     command (`export X=1; bash -c '...'`) is not carried, so a guard that
-#     reads variables sees the body without it.
-# Past a cap it returns what it found; the asks for what was not read stay
-# with `ask-destructive-git`, for a body that names git.
+#   - the wrapper's own option words are dropped (`_body_words`): `bash -c
+#     'cp a ../b'` is `cp a ../b`, `pwsh -NoProfile -Command X` is `X`,
+#     `cmd /c X` is `X`. After `-c` only the command string is the body; the
+#     words after it are the inner shell's `$0`, `$1`, ..., not commands;
+#   - heredoc text is data (`_heredoc_data`): the whole body of a quoted
+#     delimiter (`<<'EOF'`, `<<"EOF"`, `<<\EOF`), and an unquoted one's body
+#     but for its `$(...)` and backtick spans, which the shell runs. A commit
+#     message that names `bash -c` in prose is no command. `strip_quoted_spans`
+#     leaves most bodies visible, so this reading finds them itself;
+#   - a wrapper whose simple command starts with a remote runner
+#     (`_REMOTE_RUNNERS`: `docker exec ...`, `ssh <host> ...`) is skipped,
+#     words and all: its body runs on another machine or in a container, where
+#     `..` and links mean something else;
+#   - an assignment earlier in the same text (`export X=1; ...`, `X=1 bash -c`)
+#     that the body names as `$X` or `${X}` goes in front of it as
+#     `export X=...;`, since the inner shell inherits it.
+# Named misses: a wrapper deeper than `_WRAP_DEPTH` is not read (the guards
+# then read what the command shows, as before); `su <user> -c` is read, but a
+# login shell with no `-c` is not; an arithmetic `$((x<<y))` reads as a heredoc
+# operator; an assignment is carried whatever its scope (`X=1 cmd; bash -c`).
+# Past the appended-text or work cap the reading stops and says so, and the
+# dispatcher asks rather than letting the guards check part of it.
 _HEREDOC_START = re.compile(r"<<(-?)[ \t]*")
-_HEREDOC_DELIM = re.compile(r"""'([A-Za-z0-9_]+)'|"([A-Za-z0-9_]+)"|\\([A-Za-z0-9_]+)""")
-_ENV_WORD = re.compile(r"[A-Za-z_]\w*=\S*")
-_ENV_STOP = " \t\n;&|(){}`!"
+_HEREDOC_DELIM = re.compile(
+    r"""'([A-Za-z0-9_]+)'|"([A-Za-z0-9_]+)"|\\([A-Za-z0-9_]+)|([A-Za-z_][A-Za-z0-9_]*)"""
+)
+# In an unquoted heredoc body: an escaped character, or what opens a span the
+# shell runs.
+_LIVE_OPEN = re.compile(r"\\.|\$\(|`", re.S)
+_TICK_CLOSE = re.compile(r"\\.|`", re.S)
+_REMOTE_RUNNERS = frozenset({"docker", "podman", "nerdctl", "kubectl", "oc", "ssh"})
+_SEGMENT_STOP = "\n;&|(){}`!"
+_NAME_USE = re.compile(r"\$\{?([A-Za-z_]\w*)")
+# PowerShell parameters that take the next word as a value, as prefixes of
+# their full names (PowerShell accepts any unambiguous prefix).
+_PS_VALUE_PARAMS = (
+    "-executionpolicy", "-ep", "-windowstyle", "-workingdirectory", "-wd",
+    "-configurationname", "-inputformat", "-outputformat", "-version",
+    "-psconsolefile", "-custompipename", "-settingsfile",
+)
+_CMD_SWITCH = re.compile(r"(?i)/[a-z](?::\S*)?")
 
 
-def _quoted_heredoc_bodies(part: str, scanned: str) -> list[tuple[int, int]]:
-    """The `(start, end)` of each body in `part` whose heredoc delimiter is
-    quoted, in order. The operator is found on the quote-stripped text, so a
-    `<<'EOF'` inside a string is none, and its delimiter read from the raw
-    text at the same offset; an unquoted delimiter does not match it, so that
-    body stays a command. A body runs to the line that is its delimiter
-    (after tabs, for `<<-`), or to the end. An operator inside an earlier body
-    is text and is skipped, so each character is searched once."""
+def _heredoc_data(part: str, scanned: str) -> list[tuple[int, int]]:
+    """The `(start, end)` spans of `part` that are heredoc data, in order. The
+    operator is found on the quote-stripped text, so a `<<'EOF'` inside a
+    string is none, and its delimiter read from the raw text at the same
+    offset. A body runs to the line that is its delimiter (after tabs, for
+    `<<-`), or to the end. An operator inside an earlier body is text and is
+    skipped, so each character is searched once."""
     spans: list[tuple[int, int]] = []
     done = 0
     for m in _HEREDOC_START.finditer(scanned):
@@ -756,62 +766,189 @@ def _quoted_heredoc_bodies(part: str, scanned: str) -> list[tuple[int, int]]:
         nl = part.find("\n", m.end())
         if d is None or nl < 0:
             continue
-        word = d.group(1) or d.group(2) or d.group(3)
+        word = d.group(1) or d.group(2) or d.group(3) or d.group(4)
         tabs = r"\t*" if m.group(1) else ""
         close = re.compile("^" + tabs + re.escape(word) + r"[ \t]*\r?$", re.M).search(part, nl + 1)
         end = close.start() if close else len(part)
         _spend(end - m.start())
-        spans.append((nl + 1, end))
+        if d.group(4) is None:
+            spans.append((nl + 1, end))
+        else:
+            spans += _unquoted_data(part, nl + 1, end)
         done = end
     return spans
 
 
-def _env_prefix(part: str, scanned: str, at: int) -> str:
-    """The assignment words right before position `at` in its simple command,
-    each as `export NAME=value; `, in their order."""
-    assigned: list[str] = []
-    i = at
+def _unquoted_data(part: str, a: int, b: int) -> list[tuple[int, int]]:
+    """`[a, b)` of an unquoted heredoc body less each `$(...)` and backtick
+    span in it, which the shell runs; an unclosed one runs to `b`."""
+    data: list[tuple[int, int]] = []
+    at = start = a
     while True:
-        j = i
-        while j > 0 and scanned[j - 1] in " \t":
-            j -= 1
-        k = j
-        while k > 0 and scanned[k - 1] not in _ENV_STOP:
-            k -= 1
-        if k == j or not _ENV_WORD.fullmatch(scanned[k:j]):
+        m = _LIVE_OPEN.search(part, at, b)
+        if m is None:
             break
-        assigned.append(part[k:j])
-        i = k
-    _spend(at - i)
-    return "".join("export " + w + "; " for w in reversed(assigned))
+        if m.group().startswith("\\"):
+            at = m.end()
+            continue
+        if m.group() == "$(":
+            end = _paren_close(part).get(m.start() + 1, b - 1) + 1
+        else:
+            t = _TICK_CLOSE.search(part, m.end(), b)
+            while t is not None and t.group() != "`":
+                t = _TICK_CLOSE.search(part, t.end(), b)
+            end = t.end() if t is not None else b
+        data.append((start, m.start()))
+        at = start = min(end, b)
+    data.append((start, b))
+    return [(x, y) for x, y in data if x < y]
 
 
-def _every_body(command: str) -> list[str]:
-    """Every wrapper body (`_wrapper_bodies(..., every=True)`), `_WRAP_DEPTH`
-    levels deep, in the order found, under `_expand`'s caps: what it found when
-    one is reached."""
+def _remote(scanned: str, at: int) -> bool:
+    """True when the simple command holding position `at` starts with a remote
+    runner (`docker exec ... sh -c`, `ssh host bash -c`)."""
+    pos = at
+    while pos > 0 and scanned[pos - 1] not in _SEGMENT_STOP:
+        pos -= 1
+    _spend(at - pos)
+    for word in scanned[pos:at].split():
+        base = word.replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
+        if base in _REMOTE_RUNNERS:
+            return True
+    return False
+
+
+def _body_words(name: str, words: list[str]) -> list[str]:
+    """The words of the command a wrapper named `name` runs, its own options
+    dropped. Empty when it runs none this reading can see."""
+    name = name.lower().removesuffix(".exe")
+    if name == "eval":
+        return words
+    if name in ("iex", "invoke-expression"):
+        return words[1:] if words and "-command".startswith(words[0].lower()) and len(words[0]) > 1 else words
+    if name == "cmd":
+        at = 0
+        while at < len(words) and _CMD_SWITCH.fullmatch(words[at]):
+            at += 1
+        return words[at:]
+    if name in ("pwsh", "powershell"):
+        at = 0
+        while at < len(words) and words[at].startswith("-") and len(words[at]) > 1:
+            flag = words[at].lower()
+            if "-command".startswith(flag) or flag == "-file" or "-file".startswith(flag) and len(flag) > 2:
+                return words[at + 1:]
+            if _PS_ENCODED.fullmatch(words[at]):
+                return []  # the decoded body is read on its own
+            at += 2 if any(p.startswith(flag) for p in _PS_VALUE_PARAMS) else 1
+        return words[at:]
+    if name == "su":
+        for at, word in enumerate(words):
+            if word in ("-c", "--command") and at + 1 < len(words):
+                return [words[at + 1]]
+            if word.startswith("--command="):
+                return [word.partition("=")[2]]
+        return []
+    # bash, sh, zsh, dash, ksh, mksh, ash, fish, csh, tcsh
+    string = False
+    at = 0
+    while at < len(words):
+        word = words[at]
+        if word == "--":
+            at += 1
+            break
+        if word.startswith("--"):
+            at += 2 if word in ("--rcfile", "--init-file") else 1
+            continue
+        if word[:1] in "-+" and len(word) > 1:
+            string = string or "c" in word[1:]
+            at += 2 if word[-1] in "oO" else 1
+            continue
+        break
+    return words[at:at + 1] if string else words[at:]
+
+
+def _guard_bodies(part: str) -> list[str]:
+    """Every body a shell wrapper in `part` runs, as the other guards read it:
+    the section comment above says how it differs from `_wrapper_bodies`."""
+    scanned = _stripped(part)
+    data = _heredoc_data(part, scanned)
+    starts = [a for a, _ in data]
+    assigned: list[tuple[int, str, str]] = []
+    value_end = -1
+    for a in _ASSIGN.finditer(scanned):
+        if a.start() < value_end:
+            continue  # inside the value before it
+        value_end = _word_end(part, a.end())
+        assigned.append((a.start(), a.group(1), part[a.end():value_end]))
+    known: dict[str, str] = {}
+    next_assign = 0
+    bodies: list[str] = []
+    words_end = -1
+    for w in _WRAPPER.finditer(scanned):
+        if w.start() < words_end:
+            continue  # in the words of the wrapper before it: the next depth reads it
+        h = bisect.bisect_right(starts, w.start()) - 1
+        if h >= 0 and w.start() < data[h][1]:
+            continue  # heredoc data, not a command
+        # Inside a backtick span, the wrapper's words end where the span closes.
+        wrapper_words = _command_words(part, w.end(), _span_close(scanned, w.start()))
+        words_end = wrapper_words[-1][1] if wrapper_words else w.end()
+        if _remote(scanned, w.start()):
+            continue
+        while next_assign < len(assigned) and assigned[next_assign][0] < w.start():
+            _, name, value = assigned[next_assign]
+            known.pop(name, None)
+            known[name] = value
+            next_assign += 1
+        unquoted = [_unquote(part[a:b]) for a, b in wrapper_words]
+        texts = [" ".join(_body_words(w.group().split(".")[0], unquoted))]
+        for flag, value in zip(unquoted, unquoted[1:]):
+            if _PS_ENCODED.fullmatch(flag):
+                try:
+                    texts.append(base64.b64decode(value).decode("utf_16_le"))
+                except (ValueError, UnicodeDecodeError):
+                    pass
+        for text in texts:
+            if not text.strip():
+                continue
+            used = dict.fromkeys(n for n in _NAME_USE.findall(text) if n in known)
+            prefix = "".join("export " + n + "=" + known[n] + "; " for n in used)
+            _spend(len(prefix))
+            bodies.append(prefix + text)
+    return bodies
+
+
+def _every_body(command: str) -> tuple[list[str], bool]:
+    """Every wrapper body (`_guard_bodies`), `_WRAP_DEPTH` levels deep, in the
+    order found, and whether it was read in full: False when the appended-text
+    or the work cap stopped it."""
     found: list[str] = []
     budget = len(command) + _EXPAND_SLACK
     _WORK_LEFT[0] = _WORK_FACTOR * budget
     try:
         frontier = [command]
         for _ in range(_WRAP_DEPTH):
-            frontier = [b for p in frontier for b in _wrapper_bodies(p, every=True)]
+            frontier = [b for p in frontier for b in _guard_bodies(p)]
             budget -= sum(map(len, frontier))
-            if not frontier or budget < 0:
+            if budget < 0:
+                return found, False
+            if not frontier:
                 break
             found += frontier
     except _OverBudget:  # past the work cap: what was found so far
-        pass
+        return found, False
     finally:
         _WORK_LEFT[0] = float("inf")
-    return found
+    return found, True
+
 
 @functools.lru_cache(maxsize=4)
-def guard_parts(command: str) -> tuple[str, ...]:
-    """The parts the Bash dispatcher hands every guard that reads parts: every
-    wrapper body in `command` (`_every_body`), each once, in order, the
-    command itself left out. Rewritten git lines are not among them: they
-    fill in a git subcommand or a push, reset or branch flag, which only
+def guard_parts(command: str) -> tuple[tuple[str, ...], bool]:
+    """The parts the Bash dispatcher hands every guard that reads parts, and
+    whether the reading was complete. The parts are every wrapper body in
+    `command` (`_every_body`), each once, in order, the command itself left
+    out. Rewritten git lines are not among them: they fill in a git
+    subcommand or a push, reset or branch flag, which only
     `ask-destructive-git` reads."""
-    return tuple(b for b in dict.fromkeys(_every_body(command)) if b != command)
+    bodies, complete = _every_body(command)
+    return tuple(b for b in dict.fromkeys(bodies) if b != command), complete
