@@ -96,6 +96,9 @@ release done only once `check_catalog_tags.py --expect cla--v<new>` passes (#548
 eight skills that had none, so every shipped skill now has a spec (#549); mutation batches for
 `guard-bash-text`, `warn-stacked-pr-merge`, `warn-wholesale-rewrite`, `probe-python.sh` and the
 Copilot adapter, and full branch coverage of `sweep_changes.py` and `setup_guard.py` (#552, #554).
+The PR gate now runs `mutate.py`'s preflight over every mutation batch
+(`test_mutation_batches_preflight.py`), so a refactor that leaves a mutant's anchor stale fails the
+gate instead of waiting for the next opt-in mutation run.
 
 ## [2.4.0] — 2026-11-18
 
