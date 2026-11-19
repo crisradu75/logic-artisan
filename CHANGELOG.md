@@ -32,8 +32,12 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
   `bash -c "echo hi > ../../outside.txt"` now asks and a wrapped `Measured-by: none` commit is
   blocked, as their bare forms were. The reading lives in `hooks/_shell_read.py`, and
   `ask-destructive-git` is split into three files; its history probes share one 6 s deadline, down
-  from 12 s, which frees budget for another enforcing guard (#560).
-- **`ask-destructive-git` asks before `ALLOW_TAG_REWRITE=1` and before `git push --mirror`,** whose
+  from 12 s, which frees budget for another enforcing guard. The wrapper's own options are dropped
+  first (`bash -c 'cp a ../b'` asks like `cp a ../b`); heredoc text is data except its `$(...)`
+  spans; a wrapper behind `docker exec`, `kubectl exec` or `ssh` is not read as local; a body too
+  long to read asks (#560).
+- **`ask-destructive-git` asks before `ALLOW_TAG_REWRITE=1` (and PowerShell's `$env:` form of
+  either override) and before `git push --mirror`,** whose
   deletions git never reports to `pre-push` (#560).
 
 ### Added
