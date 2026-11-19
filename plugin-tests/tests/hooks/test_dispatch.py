@@ -1421,6 +1421,12 @@ def test_a_wrapped_broad_git_add_asks(tmp_path):
         "sudo docker exec web sh -c 'mkdir ../../x'",
         "env FOO=1 ssh build-host bash -c 'cp a ../../b'",
         "sudo -u deploy ssh build-host bash -c 'cp a ../../b'",
+        "sudo -E -u deploy docker exec web sh -c 'mkdir ../../x'",
+        "env --chdir=/srv ssh build-host bash -c 'cp a ../../b'",
+        "timeout 30 docker exec web sh -c 'echo ok > ../../log.txt'",
+        "timeout -s KILL 5m ssh build-host bash -c 'cp a ../../b'",
+        "nice -n 5 ssh build-host bash -c 'cp a ../../b'",
+        "stdbuf -oL ssh build-host bash -c 'cp a ../../b'",
     ],
 )
 def test_a_harmless_wrapped_command_stays_silent(tmp_path, command):
@@ -1446,6 +1452,11 @@ def test_prose_naming_a_link_delete_in_an_unquoted_heredoc_is_not_blocked(tmp_pa
         "runuser -u ssh -- bash -c 'cp a ../../b'",
         "env -C oc bash -c 'cp a ../../b'",
         "docker build . && bash -c 'cp a ../../b'",
+        # review round 3: a prefix option whose value is not seen is not skipped over
+        "sudo --user docker bash -c 'cp a ../../b'",
+        "sudo -iu docker bash -c 'cp a ../../b'",
+        "sudo -Hu ssh bash -c 'cp a ../../b'",
+        "env --chdir oc bash -c 'cp a ../../b'",
     ],
 )
 def test_a_runner_name_that_is_not_the_command_word_hides_nothing(tmp_path, command):

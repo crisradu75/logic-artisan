@@ -740,8 +740,12 @@ _TICK_CLOSE = re.compile(r"\\.|`", re.S)
 _REMOTE_RUNNERS = frozenset({"docker", "podman", "nerdctl", "kubectl", "oc", "ssh"})
 _SEGMENT_STOP = "\n;&|(){}`!"
 _ASSIGNMENT_WORD = re.compile(r"[A-Za-z_]\w*=")
-_RUNNER_PREFIXES = frozenset({"sudo", "env", "nohup", "time", "command", "nice", "stdbuf"})
-_PREFIX_VALUE_OPTIONS = frozenset({"-u", "-g", "-C", "-S", "-n", "-o", "-i", "-e"})
+_RUNNER_PREFIXES = frozenset({"sudo", "env", "nohup", "time", "command", "nice", "stdbuf", "timeout"})
+# The last letter of a prefix's short option that takes the next word as its value
+# (`sudo -u USER`, `-g GROUP`, `env -C DIR`, `-S STRING`, `nice -n N`, `timeout -s SIG`, `-k T`).
+# An option outside what this knows makes `_remote` read the body: checking is the safe side.
+_PREFIX_VALUE_LETTERS = frozenset("ugCSnsk")
+_DURATION = re.compile(r"\d+(?:\.\d+)?[smhd]?$")
 _NAME_USE = re.compile(r"\$\{?([A-Za-z_]\w*)")
 # PowerShell parameters that take the next word as a value, as prefixes of
 # their full names (PowerShell accepts any unambiguous prefix).
@@ -822,9 +826,24 @@ def _remote(scanned: str, at: int) -> bool:
     while w_at < len(words) and _ASSIGNMENT_WORD.match(words[w_at]):
         w_at += 1
     while w_at < len(words) and words[w_at] in _RUNNER_PREFIXES:
+        prefix = words[w_at]
         w_at += 1
         while w_at < len(words) and (words[w_at].startswith("-") or _ASSIGNMENT_WORD.match(words[w_at])):
-            w_at += 2 if words[w_at] in _PREFIX_VALUE_OPTIONS else 1
+            opt = words[w_at]
+            if opt == "--":
+                w_at += 1
+                break
+            if opt.startswith("--"):
+                if "=" not in opt:
+                    return False  # a long option whose value this cannot see: read the body
+                w_at += 1
+            elif opt.startswith("-") and len(opt) > 1:
+                # a short cluster takes the next word only when its last letter takes a value
+                w_at += 2 if opt[-1] in _PREFIX_VALUE_LETTERS else 1
+            else:
+                w_at += 1
+        if prefix == "timeout" and w_at < len(words) and _DURATION.match(words[w_at]):
+            w_at += 1
     if w_at >= len(words):
         return False
     base = words[w_at].replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
