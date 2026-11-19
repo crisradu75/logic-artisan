@@ -653,4 +653,20 @@ MUTANTS += [
     ("a body found twice is handed on twice",
      SHELL, "    return tuple(b for b in dict.fromkeys(bodies) if b != command), complete",
      "    return tuple(b for b in bodies if b != command), complete", TARGETS),
+    # review round 2: a wrapper past the depth cap makes the reading incomplete
+    ("a wrapper past the depth cap is reported complete",
+     SHELL, "            if any(_guard_bodies(p) for p in frontier):\n                return found, False",
+     "            if any(_guard_bodies(p) for p in frontier):\n                return found, True", TARGETS),
+    # review round 2: only the command word makes a command remote
+    ("a runner's name anywhere in the command makes it remote",
+     SHELL, "    if w_at >= len(words):\n        return False\n",
+     "    if any(w.rsplit('/', 1)[-1] in _REMOTE_RUNNERS for w in words):\n        return True\n    if w_at >= len(words):\n        return False\n", TARGETS),
+    ("a prefix command hides the runner behind it",
+     SHELL, "    while w_at < len(words) and words[w_at] in _RUNNER_PREFIXES:",
+     "    while False and w_at < len(words) and words[w_at] in _RUNNER_PREFIXES:", TARGETS),
+    ("a prefix option's value is read as the command word",
+     SHELL, "            w_at += 2 if words[w_at] in _PREFIX_VALUE_OPTIONS else 1", "            w_at += 1", TARGETS),
+    ("an assignment is read as the command word",
+     SHELL, "    while w_at < len(words) and _ASSIGNMENT_WORD.match(words[w_at]):\n        w_at += 1\n",
+     "", TARGETS),
 ]

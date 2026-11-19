@@ -723,8 +723,8 @@ def expand(command: str) -> tuple[tuple[str, ...], str | None]:
 #   - an assignment earlier in the same text (`export X=1; ...`, `X=1 bash -c`)
 #     that the body names as `$X` or `${X}` goes in front of it as
 #     `export X=...;`, since the inner shell inherits it.
-# Named misses: a wrapper deeper than `_WRAP_DEPTH` is not read (the guards
-# then read what the command shows, as before); `su <user> -c` is read, but a
+# A wrapper deeper than `_WRAP_DEPTH` is not read; the reading then says it is
+# incomplete, and the dispatcher asks. Named misses: `su <user> -c` is read, but a
 # login shell with no `-c` is not; an arithmetic `$((x<<y))` reads as a heredoc
 # operator; an assignment is carried whatever its scope (`X=1 cmd; bash -c`).
 # Past the appended-text or work cap the reading stops and says so, and the
@@ -739,6 +739,9 @@ _LIVE_OPEN = re.compile(r"\\.|\$\(|`", re.S)
 _TICK_CLOSE = re.compile(r"\\.|`", re.S)
 _REMOTE_RUNNERS = frozenset({"docker", "podman", "nerdctl", "kubectl", "oc", "ssh"})
 _SEGMENT_STOP = "\n;&|(){}`!"
+_ASSIGNMENT_WORD = re.compile(r"[A-Za-z_]\w*=")
+_RUNNER_PREFIXES = frozenset({"sudo", "env", "nohup", "time", "command", "nice", "stdbuf"})
+_PREFIX_VALUE_OPTIONS = frozenset({"-u", "-g", "-C", "-S", "-n", "-o", "-i", "-e"})
 _NAME_USE = re.compile(r"\$\{?([A-Za-z_]\w*)")
 # PowerShell parameters that take the next word as a value, as prefixes of
 # their full names (PowerShell accepts any unambiguous prefix).
@@ -805,17 +808,27 @@ def _unquoted_data(part: str, a: int, b: int) -> list[tuple[int, int]]:
 
 
 def _remote(scanned: str, at: int) -> bool:
-    """True when the simple command holding position `at` starts with a remote
-    runner (`docker exec ... sh -c`, `ssh host bash -c`)."""
+    """True when the simple command holding position `at` is a remote runner's:
+    its command word (after assignments and a `sudo`/`env`/`nohup`/`time`
+    prefix with its options) is `ssh`, `docker`, `podman`, `nerdctl`, `kubectl`
+    or `oc`. A runner's name elsewhere in the
+    command (`GIT_SSH=/usr/bin/ssh bash -c`, `sudo -u docker bash -c`) is not."""
     pos = at
     while pos > 0 and scanned[pos - 1] not in _SEGMENT_STOP:
         pos -= 1
     _spend(at - pos)
-    for word in scanned[pos:at].split():
-        base = word.replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
-        if base in _REMOTE_RUNNERS:
-            return True
-    return False
+    words = scanned[pos:at].split()
+    w_at = 0
+    while w_at < len(words) and _ASSIGNMENT_WORD.match(words[w_at]):
+        w_at += 1
+    while w_at < len(words) and words[w_at] in _RUNNER_PREFIXES:
+        w_at += 1
+        while w_at < len(words) and (words[w_at].startswith("-") or _ASSIGNMENT_WORD.match(words[w_at])):
+            w_at += 2 if words[w_at] in _PREFIX_VALUE_OPTIONS else 1
+    if w_at >= len(words):
+        return False
+    base = words[w_at].replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
+    return base in _REMOTE_RUNNERS
 
 
 def _body_words(name: str, words: list[str]) -> list[str]:
@@ -921,7 +934,7 @@ def _guard_bodies(part: str) -> list[str]:
 def _every_body(command: str) -> tuple[list[str], bool]:
     """Every wrapper body (`_guard_bodies`), `_WRAP_DEPTH` levels deep, in the
     order found, and whether it was read in full: False when the appended-text
-    or the work cap stopped it."""
+    or the work cap stopped it, or a wrapper sits deeper than `_WRAP_DEPTH`."""
     found: list[str] = []
     budget = len(command) + _EXPAND_SLACK
     _WORK_LEFT[0] = _WORK_FACTOR * budget
@@ -935,6 +948,11 @@ def _every_body(command: str) -> tuple[list[str], bool]:
             if not frontier:
                 break
             found += frontier
+        else:
+            # the depth ran out: a body still waiting below it was not read, so
+            # the reading is not complete and the dispatcher asks
+            if any(_guard_bodies(p) for p in frontier):
+                return found, False
     except _OverBudget:  # past the work cap: what was found so far
         return found, False
     finally:

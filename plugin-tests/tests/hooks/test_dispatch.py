@@ -11,6 +11,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import shlex
 import os
 import shutil
 import subprocess
@@ -1416,6 +1417,10 @@ def test_a_wrapped_broad_git_add_asks(tmp_path):
         "docker exec web sh -c 'cd /app && echo ok > ../../log.txt'",
         "ssh build-host bash -c 'cp a ../../b'",
         "kubectl exec pod -- sh -c 'mkdir ../../x'",
+        # ...also behind a prefix command and its options (review round 2)
+        "sudo docker exec web sh -c 'mkdir ../../x'",
+        "env FOO=1 ssh build-host bash -c 'cp a ../../b'",
+        "sudo -u deploy ssh build-host bash -c 'cp a ../../b'",
     ],
 )
 def test_a_harmless_wrapped_command_stays_silent(tmp_path, command):
@@ -1430,6 +1435,34 @@ def test_prose_naming_a_link_delete_in_an_unquoted_heredoc_is_not_blocked(tmp_pa
     assert (rc, nested.get("permissionDecision")) == (0, None), err
     rc, _, err = _decide("bash -c 'rm -rf the-link'", tmp_path)
     assert rc == 2, "non-vacuity: the wrapped delete itself is blocked"
+
+
+# review round 2: a runner's name elsewhere in the command does not make it remote
+@pytest.mark.parametrize(
+    "command",
+    [
+        "GIT_SSH=/usr/bin/ssh bash -c 'cp a ../../b'",
+        "sudo -u docker bash -c 'cp a ../../b'",
+        "runuser -u ssh -- bash -c 'cp a ../../b'",
+        "env -C oc bash -c 'cp a ../../b'",
+        "docker build . && bash -c 'cp a ../../b'",
+    ],
+)
+def test_a_runner_name_that_is_not_the_command_word_hides_nothing(tmp_path, command):
+    rc, nested, err = _decide(command, _checkout(tmp_path))
+    assert nested.get("permissionDecision") == "ask", (command, err)
+
+
+def test_a_wrapper_past_the_depth_cap_asks_rather_than_passing(tmp_path):
+    """Review round 2: four levels down is not read, so the reading is incomplete."""
+    inner = "cp a ../../b"
+    for _ in range(4):
+        inner = "bash -c " + shlex.quote(inner)
+    rc, nested, err = _decide(inner, _checkout(tmp_path))
+    assert nested.get("permissionDecision") == "ask", err
+    assert _shell_read().guard_parts(inner)[1] is False
+    shallow = "bash -c " + shlex.quote("bash -c " + shlex.quote("echo ok"))
+    assert _shell_read().guard_parts(shallow)[1] is True
 
 
 def test_a_wrapped_cd_is_left_to_its_own_shell(tmp_path):
