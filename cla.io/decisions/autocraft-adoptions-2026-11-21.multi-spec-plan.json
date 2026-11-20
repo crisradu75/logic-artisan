@@ -1,0 +1,28 @@
+{
+  "decisions_file": "cla.io/decisions/autocraft-adoptions-2026-11-21.md",
+  "also_decisions_files": ["cla.io/decisions/open-issues-2026-11-21.md"],
+  "batch_slug": "autocraft-and-issue-fixes",
+  "branch": "docs/propose-autocraft-and-issue-fixes",
+  "sequence_source": "derived-judgment",
+  "changes": [
+    {
+      "name": "lite-pr-red-gate-and-pr-notes",
+      "decisions_covered": ["autocraft:Q1", "autocraft:Q2", "autocraft:Q4", "autocraft:Q8", "autocraft:Q9"],
+      "one_line_scope": "lite-pr: label a failing test as probably already failing on the base, one reported rerun on a no-code-error failure (failure-only reference), long-log reading rule, duplicate-work search in Plan, and a Checks: PR-body line",
+      "depends_on": []
+    },
+    {
+      "name": "spec-size-and-review-tiers",
+      "decisions_covered": ["issues:Q4", "issues:Q5"],
+      "one_line_scope": "review-change no longer sizes a spec change Large on subtask count alone (protected changes excepted); multi-spec authors check the whole-change budget and per-artifact word limits before reporting done",
+      "depends_on": ["lite-pr-red-gate-and-pr-notes"]
+    },
+    {
+      "name": "chain-gate-drift-and-delegates",
+      "decisions_covered": ["issues:Q1", "issues:Q2", "issues:Q3", "autocraft:Q6"],
+      "one_line_scope": "spec-to-pr always runs its one full gate and names the commit (caller skip removed, merge reuses the run); base-drift check after Ship; Implement split by task group over ~40 subtasks; correction re-dispatches continue the same agent",
+      "depends_on": ["spec-size-and-review-tiers"]
+    }
+  ],
+  "lite_items": []
+}
