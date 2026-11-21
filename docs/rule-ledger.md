@@ -61,7 +61,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | A sentence a reader must re-read to follow gets split.
 - keep | honesty | #38 2026-08-07, reworded #517 | Never buy brevity by dropping words that carry meaning
 
-## output-styles/COPILOT.md
+## com.github.copilot/COPILOT.md
 - keep | honesty | #500 2026-11-12, Copilot CLI validation | never simulate a required delegation or chain silently.
 - keep | shipped to other repos | #500 2026-11-12, Copilot CLI validation; guard-bash-text enforces it (blocks) | never run an unresolved placeholder.
 - keep | honesty | #500 2026-11-12, Copilot CLI validation | Never omit a verification step or its result.
@@ -853,19 +853,13 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | the exact formula set + invariants that calculation must preserve
 
 ## skills/annotate/SKILL.md
-- not-a-rule | - | - | Never edits the source. Triggers: /cla:annotate
+- not-a-rule | - | - | Never edits the source while comments are collected. Triggers: /cla:annotate
 - guidance | none | #127 (annotate), single source for the corpus format | read there, not restated here.**
 - keep | user's files | #127 (annotate); editing moves text out from under the reader's anchors | **The document is never written to.**
 - keep | user's files | #127 (annotate); writing into the tree needs a .gitignore entry in every consuming repo | goes to a temp directory, never into the repo
-- guidance | none | #226 (annotate HTML documents) | but the fix is to run the server and open
 - keep | honesty | 68dddad6 (2026-10-09), archived change shows "no base" | so the text it replaced is gone. Never report
 - keep | honesty | #127 (annotate); a stale page shows prose the document no longer has | **Always re-render before serving.**
 - keep | honesty | #127 (annotate); the coverage view is what the detector found | ### The coverage view is a reading aid, never a verdict
-- keep | honesty | #127 (annotate); 51% of bullets are not checkable | Never present these as gaps.
-- keep | honesty | #127 (annotate); "18 uncovered" on an unstarted change is an overclaim | Its own group, never added to
-- not-a-rule | - | - | only a delta the proposal never
-- keep | honesty | #127 (annotate) | **Never restate a coverage row as a defect in the change.**
-- keep | honesty | #127 (annotate) | The page states the same distinction; the reply must
 - not-a-rule | - | - | teaches the next pass a lesson the user never gave
 - not-a-rule | - | - | so a page showing none is never mistaken for a file holding none
 - not-a-rule | - | - | ## What this skill must not do
@@ -878,3 +872,14 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | #127 (annotate); the file is the only copy of the evidence | **Never delete, archive or rewrite an annotations file.**
 - keep | honesty | #127 (annotate); open is the honest state | **Never invent a resolution to tidy the list.**
 
+
+
+## skills/annotate/references/coverage-view.md
+- keep | honesty | #127 (annotate); 51% of bullets are not checkable | Never present these as gaps.
+- keep | honesty | #127 (annotate); "18 uncovered" on an unstarted change is an overclaim | Its own group, never added to
+- not-a-rule | - | - | only a delta the proposal never
+- keep | honesty | #127 (annotate) | **Never restate a coverage row as a defect in the change.**
+- keep | honesty | #127 (annotate) | The page states the same distinction; the reply must
+
+## skills/annotate/references/html-documents.md
+- guidance | none | #226 (annotate HTML documents) | but the fix is to run the server and open

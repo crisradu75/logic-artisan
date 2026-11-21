@@ -25,7 +25,7 @@ def test_claude_runtime_dependent_skills_are_marked_unsupported_in_copilot():
 
 # requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_copilot_response_style_documents_runtime_specific_limits():
-    contents = (_PLUGIN / "output-styles" / "COPILOT.md").read_text(encoding="utf-8")
+    contents = (_PLUGIN / "com.github.copilot" / "COPILOT.md").read_text(encoding="utf-8")
     assert "AskUserQuestion" in contents
     assert "CLAUDE_PLUGIN_ROOT" in contents
     assert "nested `Skill(cla:...)`" in contents
@@ -40,5 +40,5 @@ def test_copilot_cli_guide_documents_updates_troubleshooting_and_style_location(
     assert "copilot plugin update cla@cris-logic-artisan" in plugin_readme
     assert "copilot instruction list" in plugin_readme
     assert ".github/copilot-instructions.md" in plugin_readme
-    assert "output-styles/COPILOT.md" in plugin_readme
+    assert "com.github.copilot/COPILOT.md" in plugin_readme
     assert "After updating the plugin, refresh any copied CLA guidance" in plugin_readme

@@ -1,6 +1,6 @@
 ---
 name: annotate
-description: "Open a Markdown, text or HTML document, or a whole OpenSpec change, as a local page where the user selects passages and comments; the comments are read back and worked through. Never edits the source. Triggers: /cla:annotate, 'let me annotate this', 'let me review change X as a block', 'read my annotations'. Not a pre-implementation review (review-change)."
+description: "Open a Markdown, text or HTML document, or a whole OpenSpec change, as a local page where the user selects passages and comments; the comments are read back and worked through. Never edits the source while comments are collected. Triggers: /cla:annotate, 'let me annotate this', 'let me annotate change X as a block', 'read my annotations'. Not a pre-implementation review (review-change)."
 argument-hint: "<path to a .md, .txt, .html or .htm file, or an OpenSpec change id>"
 allowed-tools: Bash, Read, Grep, Glob, Edit
 ---
@@ -59,27 +59,13 @@ failing oddly, so pass the path through and read what comes back.
 
 ### An HTML document is shown as its author designed it
 
-Its own styling and layout are the point — for a designed document they are part
-of what the reader is being asked to judge — so the page carries it in a frame
-rather than re-rendering its words. Three conditions are reported and are worth
-knowing before you pass one through, because each is a state the reader cannot see:
-
-- **It has to be SERVED.** A page opened from disk gives both documents opaque
-  origins, so the layer cannot reach the document and the page renders empty. The
-  page detects this and says so, but the fix is to run the server and open
-  the URL it prints.
-- **A document already using `data-blk`, `data-line` or `data-sec` is refused.** A
-  repeated attribute resolves to the author's value, so every annotation in that
-  element would anchor to whatever it named, invisibly. Report the refusal, and say
-  what would clear it: those three names are the skill's own, so the document has to
-  stop using them before it can be annotated. Do not work around it.
-- **A document with relative asset references warns and still renders.** Its images
-  or stylesheets will not resolve from the page directory. The reader can see that
-  for themselves, which is why this warns rather than refusing.
+Its own styling and layout are the point, so the page carries it in a frame. It has to be
+served, and a document already using `data-blk`, `data-line` or `data-sec` is refused. Read
+`${CLAUDE_PLUGIN_ROOT}/skills/annotate/references/html-documents.md` before passing one through.
 
 ### Or a whole OpenSpec change
 
-A change id, a change directory, or "review change X as a block" means the whole
+A change id, a change directory, or "annotate change X as a block" means the whole
 change rather than one file. **Take it as one target**: one page, one corpus, one
 pass. Its files are only worth reading together because a claim in one is
 answered in another, and splitting them into four sessions is what this exists to
@@ -128,7 +114,7 @@ than starting a second one.
 
 ### When annotations already exist, say what state they are in
 
-**There is no fresh-start option.** The render reports what it found: how many are
+**There is no fresh-start option, because an annotations file is not discarded** (see the last section). The render reports what it found: how many are
 open, how many resolved, which open ones no longer find their text, and any line
 it could not read at all. **Report the lost ones by name** — they are the only
 ones the user cannot see in place on the page.
@@ -171,35 +157,9 @@ through them, because their notes may already be answered — and read those fir
 
 ### The coverage view is a reading aid, never a verdict
 
-The change page derives a coverage view — which promises a task implements, and
-which nothing does. **Report it as what it is: what the detector found.** Four
-groups, and only the first is a finding:
-
-- **Uncovered** — the bullet names a file or an identifier and no task names it
-  back. Worth raising.
-- **Not checkable** — the bullet names neither, so there was nothing to match on.
-  **51% of proposal bullets land here** — design and product bullets are prose,
-  and prose is not a link. Never present these as gaps.
-- **Covered** — a task names the same file, or cites the bullet outright (22%).
-- **Not done** — a task whose box holds anything but `x` or `X`. Its own group, never added to
-  Uncovered: an unstarted change has every task open, and reporting that as
-  "18 uncovered" is the overclaim the whole tab exists to prevent.
-
-Those percentages come from `scripts/sweep_changes.py` over 355 real changes.
-**In a repo whose proposals are written differently the split will differ** — run
-that command before relying on the tab, and say what it reported.
-
-**A page reporting `Nothing to check` means no `## What Changes` bullets were
-parsed**, not that the change is clean. Say which it is.
-
-A spec delta counts as named when the proposal mentions its capability anywhere,
-under `## Impact` as much as `## Capabilities`; only a delta the proposal never
-mentions is flagged.
-
-**Never restate a coverage row as a defect in the change.** Say "no task names
-this bullet's file", which is what was measured, rather than "this is not
-implemented", which was not. The page states the same distinction; the reply must
-not quietly upgrade it.
+The change page derives a coverage view. Report it as what the detector found, not as a
+defect in the change. Read `${CLAUDE_PLUGIN_ROOT}/skills/annotate/references/coverage-view.md`
+before reporting it.
 
 **Group them by section and by kind** — a factual challenge, a wording objection,
 a missing point — rather than walking the file in timestamp order.
@@ -210,7 +170,7 @@ When an annotation has been acted on, append a resolution naming both halves:
 
 ```bash
 python3 - <<'EOF'
-import sys; sys.path.insert(0, "<plugin>/skills/annotate/scripts")
+import sys; sys.path.insert(0, "${CLAUDE_PLUGIN_ROOT}/skills/annotate/scripts")
 import annotations_store as store
 store.append(store.path_for("<document path>"),
              {"id": "<the annotation's id>", "resolved": True,

@@ -1135,3 +1135,20 @@ def test_cli_tracker_check_runs_without_a_token_list(tmp_path):
     result = _run_cli("--repo-root", str(tmp_path))
     assert result.returncode == EXIT_VIOLATIONS, result.stdout + result.stderr
     assert "skills/demo/SKILL.md:1  [tracker-reference]" in result.stdout, result.stdout
+
+
+def test_load_tokens_skips_bold_prose_bullets_in_an_explanatory_section(tmp_path):
+    # The overlay's own "Why" section explains itself in bullets that open with bold text; those
+    # are prose, not tokens, and used to inflate the "tokens loaded" count.
+    p = tmp_path / "project-tokens.local.md"
+    p.write_text(
+        "# tokens\n\n"
+        "## Why this file exists\n\n"
+        "- **Names of other repos** — open-ended, so a list cannot hold them.\n"
+        "  A continuation line of that bullet.\n"
+        "- **This repo's own name** — closed and finite.\n\n"
+        "- `some-repo`  # a real token\n"
+        "- other-token\n",
+        encoding="utf-8",
+    )
+    assert load_tokens(p) == ["some-repo", "other-token"]
