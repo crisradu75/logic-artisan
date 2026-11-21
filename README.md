@@ -15,9 +15,28 @@ That one line plans the change, implements it on a branch, keeps docs and tests 
 tests, opens the PR, then reviews it and fixes what the review found. It never merges.
 
 **See a real run:** [PR #365](https://github.com/crisradu75/logic-artisan/pull/365), where
-`spec-to-pr` added the spec-proof checker. Its body records the risk level, two review rounds that
-found 12 issues, each fix broken by hand to prove a test catches it, and, plainly, the one check
-that was not run to completion.
+`spec-to-pr` (the full path, for a bigger change) added the spec-proof checker. Its body records
+the risk level (how much review the change needs), two review rounds that found 12 issues, each fix
+broken by hand to prove a test catches it, and, plainly, the one check that was not run to
+completion.
+
+## Words you'll meet
+
+- **`lite-pr` and `spec-to-pr`**: the two ways to take a change to a PR. `lite-pr` is the default;
+  `spec-to-pr` is the full path, built on OpenSpec (a spec tool CLA depends on), for a change in a
+  protected area.
+- **Protected area**: a part of the work where a mistake costs too much to leave to chance, such as
+  money, personal data, the user's own files or anything shipped to other repos. A review finding
+  that touches one always blocks the merge.
+- **Stakes**: the section of your repo's `cla.io/project-facts.md` that says who uses it, what a bug
+  costs and which areas are protected.
+- **`project-facts`**: your repo's own file of commands, paths and ports. It lives in `cla.io/`, the
+  folder where CLA keeps your repo's state, never in the plugin.
+- **Overlay**: an optional `cla.io/overlays/<skill>.md` with a rule for one skill in your repo
+  only. It can add or narrow rules, not relax a stop.
+
+The [developer guide's glossary](DEVELOPER-GUIDE.md#words-used-in-this-guide) lists every term and
+where it is specified.
 
 ## Why CLA
 

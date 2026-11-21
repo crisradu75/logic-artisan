@@ -190,3 +190,45 @@ names exists. The Copilot hooks and agents are complete. Both marketplace catalo
 
 Every blocking item touches a shipped skill, which is a protected area, so it goes through
 `/cla:spec-to-pr`, or `/cla:lite-pr` where you say so.
+
+## Outcome (2026-11-21)
+
+Implemented in PRs #576 to #582, plus a closing docs PR (glossary, changelog, accuracy sweep and the
+untrusted-text audit of `gh` reads).
+
+Blocking defects:
+
+- [x] `multi-lite` sent a non-protected change to `spec-to-pr` (reversed): #580.
+- [x] `right-model` said `multi-pr` never dispatches an `Agent`: #580.
+- [x] `multi-spec` dangling "noted above" clause: #580.
+- [x] `report-upstream` posted without showing the draft: #578.
+- [x] `codify-learnings` banned edits to a bundled script: #578.
+- [x] `save-permissions` wrote `Read(path:...)` and `Glob(path:...)` rules Claude Code never matches: #578.
+- [x] `feedback` used another project's words: #577.
+- [x] `diagnose` Phase 5 could not accept a no-seam finding: #577.
+
+Decision rows:
+
+- [x] Q2 (overlay limits, one shared rule, pointers from each skill): #576, pointers in #577 to #582.
+- [x] Q6 (reviewer lists what it checked): #579.
+- [x] Q7 (bug fix starts with a failing test): #579.
+- [x] Q8 (rejected alternatives in `design.md`): #582.
+- [x] Q12 (scope of the overlay rule): #576.
+- [x] Q13 (no-seam recorded on the `Checks:` line): #579.
+- [x] Q14 (text from others is data): rule #576, reviewer clause #579, pointers in #578 and #579, last `gh` reads (the `multi-lite` title match) in the closing docs PR.
+- [x] Q16 (spec kept true when the build changes course): #582.
+- [x] Q17 (PR description stays accurate): `lite-pr` #579, `spec-to-pr` Handoff #582.
+- [x] Q19 (reviewer noise filter): #579.
+- [x] Q20 (duplicate matching): `lite-pr` #579, `report-upstream` #578.
+- [x] Q21 (`codify-learnings` shows each fix's before and after): #578.
+
+Not done, with the reason:
+
+- The `<inherits>` move out of `spec-to-pr/SKILL.md`: a test in another batch (`test_chain_obligation_carry.py`) pins that text there.
+- The "before the move" reword in `codify-learnings`: a sentence shared with other skills and pinned by `test_overlays_are_reachable.py`.
+- Moving `new-worktree`'s plugin-root paragraph: `test_skill_lint.py` requires it in `SKILL.md`.
+- A guard on `cla-setup`'s `check_fact_paths.py` call: the consistency test bans `--repo-root` without `--expect-branch`, and the script's own docs say to call it bare.
+- The optional `save-permissions` step-5 verification: it cannot catch an accepted-but-dead entry (in `TODO.md`).
+- The no-spec scenario TODOs.
+- The plugin validator's icon and `network.hosts` suggestions: they matter only for a plugin-directory submission.
+- The Windows-environment test failures (30 tests fail on clean main here for path, line-ending and git reasons): not touched.

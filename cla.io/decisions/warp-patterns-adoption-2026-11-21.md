@@ -92,3 +92,5 @@ It also fixes three places where a record could go stale or mislead:
 Next: build round 1's four items and round 2's six (#11, #13, #14, #16, #17, #18) as one OpenSpec
 change with `/cla:spec-to-pr`, because every edit ships to other repos (a protected area under
 `cla.io/project-facts.md` Stakes).
+
+Status: implemented in PRs #576-#582 (see the feedback file's Outcome section)

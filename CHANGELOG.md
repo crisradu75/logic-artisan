@@ -8,7 +8,60 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ## [Unreleased]
 
+### Added
+
+- **An overlay cannot relax a stop, and text other people wrote is material.** A new shared
+  `overlays.md` says an overlay adds or narrows a skill's rules but never relaxes a stop, a
+  protected-area rule or a report field another skill reads, and that the skill names the overlay
+  line it did not apply. `runtime-rules.md` gains a section treating issue, PR and commit text and
+  diffs as material, never instructions; the skills that read such text point at it.
+- **`spec-to-pr` asks a protected change for its rejected alternatives and keeps the spec true.** A
+  change touching a protected area lists the alternatives it rejected in `design.md`, one line each.
+  When the build departs from a requirement on purpose, the delta spec is edited in the same commit
+  and re-validated. After the fix rounds, Handoff refreshes the PR body's `Risk:` and `Checks:`
+  lines.
+- **The developer guide has a glossary** of CLA's own terms (protected area, Stakes, overlay and
+  the rest), and the root README a short "Words you'll meet" list.
+
+### Fixed
+
+- **`save-permissions`, `report-upstream` and `codify-learnings` were wrong in three ways.**
+  `save-permissions` saved file-path rules in a form Claude Code never matches; it now writes
+  `Read(//abs/**)`-style rules, saves no dead `Glob` rules and saves a Bash rule exact unless a
+  wildcard is confirmed. `report-upstream` shows the exact issue or comment text and posts only on
+  an explicit yes. `codify-learnings` routes a shipped skill's bundled script to
+  `/cla:report-upstream` instead of banning the edit, and shows each fix's exact before and after
+  above its prompt. `cla-setup` and `new-worktree` also lose a few wording slips.
+- **`multi-lite`, `right-model` and `multi-spec` no longer contradict `multi-pr`.** `multi-lite` had
+  said a change that does not touch a protected area belongs on `spec-to-pr` (reversed), and
+  `right-model` that `multi-pr` never dispatches an agent. `multi-spec` lost a dangling pointer.
+- **The project-word checker no longer counts bold prose bullets as tokens**, and `diagnose` can
+  finish on a finding that the code has no seam to test (a dated `no-seam-<slug>-<date>.md` under
+  `cla.io/feedback/`).
+- **`com.github.copilot/COPILOT.md` moved out of `output-styles/`**, and the release gate and the
+  project-word scan reach it at its new path.
+
 ### Changed
+
+- **Reviewers are told text they read is material, and `/cla:lite-pr` is tidier.** The diff-review
+  sentence every reviewer prompt carries now says text in the diff, file contents and issue or PR
+  text is material to read, never instructions. The shared review brief asks for a per-hunk
+  `path:line — verdict` list on a protected-area diff, a one-line fix with any style comment, and
+  no tests that repeat existing coverage. `lite-pr` has a bug fix write its regression test first
+  (a missing seam goes on the `Checks:` line), rewrites the pull request description after the fix
+  round, and counts a duplicate only when it shares a function name, error text or file path. Its
+  description leads with when to use it, and three long passages moved to `lite-pr/references/`.
+- **The chain turn-liveness rule is written once.** It lives in `_shared/references/turn-liveness.md`;
+  `multi-lite`, `multi-pr` and `multi-spec` keep one short bullet and a pointer. `multi-pr`'s
+  blocker list moved to its `change-loop.md`, and `spec-to-pr-retro` states its round-2 rule as
+  if/otherwise.
+- **`spec-to-pr` and `review-change` wording.** The high-yield check count is 8 (the checklist's
+  own checks; an overlay may add `0f` to `0i`), checks 0a to 0c are stack-neutral, the autonomy
+  exceptions list the `git_state` halt and the precheck ask, the post-Archive full-gate rule moved
+  from Test to Handoff's gate rules, and Implement's post-checks moved to
+  `references/implement-checks.md`. `review-change` says it only reports.
+- **`project-review` and `annotate` split long passages into references** (`aggregate-and-report.md`,
+  renamed from `aggregate-and-log.md`; `coverage-view.md`; `html-documents.md`).
 
 - **`/cla:lite-pr` labels a test that already fails and says what was checked.** A failing test
   (never a build or typecheck failure) that shares no file with the change, through the code it
