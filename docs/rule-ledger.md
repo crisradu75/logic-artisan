@@ -149,7 +149,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/right-model/SKILL.md
 - not-a-rule | - | - | # always-loaded skill listing. Nothing invokes it programmatically.
 - guidance | none | #299 2026-10-07, slim right-model | `model` enum; a list written here goes stale.
-- not-a-rule | - | - | `multi-pr` never dispatches an `Agent` itself
+- not-a-rule | - | - | are never routed per that file
 
 ## skills/save-permissions/SKILL.md
 - not-a-rule | - | - | # always-loaded skill listing. Nothing invokes it programmatically.
@@ -225,7 +225,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | add-chain-check-script 2026-11-18: the PR head alone missed a remote branch moved after `gh` answered; `chain_check.py before-merge` compares both | must equal `head_sha` too, for the same reason.
 - keep | honesty | ba21ee82 2026-09-16 second-round review findings; `chain_check.py before-merge` holds the comparison since add-chain-check-script 2026-11-18 | `git rev-parse HEAD` must equal `head_sha`, or the reason is `local head mismatch`.
 - keep | honesty | 87aeac6a 2026-09-16 third-round review findings; `chain_check.py before-merge` holds the comparison since add-chain-check-script 2026-11-18 | must be empty; anything listed would be tested by the gate below
-- not-a-rule | - | - | "Never end a turn with nothing in flight" says why `python3`
 - not-a-rule | - | - | so the merged tree was never tested as a whole
 - keep | user's files | 6df50092 2026-10-08 (from multi-lite, cdf0795e 2026-08-06 #18); rewrites tested and reviewed code | Never rebase or force-push to clear it
 - keep | honesty | 751bed9e 2026-09-16 review findings; exit 0 can mean only queued; `chain_check.py after-merge` holds the comparison since add-chain-check-script 2026-11-18 ; add-chain-check-script review 2026-11-18: a merge of another head or base is not this run's | `state` must be `MERGED` (exit 0), into `<base-branch>` at `head_sha`
@@ -565,7 +564,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - guidance | none | ee4034ad 2026-07-23 (extraction); none found earlier (owner approved softening 2026-11-18) | Tier B (content findings) is fixed in place and does not halt it.
 - not-a-rule | - | - | Ship never opening a PR, Archive not reaching the PR, an unresolved
 - keep | honesty | ee4034ad 2026-07-23 (extraction); none found earlier | A change never counts done while a Deferred-Known-Issue
-- not-a-rule | - | - | response key or required behaviour that the change itself never consumes
 - not-a-rule | - | - | is indistinguishable from never having written it
 - keep | safe writes | #361 (issue #272), a second --fix run moves cites again | Never run the recheck twice on one change: its fixes would move again.
 - keep | user's files | 6df50092 2026-10-08, head-commit guards adopted | **Never merge a head the change's review and full gate did not cover:**

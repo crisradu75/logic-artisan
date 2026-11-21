@@ -21,7 +21,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggrega
 
 ## What each field means
 
-- `ledgers`, `runs_analyzed`, `window`: the sample. Every metric, `round_2_yield` included, covers the last N records per ledger; `--limit 0` reads all history. `found: false` is a repo with no ledger yet. Give each ledger's `skipped` in the window line; call a ledger with skips unmigrated or damaged, and its numbers partial. Under five runs is an anecdote: say so and stop.
+- `ledgers`, `runs_analyzed`, `window`: the sample. Every metric, `round_2_yield` included, covers the last N records per ledger; `--limit 0` reads all history. `found: false` is a repo with no ledger yet. Give each ledger's `skipped` in the window line; call a ledger with skips unmigrated or damaged, and its numbers partial. When `runs_analyzed` is under five, the sample is an anecdote: say so and stop (the per-agent "five or more runs" below counts that agent's own runs, a separate test).
 - `warn_reasons`: a reason that recurs is one fix to make. `warn_reasons_unrecorded` and `asks_unrecorded` count migration placeholders, not real reasons: leave them out of the ranking.
 - `cap_exhaustion.<phase>`: `hit/total` at or above 30% means the default cap is too low. Revise's `hit` counts only runs that ended at the cap still `warn` or `fail`, since a second round after a protected-area fix is expected.
 - `revise_findings.<agent>`: `found/runs` far below `code-reviewer`'s marks a trigger to narrow. `phantom/found` at or above 0.4 over five or more runs: demote that agent one tier, or narrow it. `found` is blocking Critical and Important together.
@@ -29,9 +29,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggrega
 - `flags.runs`: how many runs used each flag, out of `flags.recorded` (older records carry no `flags`). Once `recorded` reaches about 30, a flag no run used is a candidate to delete; name it with the count.
 - `diagnose_escalations`: of the `recorded` runs, how many escalated to `/cla:diagnose`, and how often in all. It tells whether that escalation earns its place; report it, propose nothing from it alone.
 - `round_2_yield`: of the changes that ran a Revise round 2 or later (after a protected-area fix), how many found a blocking Critical or Important there. `by_trigger` gives the same counts per trigger, over every later round. A change with rounds started by two triggers counts under both, so the arms can add up to more than the total. An arm is **judged** once it holds eight or more changes; cite its counts.
-  Take the first rule that matches; each gives exactly one action.
-  1. `protected` judged and under half: round 2 has stopped paying; propose `--pr-rounds 1` as the default.
-  2. Otherwise: report the counts and propose nothing. Say which arms are not yet judged. The totals are not a fallback: they include `reentry`, `unknown` and `unrecorded` rounds, and the retired `critical` and `high-important` arms.
+  If the `protected` arm is judged and under half, round 2 has stopped paying: propose `--pr-rounds 1` as the default. Otherwise report the counts only and propose nothing, saying which arms are not yet judged. The totals are not a fallback: they include `reentry`, `unknown` and `unrecorded` rounds, and the retired `critical` and `high-important` arms.
 
   `reentry`, `unknown`, the retired `critical` and `high-important` (written before 2026-11-17) and any value this list does not name: report them, propose nothing from them. `unrecorded` holds rounds from records written before triggers were logged; report its count.
 

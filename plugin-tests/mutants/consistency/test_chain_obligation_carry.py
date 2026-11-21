@@ -165,8 +165,8 @@ MUTANTS = [
     (
         "multi-pr's hoisted invariant loses the reason the record alone is not enough",
         MULTI_PR,
-        "**A carry list written and then not fed into the dependent's own Review is indistinguishable from never having written it**",
-        "**A carry list should be fed into the dependent's own Review**",
+        "A carry list written and then not fed into the dependent's own Review is indistinguishable from never having written it",
+        "A carry list should be fed into the dependent's own Review",
         TARGETS,
     ),
     # ---- the guard's own structure ----------------------------------------

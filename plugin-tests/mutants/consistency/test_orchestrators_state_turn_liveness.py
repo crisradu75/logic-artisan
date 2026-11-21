@@ -41,22 +41,22 @@ MUTANTS = [
     (
         "multi-pr's rule loses the mechanical same-message form",
         SKILLS / "multi-pr" / "SKILL.md",
-        "status text and the next tool call go in the SAME message",
-        "a closing status report should not read as an ending",
+        "Put status text and the next tool call in the same message",
+        "Put status text and the next tool call wherever reads best",
         TARGETS,
     ),
     (
         "multi-lite's rule reverts to the asked-a-question discriminator",
         SKILLS / "multi-lite" / "SKILL.md",
-        "is there a pending event that will re-invoke this session?",
-        "did you ask the user a question?",
+        "An idle turn has no **pending event** to re-invoke the session",
+        "An idle turn has no **question** to re-invoke the session",
         TARGETS,
     ),
     (
         "multi-spec's rule drops announcing-is-not-doing",
         SKILLS / "multi-spec" / "SKILL.md",
-        "**announcing the next step is not a mechanism**",
-        "**announcing the next step is good practice**",
+        "Announcing the next step is not a mechanism",
+        "Announcing the next step is good practice",
         TARGETS,
     ),
     (

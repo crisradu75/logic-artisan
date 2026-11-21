@@ -29,9 +29,9 @@ def test_revise_records_the_trigger_on_every_later_round():
 def test_the_retro_judges_each_arm_apart():
     text = (_SKILLS / "spec-to-pr-retro" / "SKILL.md").read_text(encoding="utf-8")
     assert "An arm is **judged** once it holds eight or more changes" in text
-    assert "Take the first rule that matches; each gives exactly one action." in text
-    assert "1. `protected` judged and under half: round 2 has stopped paying; propose `--pr-rounds 1`" in text
-    assert "2. Otherwise: report the counts and propose nothing." in text
+    assert "If the `protected` arm is judged and under half, round 2 has stopped paying: propose `--pr-rounds 1`" in text
+    assert "Otherwise report the counts only and propose nothing" in text
+    assert "first rule that matches" not in text
     assert "The totals are not a fallback" in text
     assert "the arms can add up to more than the total" in text
 
