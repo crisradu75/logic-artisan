@@ -45,9 +45,9 @@ def test_implement_edits_the_delta_spec_when_the_build_departs_on_purpose() -> N
 def test_handoff_refreshes_the_risk_and_checks_lines_and_keeps_the_rest() -> None:
     text = _flat(_HANDOFF)
     for wanted in ("check that the PR body still describes the branch as it is now",
-                   "its `Risk:` and `Checks:` lines are current",
-                   "Update only those two lines",
-                   "Keep the one-liner", "\"Stacked on #N.\"", "\"Closes openspec/changes/<name>/.\"",
+                   "its `Risk:` and `Checks:` clauses are current",
+                   "Update only those two clauses within the one-liner",
+                   "Keep the rest of the one-liner", "\"Stacked on #N.\"", "\"Closes openspec/changes/<name>/.\"",
                    "add no log of the review",
                    "`Risk: <level> — <reason>; reviewers: <list>.`"):
         assert wanted in text, f"handoff.md lost {wanted!r}"
@@ -88,3 +88,11 @@ def test_the_references_list_files_each_shared_file_under_one_read_condition() -
         assert f"`{cited}`" in trigger, f"{cited} is cited in the body but not listed"
     assert "`implement-checks.md`" in trigger
     assert (_SKILLS / "spec-to-pr" / "references" / "implement-checks.md").is_file()
+
+
+# requirement: change-workflow / The pull request body is current after the review rounds
+def test_the_output_table_does_not_limit_the_body_update_to_issues() -> None:
+    row = next(line for line in _SKILL.read_text(encoding="utf-8").splitlines() if line.startswith("| PR body refresh"))
+    assert "only when issues exist" not in row
+    assert "after any Revise fix round" in row and "`Risk:` and `Checks:` clauses" in row
+    assert "when issues exist" in row

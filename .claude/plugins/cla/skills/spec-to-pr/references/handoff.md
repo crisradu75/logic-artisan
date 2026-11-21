@@ -28,7 +28,7 @@ From your working memory of each phase, as rendered Markdown in the assistant tu
 
 ## 2. Keep the PR body current, then mirror the issues
 
-**First, when a Revise fix round ran:** check that the PR body still describes the branch as it is now, and that its `Risk:` and `Checks:` lines are current, because the fix rounds may have changed the risk level or the checks that ran. Update only those two lines, in the format `revise.md` reads for `Risk:` (`Risk: <level> — <reason>; reviewers: <list>.`). Keep the one-liner, any "Stacked on #N." line and the "Closes openspec/changes/<name>/." line as written, and add no log of the review.
+**First, when a Revise fix round ran:** check that the PR body still describes the branch as it is now, and that its `Risk:` and `Checks:` clauses are current, because the fix rounds may have changed the risk level or the checks that ran. Update only those two clauses within the one-liner, in the format `revise.md` reads for `Risk:` (`Risk: <level> — <reason>; reviewers: <list>.`). Keep the rest of the one-liner, including any "Stacked on #N." and "Closes openspec/changes/<name>/.", verbatim, and add no log of the review.
 
 Then skip the rest of this section when there are no issues and no rejected remedies.
 - **Few short issues:** one line — `gh pr edit <#> --body "[Stacked on #<parent>. ]Closes openspec/changes/<name>/. Checks: <the checks that ran>. Risk: <level> — <reason>; reviewers: <list>. Known issues: <comma-separated brief list>."`.

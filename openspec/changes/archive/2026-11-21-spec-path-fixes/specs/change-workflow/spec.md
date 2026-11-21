@@ -20,9 +20,9 @@ When the build departs from a requirement on purpose, `/cla:spec-to-pr` SHALL ed
 
 ### Requirement: The pull request body is current after the review rounds
 
-After the review fix rounds, `/cla:spec-to-pr` SHALL check that the pull request body still describes the branch and that its `Risk:` and `Checks:` lines are current, updating only those lines and keeping the one-liner, the stacked-on line and the closing line as written, with no log of the review.
+After the review fix rounds, `/cla:spec-to-pr` SHALL check that the pull request body still describes the branch and that its `Risk:` and `Checks:` clauses are current, updating only those clauses of the one-liner and keeping the rest of it, including any stacked-on and closing parts, as written, with no log of the review.
 
 #### Scenario: A fix round changed the risk level
 
 - **WHEN** a review fix round changed the risk level or the checks that ran
-- **THEN** the `Risk:` and `Checks:` lines say so and the rest of the body is unchanged
+- **THEN** the `Risk:` and `Checks:` clauses say so and the rest of the body is unchanged
