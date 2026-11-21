@@ -6,7 +6,7 @@ Why
 The shipped skills state these rules in prose, and prose did not hold them:
 
 - `_shared/references/plugin-root.md`: never pass a literal `${CLAUDE_PLUGIN_ROOT}`
-  through to a shell (and `output-styles/COPILOT.md`: never run an unresolved
+  through to a shell (and `com.github.copilot/COPILOT.md`: never run an unresolved
   placeholder).
 - `_shared/references/bash-discipline.md`: never write to `..`, which in a
   consuming repo holds the user's other projects; no multi-line `--body`, no

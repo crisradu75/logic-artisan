@@ -1,6 +1,6 @@
 ---
 name: project-review
-description: "CTO-level review of this repo — assesses vision, structure, requirements, architecture, and validation across the whole codebase. Triggers on /cla:project-review or natural language like 'review the whole project', 'CTO-level review', 'assess the codebase'."
+description: "CTO-level review of the whole repo (not a single change: review-change) — assesses vision, structure, requirements, architecture, and validation across the whole codebase. Triggers on /cla:project-review or natural language like 'review the whole project', 'CTO-level review', 'assess the codebase'."
 allowed-tools: Read, Bash, Grep, Glob, Agent
 ---
 
@@ -17,7 +17,7 @@ Run a comprehensive CTO-level review of this repo. Spine: **Step 0 build, lint a
 
 ## What the repo is (read before reviewing)
 
-**Read `cla.io/project-facts.md` before reviewing** — the repo's workspace layout, backend, dataset location, i18n layers and dev/build/test commands (run `/cla:cla-setup` when it is missing or stale) — and the repo's own root guidance doc and README for what the product is. `cla.io/overlays/project-review.md`, if present, adds review rules specific to this repo. If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". The agent prompts and the Step-1 Project Snapshot template take their repo facts from these sources, injected by the orchestrator at dispatch time, rather than hardcoding them. When naming a product/domain concept in the report, prefer this repo's canonical term from `cla.io/terminology.md` if it exists and covers the concept (soft — proceed on your own judgement if absent or silent on the term).
+**Read `cla.io/project-facts.md` before reviewing** — the repo's workspace layout, backend, dataset location, i18n layers and dev/build/test commands (run `/cla:cla-setup` when it is missing or stale) — and the repo's own root guidance doc and README for what the product is. `cla.io/overlays/project-review.md`, if present, adds review rules specific to this repo (how an overlay is read: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/overlays.md`). If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". The agent prompts and the Step-1 Project Snapshot template take their repo facts from these sources, injected by the orchestrator at dispatch time, rather than hardcoding them. When naming a product/domain concept in the report, prefer this repo's canonical term from `cla.io/terminology.md` if it exists and covers the concept (soft — proceed on your own judgement if absent or silent on the term).
 
 ## Step 0: Build, lint and test — run FIRST, before any agent dispatch
 
@@ -27,7 +27,7 @@ Print any FAIL immediately (`[Project Review] ⚠ {check}: {details}`), then col
 
 ## Step 1: Collect project snapshot
 
-Build a compact **Project Snapshot** that, together with the Baseline Facts table, is the complete brief every agent receives — do NOT read full file contents to paste into agent prompts; agents read specific files themselves. **Read `references/aggregate-and-log.md` first** for the full snapshot template and its `cla.io/project-facts.md` sourcing.
+Build a compact **Project Snapshot** that, together with the Baseline Facts table, is the complete brief every agent receives — do NOT read full file contents to paste into agent prompts; agents read specific files themselves. **Read `references/aggregate-and-report.md` first** for the full snapshot template and its `cla.io/project-facts.md` sourcing.
 
 Announce: `[Project Review] Launching 5 review agents...`
 
@@ -41,9 +41,9 @@ Announce: `[Project Review] Launching 5 review agents...`
 
 `Agent`-dispatched work inherits the session's effort here; only the model is set. On a session already at Opus, routing Agents 2/3/5 down to sonnet is the real economy; on a sub-Opus session, routing Agents 1/4 up to opus protects the highest-leverage judgment. Apply the routing whenever the session model differs from a dimension's target tier.
 
-## Step 3: Aggregate, report, and log
+## Step 3: Aggregate and report
 
-Wait for all five agents, then deduplicate/merge/extract-recommendations and print the report per the recipe in `references/aggregate-and-log.md` — **read that reference first**; this stub carries only the verdict rubric (the one correctness-gating piece of Step 3):
+Wait for all five agents, then deduplicate/merge/extract-recommendations and print the report per the recipe in `references/aggregate-and-report.md` — **read that reference first**; this stub carries only the verdict rubric (the one correctness-gating piece of Step 3):
 
 **Compute verdict from dimension grades.** Leave N/A dimensions out of every count. Take the first row that matches:
 | Verdict | Criteria |
@@ -60,7 +60,7 @@ The report is the whole output — this skill persists no state across runs.
 - `references/baseline-checks.md` — Step 0's full checklist: what each check verifies, exact commands, PASS/FAIL/SKIP interpretation, and the Baseline Facts table format (mandatory-read from the Step 0 stub)
 - `references/review-agents.md` — Step 2's full per-agent dispatch prompts: the standard instructions plus all five dimension prompts (mandatory-read from the Step 2 stub)
 - `references/review-criteria.md` — the portable grading rubric (signals + grade definitions) per dimension
-- `references/aggregate-and-log.md` — Step 1's snapshot template plus Step 3's dedup/merge/report-template recipe (mandatory-read from the Step 1 and Step 3 stubs)
+- `references/aggregate-and-report.md` — Step 1's snapshot template plus Step 3's dedup/merge/report-template recipe (mandatory-read from the Step 1 and Step 3 stubs)
 - `cla.io/overlays/project-review.md`, if present — review rules specific to this repo (read by the orchestrator; dispatched agents never load it themselves)
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` — the shared model/effort routing table (Step 2's "Review-agent dispatch" section is the single source of truth for this skill's per-agent model)
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md` — the thin-orchestrator standing disciplines this skill follows (delegation, I/O hygiene, batching, structured output)

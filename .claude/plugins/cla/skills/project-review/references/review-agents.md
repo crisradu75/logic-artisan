@@ -4,7 +4,7 @@ Full per-agent prompt text for Step 2's five-agent dispatch. **Mandatory read** 
 any agent's prompt — `SKILL.md` keeps only the dispatch invariant (all five in parallel, the model
 routing) inline; this file is the actual prompt content.
 
-Each agent receives: (1) the Project Snapshot (Step 1, template in `references/aggregate-and-log.md`),
+Each agent receives: (1) the Project Snapshot (Step 1, template in `references/aggregate-and-report.md`),
 (2) the Baseline Facts table (Step 0, `references/baseline-checks.md`), (3) the relevant dimension
 criteria from `references/review-criteria.md`, (4) the standard instructions below.
 

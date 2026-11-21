@@ -1,6 +1,6 @@
 ---
 name: diagnose
-description: "Find a failure's root cause instead of guessing: a deterministic repro loop, ranked falsifiable hypotheses, one-variable instrumentation, the regression test before the fix. Also reached when a Test phase stalls on one cause. Triggers: /cla:diagnose, 'why is this failing', 'find the root cause'."
+description: "Find a failure's root cause instead of guessing: a deterministic repro loop, ranked falsifiable hypotheses, one-variable instrumentation, the regression test before the fix. Also reached when a Test phase stalls on one cause. Triggers: /cla:diagnose, 'why is this failing', 'find the root cause', 'bug', 'regression', 'flaky', 'test keeps failing'."
 argument-hint: "[what is failing | (empty — infer from the conversation)]"
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash, AskUserQuestion, Agent
 ---
@@ -131,7 +131,7 @@ closure, a module-level side effect, an object with no injectable boundary —
 stop and write it down rather than forcing a test into the wrong place or
 skipping the test.
 
-Write it as a dated finding into `cla.io/feedback/`:
+Write it as a dated finding into `cla.io/feedback/`, named `no-seam-<slug>-<date>.md`:
 
 ```markdown
 ## <date> — no correct seam for <the confirmed cause>
@@ -182,8 +182,9 @@ The column collation lower-cases stored values, so an upper-case literal
 never matched. Confirmed by [DEBUG-a3f1] logging both sides of the compare.
 ```
 
-**Done when:** the grep returns nothing, the regression test passes, and the
-commit message names the cause.
+**Done when:** the grep returns nothing and either the regression test passes
+and the commit message names the cause, or Phase 5 ended in a no-seam finding,
+which stands in place of the test.
 
 ## References
 

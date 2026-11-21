@@ -1,9 +1,11 @@
 ---
 name: shape-decision
-description: "Shape a decision by walking through choices one at a time with pros/cons and a recommended pick. Triggers on /cla:shape-decision or natural language like 'help me decide between X and Y', 'shape this decision', 'walk me through the options'."
+description: "Shape a decision by walking through choices one at a time with pros/cons and a recommended pick. Writes a decision file to cla.io/decisions/. Triggers on /cla:shape-decision or natural language like 'help me decide between X and Y', 'shape this decision', 'decision file', 'walk me through the options'."
 argument-hint: "[topic]"
 allowed-tools: Read, Grep, Glob, Write, Edit
 ---
+
+# /cla:shape-decision
 
 **Topic:** $ARGUMENTS
 
@@ -15,7 +17,7 @@ Before the first question, read `references/question-form.md`. Every question fo
 
 ## Start
 
-**Model signal.** If the session model is below Opus, test the topic: is it hard to reverse? Does it ship to other repos or users? Does it have several independent constraints? If any answer is yes, say once that a stronger model or higher effort would help. Name the switch: `/model` for the model; you usually cannot see the effort setting, so tell the user to raise it if their session allows. Wait for the reply, then proceed either way. On Opus, or when all three are no, say nothing.
+**Model signal.** If the session model is below Opus, test the topic: is it hard to reverse? Does it ship to other repos or users? Does it have several independent constraints? If any answer is yes, say once that a stronger model or higher effort would help. Name the switch: `/model` for the model; you usually cannot see the effort setting, so tell the user to raise it if their session allows. Wait for the reply, then proceed either way; when unattended, skip this step and proceed. On Opus, or when all three are no, say nothing.
 
 **Ground in this repo.** Unless the topic is purely abstract or a personal preference, read before the first question, and say what you read:
 
@@ -44,7 +46,7 @@ Before the first question, list the axes this decision turns on, starting from t
 
 Leave off any other axis that plainly cannot apply.
 
-Add any axis specific to the topic. These enter at Partial: each rule in the instruction files that bears on an option, named with its source, and every concern that earlier research in this conversation (a file read, an agent's report) or your repo read surfaced. A fact already in hand must never silently drop out.
+Add any axis specific to the topic, and one axis for each of the following. Each such axis enters at Partial: each rule in the instruction files that bears on an option, named with its source, and every concern that earlier research in this conversation (a file read, an agent's report) or your repo read surfaced. A fact already in hand must never silently drop out.
 
 Each axis has one level:
 

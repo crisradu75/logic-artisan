@@ -57,3 +57,11 @@ def test_a_merge_is_proposed_and_made_only_on_confirmation():
     text = _flat()
     assert "Merge near-duplicates — but only with per-merge confirmation" in text
     assert "merge only on confirmation" in text
+
+
+def test_the_skill_names_no_example_taken_from_another_project():
+    # check_no_project_tokens.py reads its tokens from an untracked local file, so it cannot see
+    # words that leaked in from a consuming project. This denylist pins the ones that did.
+    text = _raw()
+    for word in ("Recharts", "Assistant rail", "Clients screen", "Planning/Buying", "<app>/src"):
+        assert word not in text, word

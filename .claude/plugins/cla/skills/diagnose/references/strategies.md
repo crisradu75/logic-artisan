@@ -113,7 +113,7 @@ available, and the last resort.
 Use when reproduction needs credentials, hardware, or a judgement no script can
 make.
 
-Stops paying immediately once any strategy above becomes possible. A human loop
+An unattended run (see the Mode section of SKILL.md) skips this strategy, because nobody is there to answer. It stops paying immediately once any strategy above becomes possible. A human loop
 costs the user's attention, which is the most expensive input this harness
 spends.
 

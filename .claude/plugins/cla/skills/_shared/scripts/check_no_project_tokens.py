@@ -170,7 +170,8 @@ def load_tokens(path: Path) -> list[str]:
     """Parse the markdown token-list overlay into a list of tokens.
 
     One token per ``- ``/``* `` bullet (the text after the marker, trimmed, with
-    an optional trailing `` # comment`` and surrounding backticks stripped).
+    an optional trailing `` # comment`` and surrounding backticks stripped). A bullet that opens with ``**`` is bold
+    prose, not a token, and is skipped.
     ``#`` headings, blank lines, and ``<!-- ... -->`` comment lines are ignored.
     A missing file yields ``[]`` (trivial pass — see the main test)."""
     if not path.is_file():
@@ -187,6 +188,10 @@ def load_tokens(path: Path) -> list[str]:
             continue
         if line.startswith("- ") or line.startswith("* "):
             body = line[2:]
+            # A bullet that opens with bold (`**`) is prose, such as the explanation
+            # bullets in this overlay's own "Why" section, not a token.
+            if body.startswith("**"):
+                continue
             # Strip an inline trailing "token  # why" comment. (A token containing a
             # literal '#' — a hex color, an anchor — is unsupported by this split, but
             # none is needed for the compound repo tokens this list holds.)
@@ -338,8 +343,11 @@ SOURCE_SCAN_ROOTS = (
 # `com.github.copilot/hooks/hooks.json` is the Copilot CLI hook wiring; a root
 # would make `_missing_source_roots` treat a partial install as broken, and a file
 # list keeps the surface to the one file. An absent file is skipped.
+# `com.github.copilot/COPILOT.md` is the Copilot response-style doc a repo copies into its
+# own instructions; it was scanned under `output-styles/` before it moved here.
 SOURCE_SCAN_EXTRA_FILES = (
     "com.github.copilot/hooks/hooks.json",
+    "com.github.copilot/COPILOT.md",
 )
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 

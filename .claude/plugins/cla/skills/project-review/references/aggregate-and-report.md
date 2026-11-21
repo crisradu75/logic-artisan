@@ -23,7 +23,7 @@ This snapshot + the Baseline Facts table (`references/baseline-checks.md`) = the
 every agent receives. Do NOT read full file contents to paste into agent prompts — agents read
 specific files themselves.
 
-## Step 3 — Aggregate, report, and log (full recipe)
+## Step 3 — Aggregate and report (full recipe)
 
 Wait for all five agents. Then:
 
@@ -68,7 +68,5 @@ Print the full report:
 
 Write each finding in a line or two. The report should be scannable in one screen.
 
-This skill persists no state. It kept a `project-review-runs.jsonl` ledger until that
-ledger reached a handful of records across five repos with no skill reading it, and it
-was deleted along with the other three unread ledgers. The report is the output; if you
-want to compare a run against the last one, read the prior report rather than a log line.
+This skill persists no state. The report is the output; to compare a run against the
+last one, read the prior report.

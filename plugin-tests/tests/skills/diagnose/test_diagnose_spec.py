@@ -88,3 +88,12 @@ def test_the_skill_and_the_ship_scan_name_every_home_of_the_tag():
     # The three homes agree on the tag itself.
     tag = re.search(r'TAG = "\[" \+ "(DEBUG-)"', _HOOK.read_text(encoding="utf-8")).group(1)
     assert f"[{tag}xxxx]" in skill and f'"\\[{tag}"' in ship
+
+
+# requirement: failure-diagnosis / The regression test fails before the fix
+def test_a_no_seam_finding_ends_the_run_in_place_of_the_regression_test():
+    # Phase 5 accepts a dated finding as a valid end; Phase 6 must not demand a test it never gets.
+    text = _flat()
+    assert "named `no-seam-<slug>-<date>.md`" in text
+    phase6 = text.split("## Phase 6", 1)[1]
+    assert "Phase 5 ended in a no-seam finding, which stands in place of the test" in phase6
