@@ -149,7 +149,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 ## skills/right-model/SKILL.md
 - not-a-rule | - | - | # always-loaded skill listing. Nothing invokes it programmatically.
 - guidance | none | #299 2026-10-07, slim right-model | `model` enum; a list written here goes stale.
-- not-a-rule | - | - | `multi-pr` never dispatches an `Agent` itself
+- not-a-rule | - | - | are never routed per that file
 
 ## skills/save-permissions/SKILL.md
 - not-a-rule | - | - | # always-loaded skill listing. Nothing invokes it programmatically.
@@ -565,7 +565,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - guidance | none | ee4034ad 2026-07-23 (extraction); none found earlier (owner approved softening 2026-11-18) | Tier B (content findings) is fixed in place and does not halt it.
 - not-a-rule | - | - | Ship never opening a PR, Archive not reaching the PR, an unresolved
 - keep | honesty | ee4034ad 2026-07-23 (extraction); none found earlier | A change never counts done while a Deferred-Known-Issue
-- not-a-rule | - | - | response key or required behaviour that the change itself never consumes
 - not-a-rule | - | - | is indistinguishable from never having written it
 - keep | safe writes | #361 (issue #272), a second --fix run moves cites again | Never run the recheck twice on one change: its fixes would move again.
 - keep | user's files | 6df50092 2026-10-08, head-commit guards adopted | **Never merge a head the change's review and full gate did not cover:**

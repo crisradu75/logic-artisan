@@ -126,12 +126,10 @@ For each change in the confirmed order:
 
 Move to the next change in the sequence — **in the same message as step 7's report.**
 
-This seam is where the chain has been measured to die. Step 7 produces a natural closing shape (a
-finished change, a wall-clock figure, a revised estimate), and a well-written status report reads as
-a legitimate place to stop even though nothing is blocked and nobody is waiting on input. It is not
-a pause: an idle turn has no pending event to re-invoke the session, so the chain stops until a
-human notices. One six-change chain lost ~4.5 hours here with 4 of 6 changes unstarted, its closing
-line being "Starting change 3: …".
+This seam is where the chain stops. Step 7 produces a natural closing shape (a finished change, a
+wall-clock figure, a revised estimate), and a well-written status report reads as a legitimate place
+to stop even though nothing is blocked and nobody is waiting on input. It is not a pause: an idle
+turn has no pending event to re-invoke the session, so the chain stops until a human notices.
 
 The hoisted turn-liveness rule in `SKILL.md` binds here, and is restated because this is exactly the
 point at which that file has been closed and the orchestrator is running on the `SKILL.md` summary.
@@ -140,6 +138,29 @@ If there is no tool call to pair the report with, the change is not over. The te
 **pending event** will re-invoke this session, not whether you asked the user anything — announcing
 the next change **is not a mechanism**, while a backgrounded dispatch, the next
 `Skill(cla:spec-to-pr, …)` call itself, or a watchdog armed before the message ends all are.
+
+## Mid-chain blockers
+
+After the Phase 1b gate, "a blocker" is this closed list and nothing else, and each is surfaced with
+an `AskUserQuestion`:
+
+- (a) a dependency cycle;
+- (b) a prerequisite the chain cannot supply;
+- (c) an irreversible or billed action outside what the gate authorised;
+- (d) a Tier A structural halt;
+- (e) local infra still unreachable after the self-remediation attempt, under the hard-block policy;
+- (f) a change that cannot be implemented as written.
+
+Everything else (a pre-existing bug a task surfaces, a reviewer re-opening an owner decision, a
+product follow-up, a scope-trim suggestion that does not block the change in flight) becomes a
+labelled GitHub issue holding the analysis and options, is named in one status line, and the chain
+continues.
+
+**A background command the harness reaps for low memory is not a blocker either.** Retry the same
+command after a bounded backoff (about 60 s, then about 180 s; two retries), record the attempts in
+the running notes, and ask only once both retries fail. Confirming an unattended chain at the gate is
+the standing authorisation for that bounded retry: it is what the harness's "do not start it again on
+your own" notice is waiting for.
 
 ## Resume behavior
 

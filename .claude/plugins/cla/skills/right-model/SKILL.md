@@ -64,12 +64,13 @@ say so. "The cheaper tier might not meet the bar" is not a toss-up.
 **When the task will run through a `cla` orchestrator, say what the session switch will and won't
 change.** `spec-to-pr` routes every dispatched agent per
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`; `multi-spec` reuses it, and
-`multi-pr` never dispatches an `Agent` itself, only whole `spec-to-pr` runs. For those, escalating the session changes only the inline judgment moments
+`multi-pr` runs whole `spec-to-pr` runs; the helper agents `multi-pr` dispatches itself are never routed per that file.
+For those, escalating the session changes only the inline judgment moments
 (Propose authoring, a RETHINK or Critical-bearing FIX FIRST Review verdict). Check the actual file before citing it.
 
 **One expensive turn does not need a session change.** When one judgment or diagnosis is the hard
-part, an in-prompt reasoning keyword raises effort for that turn alone, if the session supports one.
-Check the real keyword; vague encouragement is inert. Wrong tool for a long unattended run.
+part, the `ultrathink` keyword in the prompt raises effort for that turn alone, when the session's Claude Code
+version supports it (its extended-thinking documentation says). Wrong tool for a long unattended run.
 
 ## Step 4: Offer to start the task with those settings
 
@@ -77,7 +78,7 @@ Ask a short yes/no; use `AskUserQuestion` only when there is a real branch to ch
 
 - **Self-contained task** → launch it with `Agent`, `model` set to the recommendation. Pass the
   recommended effort too, as the `Agent` tool's per-call `effort` (this skill is the explicit ask
-  that parameter requires; capability table: `model-routing.md`). Don't use `Workflow` as a workaround.
+  that parameter requires; capability table: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`). Don't use `Workflow` as a workaround.
 - **Task that needs this conversation** → only the user can switch the session's model and effort
   (e.g. `/model`; check the current mechanism). The model is visible to you, the effort usually is
   not. Tell them what to set, and proceed as soon as they confirm.
