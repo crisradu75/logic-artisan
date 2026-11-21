@@ -1152,3 +1152,19 @@ def test_load_tokens_skips_bold_prose_bullets_in_an_explanatory_section(tmp_path
         encoding="utf-8",
     )
     assert load_tokens(p) == ["some-repo", "other-token"]
+
+
+def test_source_scan_reports_a_token_in_the_copilot_response_style_doc(tmp_path):
+    # `com.github.copilot/COPILOT.md` sits outside every scan root and is reached by exact path;
+    # it was scanned under output-styles/ before it moved. A same-named file elsewhere stays out
+    # of scope, and the in-scope seed is the positive control for that absence.
+    _seed(tmp_path, "com.github.copilot/COPILOT.md", "# Style for funnel-demo\n")
+    _seed(tmp_path, "other/COPILOT.md", "# Style for funnel-demo\n")
+    rels = [h[0] for h in find_source_violations(tmp_path, ["funnel-demo"])]
+    assert rels == ["com.github.copilot/COPILOT.md"]
+
+
+def test_source_scan_of_the_real_plugin_reaches_the_copilot_response_style_doc():
+    scanned = {p.relative_to(_plugin_root()).as_posix()
+               for p in _iter_scanned_source_files(_plugin_root())}
+    assert "com.github.copilot/COPILOT.md" in scanned

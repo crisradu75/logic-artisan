@@ -16,7 +16,7 @@ groups, and only the first is a finding:
 
 The share of bullets in each group depends on how a repo writes its proposals:
 prose-heavy proposals land mostly in *not checkable*. **Run
-`python3 "${CLAUDE_PLUGIN_ROOT}/skills/annotate/scripts/sweep_changes.py" <changes folder>`
+`python3 <this skill's folder>/scripts/sweep_changes.py <changes folder>`
 before relying on the tab, and quote the figures it prints for this repo, not a
 figure from another one.**
 

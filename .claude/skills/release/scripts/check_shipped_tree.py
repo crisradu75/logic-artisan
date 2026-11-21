@@ -120,6 +120,10 @@ ALLOWLIST: tuple[tuple[str, str], ...] = (
     (r"com\.github\.copilot/hooks/hooks\.json",
      "The Copilot CLI hook wiring, in the one directory an Agent Plugins 1.0 plugin "
      "keeps it. Exactly one file, held against the Claude wiring by a test."),
+    (r"com\.github\.copilot/COPILOT\.md",
+     "The Copilot CLI response-style doc a consuming repo copies into its own "
+     "instructions. Exactly one file, kept out of output-styles/ so Claude Code "
+     "does not list it as a second output style."),
     (r"hooks/[^/]+\.ps1",
      "probe-python.ps1, dot-sourced by every PowerShell wiring in the Copilot CLI "
      "hook file; the PowerShell twin of probe-python.sh."),

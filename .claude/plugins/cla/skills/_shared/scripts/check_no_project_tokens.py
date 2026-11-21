@@ -343,8 +343,11 @@ SOURCE_SCAN_ROOTS = (
 # `com.github.copilot/hooks/hooks.json` is the Copilot CLI hook wiring; a root
 # would make `_missing_source_roots` treat a partial install as broken, and a file
 # list keeps the surface to the one file. An absent file is skipped.
+# `com.github.copilot/COPILOT.md` is the Copilot response-style doc a repo copies into its
+# own instructions; it was scanned under `output-styles/` before it moved here.
 SOURCE_SCAN_EXTRA_FILES = (
     "com.github.copilot/hooks/hooks.json",
+    "com.github.copilot/COPILOT.md",
 )
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 

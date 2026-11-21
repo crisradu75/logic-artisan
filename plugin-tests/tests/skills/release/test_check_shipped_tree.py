@@ -185,11 +185,11 @@ def test_the_allowlist_is_capped_and_every_entry_carries_a_reason():
     the Copilot hook wiring and its PowerShell probe, each raised this cap
     in the SAME commit that added the pattern and its reason. Growth is allowed,
     growth nobody argued for is not."""
-    assert len(cst.ALLOWLIST) == 18, (
+    assert len(cst.ALLOWLIST) == 19, (
         f"the allowlist has {len(cst.ALLOWLIST)} patterns; it was 14 when the "
         "convention landed, 15 once the Copilot root manifest was added and 16 "
         "16 once the Copilot agent copies were, and 18 once the Copilot hook wiring "
-        "and its PowerShell probe were. "
+        "and its PowerShell probe were, and 19 once the Copilot response-style doc was. "
         "Adding one is fine — raise this cap in the same commit, with the "
         "pattern's reason."
     )
