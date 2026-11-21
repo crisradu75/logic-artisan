@@ -171,7 +171,7 @@ of its own before these.
        `Bash(run_in_background: true)` and arm a 15-minute watchdog, `Bash(command: "python3 -c
        \"import time; time.sleep(900)\"", run_in_background: true)` (covered by the
        wildcards `Bash(gh *)` and `Bash(python3 *)` in `required-permissions.json`;
-       `multi-lite/SKILL.md` "Never end a turn with nothing in flight" says why `python3`). Do
+       `_shared/references/turn-liveness.md` "A watchdog" says why `python3`). Do
        not poll or loop: a completion notification wakes the session. When the watch's
        notification arrives first, read its exit code before anything else; the exit code only
        says the watch ended (it exits non-zero for a failing or still-pending check), so it is not

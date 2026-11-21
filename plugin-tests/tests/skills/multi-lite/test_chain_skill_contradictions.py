@@ -47,6 +47,20 @@ def test_the_shared_turn_liveness_rule_exists_and_each_chain_skill_points_at_it(
         assert pointer in _flat(f"{skill}/SKILL.md"), skill
 
 
+def test_no_shipped_file_cites_a_sentence_that_moved_to_turn_liveness():
+    for path in _SKILLS.rglob("*.md"):
+        text = " ".join(path.read_text(encoding="utf-8").split())
+        assert 'SKILL.md" "Never end a turn' not in text, path
+        assert '`multi-lite/SKILL.md` "Never end' not in text, path
+    merge = _flat("_shared/references/chain-merge.md")
+    assert "`_shared/references/turn-liveness.md` \"A watchdog\" says why `python3`" in merge
+    assert "## A watchdog" in _flat("_shared/references/turn-liveness.md").replace("# turn", "# turn")
+
+
+def test_right_model_names_no_unverified_keyword():
+    assert "ultrathink" not in _flat("right-model/SKILL.md")
+
+
 def test_multi_pr_lists_the_cite_script_and_keeps_the_blocker_list_in_the_loop_reference():
     skill = _flat("multi-pr/SKILL.md")
     assert "scripts/check_cite_drift.py` — the once-per-change cite recheck" in skill

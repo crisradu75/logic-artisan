@@ -69,8 +69,8 @@ For those, escalating the session changes only the inline judgment moments
 (Propose authoring, a RETHINK or Critical-bearing FIX FIRST Review verdict). Check the actual file before citing it.
 
 **One expensive turn does not need a session change.** When one judgment or diagnosis is the hard
-part, the `ultrathink` keyword in the prompt raises effort for that turn alone, when the session's Claude Code
-version supports it (its extended-thinking documentation says). Wrong tool for a long unattended run.
+part, an in-prompt reasoning keyword raises effort for that turn alone, if the session supports one.
+Check the real keyword in Claude Code's documentation before citing it; vague encouragement is inert. Wrong tool for a long unattended run.
 
 ## Step 4: Offer to start the task with those settings
 

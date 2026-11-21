@@ -225,7 +225,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | add-chain-check-script 2026-11-18: the PR head alone missed a remote branch moved after `gh` answered; `chain_check.py before-merge` compares both | must equal `head_sha` too, for the same reason.
 - keep | honesty | ba21ee82 2026-09-16 second-round review findings; `chain_check.py before-merge` holds the comparison since add-chain-check-script 2026-11-18 | `git rev-parse HEAD` must equal `head_sha`, or the reason is `local head mismatch`.
 - keep | honesty | 87aeac6a 2026-09-16 third-round review findings; `chain_check.py before-merge` holds the comparison since add-chain-check-script 2026-11-18 | must be empty; anything listed would be tested by the gate below
-- not-a-rule | - | - | "Never end a turn with nothing in flight" says why `python3`
 - not-a-rule | - | - | so the merged tree was never tested as a whole
 - keep | user's files | 6df50092 2026-10-08 (from multi-lite, cdf0795e 2026-08-06 #18); rewrites tested and reviewed code | Never rebase or force-push to clear it
 - keep | honesty | 751bed9e 2026-09-16 review findings; exit 0 can mean only queued; `chain_check.py after-merge` holds the comparison since add-chain-check-script 2026-11-18 ; add-chain-check-script review 2026-11-18: a merge of another head or base is not this run's | `state` must be `MERGED` (exit 0), into `<base-branch>` at `head_sha`
