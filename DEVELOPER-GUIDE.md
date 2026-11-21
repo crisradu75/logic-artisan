@@ -45,7 +45,8 @@ One split shapes everything: **procedure is portable, facts are per-repo.**
   port, install step and env file a skill reads. The rest of the repo-root `cla.io/` tree holds
   decisions, feedback, the run ledger, the lessons log, the machine-read `*.local.md` files, and
   optional per-skill overlays (`cla.io/overlays/<skill>.md`) for a rule one skill needs in this
-  repo only. Installing or updating the plugin never touches any of it.
+  repo only; an overlay adds or narrows rules and does not relax a stop, a protected-area rule or a
+  report field another skill reads (`skills/_shared/references/overlays.md`). Installing or updating the plugin never touches any of it.
 
 ## 2. Your first session
 
@@ -427,7 +428,10 @@ what they are). `cla.io/` is untouched by the update itself, because it lives in
 in the plugin directory.
 
 Overlays are optional: add `cla.io/overlays/<skill>.md` only when one skill needs a rule specific
-to this repo.
+to this repo. An overlay adds or narrows a skill's rules; it does not relax a stop, a protected-area
+rule or a report field another skill reads, and a skill that meets such a line follows its own rule
+and says which overlay line it left unapplied. The rule and the list of fields other skills read
+are in `skills/_shared/references/overlays.md`.
 
 **On GitHub Copilot CLI**, the marketplace install, one skill and both helper agents were
 smoke-tested with Copilot CLI 1.0.105 against `cla--v2.2.3`. Those tagged profiles fell back to
@@ -676,7 +680,9 @@ Four contracts, each enforced by a test, so a miss fails the suite instead of sh
    `${CLAUDE_PLUGIN_ROOT}/skills/<owner>/references/<file>`. Both mistakes fail the same test.
 4. **Project-specific facts never go in the body.** The skill reads them from
    `cla.io/project-facts.md`; a rule specific to one repo goes in `cla.io/overlays/<name>.md`, which
-   the skill reads only if present. No skill may require an overlay, and nothing seeds one. The
+   the skill reads only if present (it may add or narrow rules, not relax a stop, a protected-area
+   rule or a report field another skill reads: `_shared/references/overlays.md`). No skill may
+   require an overlay, and nothing seeds one. The
    token guard fails the suite if a repo name leaks into the body.
 
 Then add the skill to the plugin README's phase table and to the cheat sheet below. If its
