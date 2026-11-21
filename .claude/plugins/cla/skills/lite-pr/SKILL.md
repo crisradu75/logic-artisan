@@ -1,6 +1,6 @@
 ---
 name: lite-pr
-description: "The default path for a change: lightweight and end to end, without OpenSpec artifacts (use spec-to-pr instead for a protected area or behaviour shipped to other repos): plan, implement with docs and tests, one test pass, open the PR, one review round with a single fix round (a second, on the fix diff, for a protected-area fix). Stops only on an unresolved test failure. Triggers: /cla:lite-pr, 'quick PR for X', 'small change, just ship it'."
+description: "The default path for a change: lightweight and end to end, without OpenSpec artifacts (use spec-to-pr instead for a protected area or behaviour shipped to other repos): plan, implement with docs and tests, one test pass, open the PR, one review round with a single fix round (a second, on the fix diff, for a protected-area fix). Stops on an unresolved test failure, and asks or waits only for a known-failing test or a likely duplicate. Triggers: /cla:lite-pr, 'quick PR for X', 'small change, just ship it'."
 argument-hint: "[description | (empty)]"
 ---
 
@@ -46,9 +46,11 @@ Produce a plan directly in the conversation as plain text — do NOT call `Enter
 - which test file(s) need adding/updating, and under which workspace package/app they live — see `cla.io/project-facts.md` ("Test-file locations").
 - which docs from `cla.io/project-facts.md` ("Doc-sweep paths"; with no list, the docs a reader of the repo would open) the change updates, or `none affected: <reason>`. Every plan has this line: the docs check has no skip rule (see the Review phase).
 
+**Search for duplicate work first, read-only.** Run `gh pr list --state all --search "<key words>"` and read the base branch's last 50 commits from the local ref (`git log -50 origin/<pr-base>`, no fetch). Only read what matches: never comment on, edit, label, close, merge, check out or push to a matched pull request or branch. A likely match with the user present: show it and wait for their reply. Run by `/cla:multi-lite`: continue, and name the match in the pull request body. With no GitHub remote or a failed search, continue, and say in the report that the search was skipped and why (and in the `Checks:` line when a pull request is opened).
+
 No plan is written to disk. The plan lives in the conversation; its durable record is the doc updates it produces during Implement. Unlike `/cla:spec-to-pr`, nothing is created here that later needs archiving or deleting.
 
-Go straight to Implement once the plan is posted — no pause, no "shall I proceed?" question, no wait for a reply.
+Go straight to Implement once the plan is posted — no "shall I proceed?" question and no wait for a reply, except the one wait for a likely duplicate above.
 
 ### Implement
 
@@ -115,7 +117,7 @@ Then, smoke tier first, then full:
 
 1. Run every `smoke` command. All pass (or smoke empty) → run every `full` command in order (`build`, then `test`).
 2. All pass across both tiers → proceed to Ship.
-3. Any failure (in either tier) → **state the cause in one sentence before editing** (a restatement of the symptom is not a cause; read the actual failure output, since a typecheck error or assertion diff *is* the diagnosis), apply one fix via `Edit`, re-run from the failing tier once. **That is the whole edit budget: one fix, one retry. Still red after that retry, on the same stated cause or a new one → stop editing and escalate to `/cla:diagnose`** — read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/diagnose-escalation.md` at that point, before you offer or invoke it: it holds how to escalate attended versus unattended and where its outcome feeds back. (Short form: user present, offer it; under `/cla:multi-lite`, invoke it without asking; nobody is there to answer. Either way `diagnose` leaves its fix uncommitted; Ship commits it.)
+3. Any failure (in either tier) → **when a test fails, first read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/red-gate.md`**: a test failure only (not build or typecheck) may be labelled `probably already failing on the base branch`, judged by reading alone, and is then not fixed here. Otherwise **state the cause in one sentence before editing** (a restatement of the symptom is not a cause; read the actual failure output, since a typecheck error or assertion diff *is* the diagnosis), apply one fix via `Edit`, re-run from the failing tier once. **That is the whole edit budget: one fix, one retry. Still red after that retry, on the same stated cause or a new one → stop editing and escalate to `/cla:diagnose`** — read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/diagnose-escalation.md` at that point, before you offer or invoke it: it holds how to escalate attended versus unattended and where its outcome feeds back. (Short form: user present, offer it; under `/cla:multi-lite`, invoke it without asking; nobody is there to answer. Either way `diagnose` leaves its fix uncommitted; Ship commits it.)
    **Test quality is an Implement-phase concern** — see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md`. If a red gate here forces a test edit, the same rules apply to the edit.
 
 4. Still failing after the `/cla:diagnose` path in step 3 (its confirmed fix re-run once still red, a `diagnose` that stopped, or the user declined the offer) → **HALT.** Report the failing check(s) and stop — do not proceed to Ship.
@@ -129,7 +131,7 @@ Then, smoke tier first, then full:
 
 This is the same discipline `/cla:spec-to-pr`'s Revise phase applies to review findings (a finding is discharged only when the defect is *shown* gone), applied to test failures — where lite-pr has no downstream safety net to catch what a symptom fix hides.
 
-This is the one deliberate stop point in the workflow. It deviates from `/cla:spec-to-pr`'s "warn and continue regardless" policy on purpose: that policy is safe there because spec-to-pr's Revise phase and round caps exist to catch a problem later. lite-pr has neither downstream safety net, so an unresolved test failure has to stop the run here.
+These are the deliberate halts on a failure (this one, and the labelled-test halt under `/cla:multi-lite`); the only other pauses are the Plan wait for a likely duplicate and the ask or halt for a labelled known-failing test (`red-gate.md`). It deviates from `/cla:spec-to-pr`'s "warn and continue regardless" policy on purpose: that policy is safe there because spec-to-pr's Revise phase and round caps exist to catch a problem later. lite-pr has neither downstream safety net, so an unresolved test failure has to stop the run here.
 
 ### Ship
 
@@ -149,7 +151,7 @@ Then hand off entirely:
 Skill(commit-commands:commit-push-pr)
 ```
 
-No pause before this runs — continuous by design (see Autonomy below). Before it opens the PR, make the risk call from the diff and put one line in the PR body: `Risk: <level> — <reason>; reviewers: <list>.` Keep the Risk line on one line with no `\n#`. The level and reviewers come from "Review sizing by risk" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`; unsure means high. Use `commit-push-pr`'s own branch-naming and commit-message conventions as-is; lite-pr does not add any naming logic on top. The `Measured-by:` trailers are message *content* rather than a naming convention, so they are not an exception to that: hand them to `commit-push-pr` as part of the commit message it writes. Hand it the session-attribution lines in that same block too. The block layout that keeps the trailers parsing is in `measured-by.md`.
+No pause before this runs — continuous by design (see Autonomy below). Before it opens the PR, make the risk call from the diff and put one line in the PR body: `Risk: <level> — <reason>; reviewers: <list>.` Keep the Risk line on one line with no `\n#`. Next to it put one `Checks:` line naming the checks that ran, each skipped check with its reason (a docs-only change: the test gate skipped because it is docs-only), and any known-failing, suspected-flake or likely-duplicate note. The level and reviewers come from "Review sizing by risk" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`; unsure means high. Use `commit-push-pr`'s own branch-naming and commit-message conventions as-is; lite-pr does not add any naming logic on top. The `Measured-by:` trailers are message *content* rather than a naming convention, so they are not an exception to that: hand them to `commit-push-pr` as part of the commit message it writes. Hand it the session-attribution lines in that same block too. The block layout that keeps the trailers parsing is in `measured-by.md`.
 
 ### Review
 
@@ -180,7 +182,7 @@ Suggestion-level and non-blocking findings: append them to the repo-root `TODO.m
 
 ## Autonomy
 
-Continuous — no "confirm to proceed?" prompts between phases, matching `/cla:spec-to-pr`'s default. Plan does not gate on approval (no `EnterPlanMode`/`ExitPlanMode`) — the plan is posted, then every phase runs straight through: Plan → Implement → Test → Ship → Review. The only stop point in the entire flow is the Test-phase halt on an unresolved failure (see Test above). A user-driven interrupt (Ctrl-C, an explicit "stop"/"wait" message) still halts — that's a hard interrupt, not a model-side pause.
+Continuous — no "confirm to proceed?" prompts between phases, matching `/cla:spec-to-pr`'s default. Plan does not gate on approval (no `EnterPlanMode`/`ExitPlanMode`) — the plan is posted, then every phase runs straight through: Plan → Implement → Test → Ship → Review. The stops are the Test-phase halt on an unresolved failure (see Test above), the ask or halt for a labelled known-failing test, and the wait for a likely duplicate in Plan. A user-driven interrupt (Ctrl-C, an explicit "stop"/"wait" message) still halts — that's a hard interrupt, not a model-side pause.
 
 ## Scope
 
