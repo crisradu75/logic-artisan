@@ -136,26 +136,29 @@ Add one row per entry to the context brief, tagged `INHERITED OBLIGATION`, so th
 Count four things from the artifacts. Design decisions are deliberately not one of them: counting them let more decision headings buy the 3-agent review.
 - **a** = files listed in the proposal Impact section (Modified + New)
 - **b** = subtasks in tasks.md (count `- [ ]` lines)
+- **m** = whether the proposal's `Budget:` line (outside a code fence) has exactly the value `protected` (the marker). Read the value itself, not what the budget checker prints about it. Absent, or any other value, is unmarked; a value other than `protected` is an Important finding, graded as unmarked.
 - **c** = capabilities touched (delta spec directories under `specs/`)
 - **e** = verifiable CLAIMS the artifacts make about existing code — every "X already works", "no
   changes needed to Y", "Z has signature W", every named symbol/file/line. Count them from the
   context brief you just built; each row is one claim.
 
 **Rule:**
-- **Small change** — `a ≤ 5` AND `b ≤ 20` AND `c = 1` AND `e < 25` **AND NOT the complexity-concentration override below**:
+- **Small change** — `a ≤ 5` AND (`b ≤ 20` OR the change is unmarked) AND `c = 1` AND `e < 25` **AND NOT the complexity-concentration override below**:
   - Skip the 3-agent dispatch. The orchestrator IS the reviewer — verification checks in Step 2 already produced the findings. Go straight to Step 5.
-  - Announce: "Small change (a=.., b=.., c=.., e=..) — analyzing directly without agent dispatch."
-- **Large change** — any of the `a`/`b`/`c`/`e` thresholds exceeded, OR the complexity-concentration override fires:
+  - Announce: "Small change (a=.., b=.., c=.., e=.., marker: read|not read) — analyzing directly without agent dispatch."
+- **Large change** — any of the `a`/`c`/`e` thresholds exceeded, OR `b > 20` on a marked (`Budget: protected`) change, OR the complexity-concentration override fires:
   - Proceed to Step 4 to dispatch the 3 agents in parallel.
+
+**The subtask count alone does not buy the full review.** A change with `b > 20` and no marker stays Small when `a`, `c` and `e` are within their thresholds and no override fires; the concentration override below still applies.
 
 **Claim-density override (a change can be small in code and large in assertions).** File count
 and subtask count both under-weight a docs- or design-heavy change whose risk lives in what it
 CLAIMS rather than what it touches: 3 files and 40 claims about existing behaviour grades "small"
 and skips the dispatch, yet every one of those claims is a place the artifact can be wrong about
 the codebase. Treat as **Large** when `e >= 25`, regardless of `a`/`b`/`c`. Announce it the same
-way: "Large change (a=.., b=.., c=.., e=..) — claim-density override — dispatching 3 agents."
+way: "Large change (a=.., b=.., c=.., e=.., marker: read|not read) — claim-density override — dispatching 3 agents."
 
-**Complexity-concentration override (a change can be conceptually large while geographically narrow).** File count under-weights a change whose whole weight lands in one already-large file — `a` reads "small" while the change is anything but. Treat as **Large** (dispatch the 3 agents) even when `a ≤ 5`, when the change is concentrated in one or two files AND carries `b ≥ 15` subtasks. When the override fires, announce it: "Large change (a=.., b=.., c=.., e=..) — complexity-concentration override: b≥15 subtasks in {N} file(s) — dispatching 3 agents."
+**Complexity-concentration override (a change can be conceptually large while geographically narrow).** File count under-weights a change whose whole weight lands in one already-large file — `a` reads "small" while the change is anything but. Treat as **Large** (dispatch the 3 agents) even when `a ≤ 5`, when the change is concentrated in one or two files AND carries `b ≥ 15` subtasks. When the override fires, announce it: "Large change (a=.., b=.., c=.., e=.., marker: read|not read) — complexity-concentration override: b≥15 subtasks in {N} file(s) — dispatching 3 agents."
 
 Modal case in this repo: small. Don't over-engineer a review.
 
@@ -174,8 +177,8 @@ Print a **compact** report:
 ```
 ## Review: <name>
 
-**Mode:** direct analysis (small change, a=.., b=.., c=.., e=..)   OR
-**Mode:** 3-agent dispatch (a=.., b=.., c=.., e=.., [complexity-concentration override] if it fired) | Design: N or (absent) | Tasks: N | Specs: N
+**Mode:** direct analysis (small change, a=.., b=.., c=.., e=.., marker: read|not read)   OR
+**Mode:** 3-agent dispatch (a=.., b=.., c=.., e=.., marker: read|not read, [complexity-concentration override] if it fired) | Design: N or (absent) | Tasks: N | Specs: N
 
 ### Inherited obligations
 - <token>: HONOURED | VIOLATED | NOT ADDRESSED — <evidence>
