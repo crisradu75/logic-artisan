@@ -11,6 +11,7 @@ shell-word reader, the simple-command reader, and what `read_commit`,
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -150,7 +151,9 @@ def test_heredoc_bodies_are_returned_with_their_fd_and_consumed():
 
 
 def test_directory_of_follows_each_global_dash_c():
-    assert args.directory_of("/r", "-C sub -C ../o ") == "/r/o"
+    # `directory_of` returns a native path (it normalises with `os.path`), so the
+    # expectation is spelt natively; a wrong directory still fails on any platform.
+    assert args.directory_of("/r", "-C sub -C ../o ") == os.path.normpath("/r/o")
     assert args.directory_of("/r", "") == "/r"
 
 
@@ -193,7 +196,7 @@ def test_read_commit_reads_each_message(command, messages):
 
 def test_a_message_file_is_read_from_the_commit_directory(tmp_path):
     (tmp_path / "sub").mkdir()
-    (tmp_path / "sub" / "msg.txt").write_text("from file\n", encoding="utf-8")
+    (tmp_path / "sub" / "msg.txt").write_bytes(b"from file\n")  # exact bytes: write_text writes CRLF on Windows
     commit = _commit("git -C sub commit --file=msg.txt", cwd=str(tmp_path))
     assert commit.messages == ["from file\n"]
     assert not commit.message_hidden
@@ -363,4 +366,4 @@ def test_find_invocations_stops_at_unreadable_text():
 
 def test_a_git_dir_assignment_clears_every_directory():
     assert [f.directory for f in _found("GIT_DIR=/x git commit -m a; git commit -m b")] == [None, None]
-    assert [f.directory for f in _found("git -C sub commit -m a")] == ["/r/sub"]
+    assert [f.directory for f in _found("git -C sub commit -m a")] == [os.path.normpath("/r/sub")]

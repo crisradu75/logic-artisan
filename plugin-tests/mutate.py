@@ -60,14 +60,12 @@ silently stopped checking anything; an ambiguous one silently mutates a site you
 did not mean, and a kill on the wrong site reads exactly like a kill on the right
 one. Both are refused before any file is touched.
 
-KEEP `\\n` OUT OF AN ANCHOR. Anchors are matched against the file's raw bytes
-(see WHY IT WRITES BYTES above), so on a CRLF checkout — every file in this repo
-except the `eol=lf` launchers — a `\\n` in `old` matches nothing and the mutant is
-refused as "anchor not found" even though the line is plainly there. Anchor
-within a single line, or derive the separator from the file's own bytes
-(`_NL = b"\\r\\n" if b"\\r\\n" in path.read_bytes() else b"\\n"`) so the batch runs on
-either platform — spelling it `\\r\\n` outright works here and pins the batch to
-Windows.
+A BARE `\\n` IN AN ANCHOR MATCHES THE FILE'S OWN LINE ENDING. Anchors are matched
+against the file's raw bytes (see WHY IT WRITES BYTES above). When every line of
+the target ends in CRLF, as on a Windows checkout with `core.autocrlf` on, each
+bare `\\n` in `old` and in `new` is read as `\\r\\n` (`_in_file_endings`). On an LF
+file, or a file mixing the two, the text is used exactly as written, so one batch
+runs unchanged on every platform. Anchoring within a single line still works.
 
 AND THE SAME TRAP IS WORSE OUTSIDE THIS TOOL. Here a bad anchor is REFUSED, loudly,
 before anything is touched — that preflight is the only reason the mistake is
@@ -180,6 +178,20 @@ def load_batch(path: Path) -> list[tuple]:
     return mutants
 
 
+def _in_file_endings(text: str, snippet: str) -> str:
+    """`snippet` with each bare newline spelled the way `text` ends its lines.
+
+    Only a file whose every line ends in CRLF is translated. A mixed file or an
+    LF file keeps the snippet exactly as written, so on an LF checkout this is
+    the identity and an anchor that spells the CRLF itself means what it says.
+    Applied to the anchor and the replacement alike, so a planted edit never
+    leaves a bare newline in the middle of a CRLF file.
+    """
+    if "\r\n" not in text or re.search(r"(?<!\r)\n", text):
+        return snippet
+    return re.sub(r"(?<!\r)\n", "\r\n", snippet)
+
+
 def preflight(mutants: list[tuple]) -> None:
     """Refuse to start unless every mutant could actually prove something.
 
@@ -216,7 +228,7 @@ def preflight(mutants: list[tuple]) -> None:
         except (OSError, UnicodeDecodeError) as exc:
             problems.append(f"{name}: cannot read {path} as UTF-8: {exc}")
             continue
-        hits = text.count(old)
+        hits = text.count(_in_file_endings(text, old))
         if hits == 0:
             # Name the CRLF cause when it is the likely one. The module docstring
             # already explains it ("KEEP \n OUT OF AN ANCHOR"), but a docstring
@@ -450,7 +462,9 @@ def check(mutants: list[tuple]) -> int:
         # has been put back.
         backup.write_bytes(original)
         try:
-            mutated = original.decode("utf-8").replace(old, new, 1)
+            text = original.decode("utf-8")
+            mutated = text.replace(
+                _in_file_endings(text, old), _in_file_endings(text, new), 1)
             path.write_bytes(mutated.encode("utf-8"))
             code, output = run_pytest([Path(str(t)) for t in targets])
         finally:

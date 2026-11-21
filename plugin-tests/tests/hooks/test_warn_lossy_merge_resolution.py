@@ -87,7 +87,13 @@ def _build(root: Path) -> None:
 
 @pytest.fixture
 def repo(cached_git_repo, tmp_path) -> Path:
-    return cached_git_repo("warn-lossy-merge-resolution", _build, tmp_path / "repo")
+    dest = cached_git_repo("warn-lossy-merge-resolution", _build, tmp_path / "repo")
+    # A copied work tree keeps the template's index stat data (inode, ctime), which
+    # a copy cannot preserve on Windows, so `git merge --abort` there refuses with
+    # "Entry ... not uptodate". Refreshing re-reads the stat data and changes no
+    # content. It exits 1 for the unmerged path (still conflicted), hence no check.
+    _git(dest, "update-index", "-q", "--refresh", check=False)
+    return dest
 
 
 def _resolve(repo: Path, text: str) -> None:
