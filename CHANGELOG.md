@@ -10,6 +10,14 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ### Changed
 
+- **`/cla:lite-pr` labels a test that already fails and says what was checked.** A failing test
+  (never a build or typecheck failure) that shares no file with the change, through the code it
+  reaches, is labelled probably already failing on the base branch, judged by reading alone, and
+  gets no fix: a present user chooses whether to ship with a known-failing note, and a
+  `/cla:multi-lite` run halts. A failure showing no code error and an unreachable service gets one
+  reported rerun. Plan searches pull requests and recent commits for duplicate work, read-only, and
+  waits for a present user on a match. The pull request body gains a `Checks:` line beside `Risk:`.
+  The failure handling is a new `lite-pr/references/red-gate.md`, read only when a test fails.
 - **A long task list no longer buys the three-agent review.** `/cla:review-change` grades a change
   Large for more than 20 subtasks only when its proposal carries `Budget: protected`; files,
   capabilities, claims and the concentration override are unchanged, and the report's Mode line
