@@ -354,6 +354,16 @@ def _pr_state(change_name: str) -> dict:
 def _fix_rounds_applied(change_name: str) -> int:
     branch = _resolve_branch(change_name)
     base = _base_branch()
+    # A base-drift merge takes commits from `origin/<base>`, and the local
+    # `<base>` goes stale (the fetch leaves it alone), so ranging over the local
+    # name would count a merged-in `fix: review round N` as this branch's own.
+    # For a run whose PR targets the default branch, the remote-tracking ref
+    # holds every commit such a merge brought in. A stacked child is not
+    # covered: the drift step does not run for it.
+    remote_base = _run(["git", "rev-parse", "--verify", "--quiet",
+                        f"refs/remotes/origin/{base}"])
+    if remote_base.returncode == 0:
+        base = f"refs/remotes/origin/{base}"
     res = _run(["git", "log", "--format=%s", f"{base}..{branch}"])
     if res.returncode != 0:
         # Same hazard as `_branch_state`: `0` reads as "no fix rounds applied

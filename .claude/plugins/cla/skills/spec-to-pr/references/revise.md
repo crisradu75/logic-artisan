@@ -4,6 +4,14 @@ The Revise phase's procedure. Why its rules are shaped as they are: `design-trad
 
 Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 applied a protected-area fix (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`), and the cap allows it. It is scoped to that fix diff (or a re-entry for still-open findings). `--pr-rounds 1` opts out, `0` skips Revise.
 
+## Before round 1: base drift
+
+Runs only when round 1 will run, so no merge commit lands unreviewed, and only when `<pr-base>` is the repo's default branch: for a stacked child (`<pr-base>` is a parent branch) nothing is fetched or merged and Handoff says base drift was not checked: stacked child. With `--pr-rounds 0` or a skipped review it does not run: nothing is fetched or merged, and Handoff says base drift was not checked because review was skipped.
+
+1. **Detect.** `git fetch origin <pr-base>`. The base's files are `git diff --name-only <merge-base> origin/<pr-base>` and the PR's are the same against `HEAD`, with `<merge-base>` from `git merge-base origin/<pr-base> HEAD`. A failed fetch or compare changes nothing: Handoff says base drift was not checked, and why, and review goes on. No overlap between the two lists: no merge, no commit, and Handoff says no overlapping base change was found.
+2. **Merge.** On overlap, run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch <branch>`, then `git merge --no-edit origin/<pr-base>`, then the touched tests (found as "`Full gate: final-commit-only`" in `SKILL.md` Test finds them), then `git push`, checked with `python3 "${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/ship_check.py" pushed --branch <branch>`. A failed `git push`, a failed `ship_check.py pushed`, or a non-zero `git_state.py` before the merge is an outcome: Revise `warn`, and Handoff says merged locally, not pushed (or not checked: git state, when the merge did not begin), and not as merged. Round 1's three-dot diff now starts at the new merge base, so the reviewers read the merged code. A red touched test makes Test `warn` and names the test; no fix loop runs, and review goes on.
+3. **Safety.** **Never rebase, force-push or rewrite a commit here, and never write a branch but `<branch>`;** the fetch moves only the local copy of the base. A conflict goes through `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`, naming each side before resolving; this step's no-rewrite rule wins over that file's "abort, re-cut, and replay", so a conflict that cannot be resolved is aborted with `git merge --abort` and Handoff says the overlapping change was found but not merged. For a resolved conflict, Handoff names each conflicted file as a resolved conflict. A merge that refuses to start (an untracked file in the way) or fails its commit is undone with `git merge --abort` when `MERGE_HEAD` exists, the branch keeps its earlier head, review runs on it, and Handoff says the overlapping change was found but not merged, and why. **Never report the base as unchanged or merged on a run where it could not be checked or merged.**
+
 ## Dispatch mechanism by round (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`)
 
 - **Round 1** dispatches its reviewers in parallel: one message, one `Agent` call per reviewer. A `Workflow` fan-out (per-call effort, schema-forced findings) only when the user has opted into workflows (said so, or workflow mode is on). A skill run is not that opt-in; never start a `Workflow` without it.
@@ -64,7 +72,7 @@ return {findings, launched: DISPATCHES.length, reported: reported.length};
 ```
 
 - **Completeness (mandatory).** On the `Agent` path, count the returns against the dispatches. On the `Workflow` path, if `reported < launched`, a reviewer dropped out. Read `<transcriptDir>/journal.jsonl` — the `transcriptDir` the `Workflow` result reports — which records each agent's actual return; the top-level summary alone is not trustworthy (it has reported a retried agent as failed). Re-dispatch ONLY the agents the journal confirms never returned, individually via `Agent`, before triage. One that still does not return → Revise **`warn`**, reason `"revise fan-out shortfall: {reported} of {launched} reviewers reported"`, captured for Handoff. A crashed reviewer never vanishes silently.
-- **Round 1 always happens.** Direct `Agent` dispatch is the default path and needs no note. If an opted-in `Workflow` call **fails** (errors, is killed, malformed script), dispatch the same table via direct `Agent` calls (explicit `model:`) → **`warn`**, reason `"workflow fan-out failed — fell back to Agent dispatches"`. A reviewer `Agent` call that returns nothing is re-dispatched once, then recorded as above.
+- **Round 1 always happens.** Direct `Agent` dispatch is the default path and needs no note. If an opted-in `Workflow` call **fails** (errors, is killed, malformed script), dispatch the same table via direct `Agent` calls (explicit `model:`) → **`warn`**, reason `"workflow fan-out failed — fell back to Agent dispatches"`. A reviewer `Agent` call that returns nothing is re-dispatched once, then recorded as above; a re-dispatch after an empty return is a fresh one (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md`, "Correcting a reply").
 - An **empty `findings` array** from any agent is accepted at face value (`found: 0` for that agent); do not re-dispatch to fish for findings.
 - Triage, verification, fixes and commits stay in the main loop below; the fan-out (`Agent` or `Workflow`) only produces the findings list.
 
@@ -80,7 +88,7 @@ Each stale doc is an Important finding (`docs: <path> still says <old>`) in this
 
 ## Round N (N ≥ 2)
 
-Dispatch via `Agent`, with the same reviewers and models as round 1 (the same `pr-review-toolkit:` names, `model:` passed on every dispatch, the diff-review rule verbatim in each prompt), at round 1's final level (never lower), per "Review sizing by risk" in `model-routing.md`. Do not re-judge risk from the smaller fix diff. Scope it to the diff the previous fix commit added. Save it to a diff file (as in round 1: the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), never in the tree), name that file's absolute path in each prompt instead of pasting the diff, and delete it when the round ends:
+Its reviewers are new dispatches, not continued round-1 agents, so each reads the fix independently. Dispatch via `Agent`, with the same reviewers and models as round 1 (the same `pr-review-toolkit:` names, `model:` passed on every dispatch, the diff-review rule verbatim in each prompt), at round 1's final level (never lower), per "Review sizing by risk" in `model-routing.md`. Do not re-judge risk from the smaller fix diff. Scope it to the diff the previous fix commit added. Save it to a diff file (as in round 1: the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), never in the tree), name that file's absolute path in each prompt instead of pasting the diff, and delete it when the round ends:
 
 ```
 DIFF_FILE=<scratchpad>/review-round-N.diff   # the session scratchpad, as in round 1
@@ -110,7 +118,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
    **On a round ≥2, check each return's enumeration first.** Re-run the `searched:` command it cites and compare the hits with its list:
    - **Cited and consistent** → take it; each confirmed sibling instance is a finding, triaged like any other.
    - **Cited but inconsistent** — the search finds hits the list omits → check the omissions yourself before triaging.
-   - **No citation** → the enumeration is **missing, not empty**. Re-dispatch that agent once with the resource named; uncited again → Handoff Issue `round N enumeration uncited`.
+   - **No citation** → the enumeration is **missing, not empty**. Correct that agent as "Correcting a reply" in `subagent-brief.md` says, naming the resource; uncited again → Handoff Issue `round N enumeration uncited`.
 
    The comparison changes no counts. A re-dispatch it triggers is an ordinary dispatch: its findings enter this round's counts and triage.
 

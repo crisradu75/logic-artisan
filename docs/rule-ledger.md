@@ -504,6 +504,8 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | #357 via #362 (51df1d46, 2026-10-13): the retro splits round-2 yield by the trigger | never drop the field to clear a refusal
 - keep | honesty | text since 9cd5f32f 2026-10-08 (slim spec-to-pr) | it is never reconstructed there
 - keep | honesty | #155 (a55f4d98, 2026-08-25); design-tradeoffs "Two exit counts": an open Critical exited `ok` | both must be zero to exit clean
+- keep | user's files | chain-gate-drift-and-delegates; the drift merge writes to the owner's branch and history | **Never rebase, force-push or rewrite a commit here, and never write a branch but `<branch>`;**
+- keep | honesty | chain-gate-drift-and-delegates; an unchecked base must not read as a clean one | **Never report the base as unchanged or merged on a run where it could not be checked or merged.**
 
 ## skills/spec-to-pr/references/test-notes.md
 - guidance | none | none found (predates extraction ee4034ad, 2026-07-23); reason in line: the run stands up no dev server | **End-to-end UI smokes are optional and manual, not a hard gate.**

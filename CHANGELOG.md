@@ -26,6 +26,17 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
   whole-change budget and the proposal and design word limits before reporting `done`, cut what
   is over (never an open question or a protected requirement), and name any overrun they could
   not cut; the batch goes on.
+- **One full gate per run, base drift merged before review, large builds split, corrections
+  continue the agent.** Under `Full gate: final-commit-only`, spec-to-pr runs its one full gate
+  after Archive on every run, including one a chain starts and a resume, and Handoff's Test row
+  names the commit it ran on. A chain's pre-merge gate reuses that run on the gated commit, or on
+  it followed only by Handoff's TODO and run-log commits, unless the gate may read TODO.md. Before
+  Revise round 1, spec-to-pr fetches the PR's base and merges it in (never a rebase) when it
+  changed a file the PR also changes, then runs the touched tests. `probe_state.py` counts review
+  rounds against `origin/<base>` when it resolves, so merged-in base commits are not counted. A
+  change over 40 subtasks in two or more groups is built by one delegate per group, in order. A
+  correction continues the same agent after a non-empty report with a named gap, and starts fresh
+  after an empty return.
 
 ## [2.5.0] — 2026-11-19
 

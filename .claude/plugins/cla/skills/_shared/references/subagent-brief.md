@@ -358,6 +358,18 @@ the fix is to the requirement, not to the task.
 
 ---
 
+## Correcting a reply
+
+A reply with a gap (an unticked task, an uncited enumeration, a missing field) is corrected in one of two ways, chosen by what came back.
+
+- **Continue the same agent** (`SendMessage` to its id, naming only the gap) when `SendMessage` is available and the agent returned a non-empty report with an identified gap. It keeps what it already read, so the correction costs less than a fresh brief.
+- **Dispatch afresh, scoped to what remains** when the agent returned nothing, or stopped because its context ran out: a continuation would repeat the failure. For a builder, that is the recovery in `spec-to-pr/references/implement-delegate.md`.
+- **A continuation that errors or comes back unfinished** gets one fresh dispatch and no third try.
+- An implementer's continuation still waits for the settle-the-tree check first.
+- Review rounds after a fix stay fresh dispatches: round 2 reads the fix independently, so a reviewer is not continued into it.
+
+---
+
 ## What the brief cannot do
 
 **A brief is a request; frontmatter is a constraint.** When the same kind of worker is

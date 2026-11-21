@@ -28,7 +28,7 @@ The allowance is void when the full gate may read `TODO.md`: a gate command from
 
 ### 3. The review-round count after a drift merge
 
-**Choice:** `_fix_rounds_applied` ranges over `origin/<base>..<branch>` when `refs/remotes/origin/<base>` resolves, else the local name. `<base>` stays `_base_branch()`, the default branch; stacked runs are out of scope.
+**Choice:** `_fix_rounds_applied` ranges over `origin/<base>..<branch>` when `refs/remotes/origin/<base>` resolves, else the local name. `<base>` stays `_base_branch()`, the default branch, named by its full ref `refs/remotes/origin/<base>` so a local branch called `origin/<base>` cannot win. The drift step runs only when the PR targets the default branch: for a stacked child `origin/<default>` would not hold the parent's later round commits, so it reports "not checked: stacked child" and merges nothing.
 **Why:** the remote-tracking ref holds every commit a drift merge took, because the merge was made from it after a fetch.
 - *Rejected: `git log --first-parent`.* Correct, but unlike the decision's wording and the probe's other ranges.
 - *Rejected: a fetch inside the probe.* A read-only probe would need the network.
