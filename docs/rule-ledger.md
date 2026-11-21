@@ -708,6 +708,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | #510 (b89b2369 2026-11-17), authoring brief tested on the mnemo benchmark | design.md and the specs must agree; where they would differ, the spec wins
 - keep | safe writes | #510 (b89b2369 2026-11-17), authoring brief tested on the mnemo benchmark | Tests and manual checks run on copies or scratch data, never on what the Stakes protect.
 - guidance | none | #510 (b89b2369 2026-11-17), authoring brief tested on the mnemo benchmark | so its exit code and `uncovered` lines do not fail the post-check.
+- keep | honesty | spec-size-and-review-tiers (2026-11-21), exit 2 means the budget was not checked | reported as "budget not checked", never as fitting.
 
 ## skills/multi-spec/references/phases.md
 - not-a-rule | - | - | (which this skill never pushes), so it wouldn't survive a dead disk anyway

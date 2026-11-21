@@ -8,6 +8,17 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ## [Unreleased]
 
+### Changed
+
+- **A long task list no longer buys the three-agent review.** `/cla:review-change` grades a change
+  Large for more than 20 subtasks only when its proposal carries `Budget: protected`; files,
+  capabilities, claims and the concentration override are unchanged, and the report's Mode line
+  says whether the marker was read. A `Budget:` value other than `protected` is graded as
+  unmarked and reported as an Important finding. `/cla:multi-spec` authors now check the
+  whole-change budget and the proposal and design word limits before reporting `done`, cut what
+  is over (never an open question or a protected requirement), and name any overrun they could
+  not cut; the batch goes on.
+
 ## [2.5.0] — 2026-11-19
 
 ### Changed
