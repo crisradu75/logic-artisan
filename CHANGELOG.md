@@ -58,7 +58,7 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 - **`spec-to-pr` and `review-change` wording.** The high-yield check count is 8 (the checklist's
   own checks; an overlay may add `0f` to `0i`), checks 0a to 0c are stack-neutral, the autonomy
   exceptions list the `git_state` halt and the precheck ask, the post-Archive full-gate rule moved
-  from Test to Handoff's gate rules, and Implement's post-checks moved to
+  from Test to the Test-row bullet in `references/handoff.md`, and Implement's post-checks moved to
   `references/implement-checks.md`. `review-change` says it only reports.
 - **`project-review` and `annotate` split long passages into references** (`aggregate-and-report.md`,
   renamed from `aggregate-and-log.md`; `coverage-view.md`; `html-documents.md`).

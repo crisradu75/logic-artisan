@@ -231,4 +231,4 @@ Not done, with the reason:
 - The optional `save-permissions` step-5 verification: it cannot catch an accepted-but-dead entry (in `TODO.md`).
 - The no-spec scenario TODOs.
 - The plugin validator's icon and `network.hosts` suggestions: they matter only for a plugin-directory submission.
-- The Windows-environment test failures (30 tests fail on clean main here for path, line-ending and git reasons): not touched.
+- The Windows-environment test failures: the full gate (`pytest plugin-tests -q -n 4 --dist loadfile`) run on 2026-11-21 on clean main of this Windows machine showed 30 failures in five files (`test_mutation_batches_preflight` 20, `test_git_commit_args` 3, `test_warn_lossy_merge_resolution` 3, `test_pre_push` 3, `test_pre_push_is_installed` 1); not investigated or touched.

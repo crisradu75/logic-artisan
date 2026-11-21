@@ -29,19 +29,19 @@ one place to look one up.
 - **OpenSpec**: the spec tool the full path builds on (its `opsx:*` skills and the `openspec`
   command), a required dependency (§10).
 - **Change**: one OpenSpec proposal under `openspec/changes/`: a `proposal.md`, a `tasks.md` and
-  spec deltas. `spec-to-pr` builds it and archives it when it opens the PR (§5).
+  spec deltas. `spec-to-pr` builds it and archives it onto the PR branch after the review fixes, before Handoff (§5).
 - **Protected area**: a part of the work where a mistake costs too much to leave to chance. By
   default: money, personal data, accessibility, the user's own files and anything shipped to other
   repos. Security, safe writes to a user's files and honesty claims are always protected. A review
   finding that touches one always blocks the merge. Defined once in
   `skills/_shared/references/blocking-findings.md`, "What is protected".
 - **Stakes**: the section of a repo's `cla.io/project-facts.md` that lists its users, what a bug
-  costs, its protected areas and its change budget. `/cla:cla-setup` writes it; this repo's own is
-  in `cla.io/project-facts.md`.
+  costs, its protected areas and its change budget (how much spec detail and review a change in this repo gets). `/cla:cla-setup` drafts it from the repo's manifests and writes it only on your yes; this repo's
+  own is in `cla.io/project-facts.md`.
 - **`cla.io/` and `project-facts`**: the folder in each repo that holds that repo's own state, and
-  its main file, `project-facts.md`: the commands, paths and ports the skills read (§1).
+  its main file, `project-facts.md`: the repo's commands, paths, ports and Stakes, which the skills read. You read and confirm what `/cla:cla-setup` proposes; you do not write it by hand (§1).
 - **Overlay**: an optional file, `cla.io/overlays/<skill>.md`, with a rule one skill needs in this
-  repo only. It adds or narrows rules; it cannot relax a stop, a protected-area rule or a report
+  repo only. It adds or narrows rules; it cannot relax a stop (a point where a skill pauses or halts on purpose, such as a failing test), a protected-area rule or a report
   field another skill reads (`skills/_shared/references/overlays.md`).
 - **Guard hook**: an always-on check that blocks, asks about or warns on a risky tool call (§8).
 - **Risk level**: the `Risk:` line in a PR body (low, medium or high, with a reason). It picks the
@@ -209,7 +209,7 @@ For open exploration first, use `opsx:explore`.
    change in a protected area lists its rejected alternatives in `design.md`; if the build departs
    from a requirement on purpose, the spec delta is edited in the same commit. After the fix rounds,
    Handoff refreshes only the PR body's `Risk:` and `Checks:` lines; the rule for the post-Archive
-   full gate lives in Handoff's gate rules.
+   full gate is the Test-row bullet in `references/handoff.md`, section 1.
 
    ```
    /cla:spec-to-pr add-hook-config-overlay
