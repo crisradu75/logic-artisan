@@ -37,11 +37,11 @@ def test_overlays_reference_pairs_each_field_with_its_real_reader():
     ):
         row = next((r for r in rows if r.startswith("- ") and field in r), None)
         assert row, f"no row names {field!r}"
-        m = re.search(r'\(read by `([\w-]+)`, `(references/[\w.-]+)`, "([^"]+)"\)', row)
+        m = re.search(r'\(read by `\$\{CLAUDE_PLUGIN_ROOT\}/skills/([\w-]+/references/[\w.-]+)`, "([^"]+)"\)', row)
         assert m, f"row for {field!r} cites no reader"
-        reader = " ".join((skills / m.group(1) / m.group(2)).read_text(encoding="utf-8").split())
-        assert field in reader, f"{m.group(1)}/{m.group(2)} does not contain {field!r}"
-        assert m.group(3) in reader, f"{m.group(1)}/{m.group(2)} has no step {m.group(3)!r}"
+        reader = " ".join((skills / m.group(1)).read_text(encoding="utf-8").split())
+        assert field in reader, f"{m.group(1)} does not contain {field!r}"
+        assert m.group(2) in reader, f"{m.group(1)} has no step {m.group(2)!r}"
 
 
 
