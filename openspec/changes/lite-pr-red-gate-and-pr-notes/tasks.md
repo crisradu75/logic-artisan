@@ -40,7 +40,7 @@ manual: change-workflow / The pull request says what was checked: the line is wr
 
 ## 5. Review round (owner's session, manual, no code)
 
-- [ ] 5.1 During this change's own Revise review round, read the reviewer prompts the session builds. Confirm each carries the diff-review rule's wording, names the diff file and passes `model:`. Record the result (command, session) on the open issue about checking reviewer prompts, then close it or file the gap.
+- [x] 5.1 During this change's own Revise review round, read the reviewer prompts the session builds. Confirm each carries the diff-review rule's wording, names the diff file and passes `model:`. Record the result (command, session) on the open issue about checking reviewer prompts, then close it or file the gap.
 
 ## 6. Docs and final gate
 

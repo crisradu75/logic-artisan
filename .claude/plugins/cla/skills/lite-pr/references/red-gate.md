@@ -8,12 +8,12 @@ When the log shows no failed assertion, no compiler error and no test error, and
 
 ## 2. The label
 
-Judge by reading alone: no extra test run, no stash, no second worktree, no checkout of another branch. A failing test, and every file its code reaches through other modules, whether or not the test names them, is read against the changed paths from step 1's `git status --porcelain`. When none of those files is in the change, label it `probably already failing on the base branch: <test>`. If the test, or code it reaches even through an untouched module, is a file the change added or edited, there is no label. Reading cannot see every path, so when unsure, leave it unlabelled. Make no edit to fix a labelled test.
+Judge by reading alone: no extra test run, no stash, no second worktree, no checkout of another branch. A failing test, and every file its code reaches through other modules, whether or not the test names them, is read against the changed paths from the Test phase's opening `git status --porcelain`. When none of those files is in the change, label it `probably already failing on the base branch: <test>`. If the test, or code it reaches even through an untouched module, is a file the change added or edited, there is no label. An untracked folder shows as one `??` path: count every file in it. Count config, fixtures, test data and dependency manifests the test run loads as reached code too. Judge against the change as it stands now, so a fix applied to another failure is included. Reading cannot see every path, so when unsure, leave it unlabelled. Make no edit to fix a labelled test.
 
 ## 3. When a failure is labelled
 
-- **User present:** ask whether to open the pull request with `Known failing before this change: <test>, not fixed here` in its body. Yes: continue to Ship with that line in the body. No: treat the test as an unlabelled failure, so it gets the one fix, then the diagnose offer, then step 4's HALT.
-- **Run by `/cla:multi-lite`:** halt without opening a pull request. The reason names the labelled test. An unattended run never ships a red gate.
+- **User present:** ask whether to open the pull request with `Known failing before this change: <test>, not fixed here` in its body. Yes: continue to Ship with that line in the body. No: treat the test as an unlabelled failure, so it gets the one fix if that fix is still unspent, then the diagnose offer, then step 4's HALT (no second fix).
+- **Run by `/cla:multi-lite`, or with nobody to answer:** halt without opening a pull request. The reason names the labelled test. An unattended run never ships a red gate.
 
 With a labelled and an unlabelled failure in one run, the one fix goes to the unlabelled one first, then the ask or the halt for the labelled one. A labelled test is not sent to `/cla:diagnose`; a red rerun of the unlabelled one returns to the one fix and its normal escalation (`diagnose-escalation.md`).
 

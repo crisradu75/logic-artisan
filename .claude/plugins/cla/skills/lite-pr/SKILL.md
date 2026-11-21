@@ -131,7 +131,7 @@ Then, smoke tier first, then full:
 
 This is the same discipline `/cla:spec-to-pr`'s Revise phase applies to review findings (a finding is discharged only when the defect is *shown* gone), applied to test failures — where lite-pr has no downstream safety net to catch what a symptom fix hides.
 
-This is the one deliberate stop on a failure; the only other pauses are the Plan wait for a likely duplicate and the ask or halt for a labelled known-failing test (`red-gate.md`). It deviates from `/cla:spec-to-pr`'s "warn and continue regardless" policy on purpose: that policy is safe there because spec-to-pr's Revise phase and round caps exist to catch a problem later. lite-pr has neither downstream safety net, so an unresolved test failure has to stop the run here.
+These are the deliberate halts on a failure (this one, and the labelled-test halt under `/cla:multi-lite`); the only other pauses are the Plan wait for a likely duplicate and the ask or halt for a labelled known-failing test (`red-gate.md`). It deviates from `/cla:spec-to-pr`'s "warn and continue regardless" policy on purpose: that policy is safe there because spec-to-pr's Revise phase and round caps exist to catch a problem later. lite-pr has neither downstream safety net, so an unresolved test failure has to stop the run here.
 
 ### Ship
 
