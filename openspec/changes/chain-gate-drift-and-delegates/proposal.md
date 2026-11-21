@@ -9,7 +9,7 @@ Four gaps in shipped `/cla:spec-to-pr` and `/cla:multi-pr` behaviour. Under `Ful
 ## What Changes
 
 - **Full gate (Q1).** Under `Full gate: final-commit-only`, spec-to-pr runs its one full gate after Archive whenever source changed, including on a resume, and its report names the commit it ran on. The caller skip goes. The chain's merge step reuses that run when the head is the gated commit, or the gated commit plus only Handoff's `TODO.md` and run-log commits, unless the gate may read `TODO.md` (owner decision).
-- **Base drift (Q2).** When Revise round 1 will run, spec-to-pr fetches the PR's base after Ship. Overlapping base changes are merged in (never a rebase) and the touched tests run, so Revise reviews the merged code. A resumed run's review-round count leaves out merged-in base commits.
+- **Base drift (Q2).** When Revise round 1 will run and the PR targets the default branch (not a stacked parent), spec-to-pr fetches the PR's base after Ship. Overlapping base changes are merged in (never a rebase) and the touched tests run, so Revise reviews the merged code. A resumed run's review-round count leaves out merged-in base commits.
 - **Implement split (Q3).** Above 40 subtasks, one delegate per `tasks.md` group, in order, each briefed with a summary of the earlier groups.
 - **Corrections (Q6).** A correction continues the same agent when the host can message it and the agent returned a report with a named gap. An empty return or exhausted context gets a fresh scoped dispatch. Review rounds after a fix stay fresh.
 

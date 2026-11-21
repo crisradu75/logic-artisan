@@ -23,19 +23,19 @@ requirement markers: 1.7 carries `change-workflow / One full gate on every run, 
 
 Edit order for `revise.md`: write 2.1–2.3 first, then group 5's pointer sentences.
 
-- [x] 2.1 `revise.md`, new first section "Before round 1: base drift" (design decision 2), detection: it runs only when round 1 runs; fetch, the two file lists and their intersection. A failed fetch or compare reports "base drift not checked" and merges nothing.
-- [x] 2.2 Same section, the merge: on overlap, merge `origin/<pr-base>`, run the touched tests, push, check it with `ship_check.py pushed`. A red test is a Test ⚠ naming it, no fix loop. A refused or failed merge is aborted and reported not merged.
+- [x] 2.1 `revise.md`, new first section "Before round 1: base drift" (design decision 2), detection: it runs only when round 1 runs; fetch, the two file lists and their intersection. A failed fetch or compare reports "base drift not checked" and merges nothing; a stacked child (`<pr-base>` not the default branch) reports "not checked: stacked child".
+- [x] 2.2 Same section, the merge: on overlap, merge `origin/<pr-base>`, run the touched tests, push, check it with `ship_check.py pushed`. A red test is a Test ⚠ naming it, no fix loop. A refused or failed merge, or an unresolvable conflict, is aborted and reported not merged; a failed push or `ship_check.py pushed`, or a non-zero `git_state.py`, is a `warn` reported as merged locally, not pushed (or not checked: git state).
 - [x] 2.3 Same section, safety: only a merge, never a rebase or force-push; writes only to `<branch>`. A conflict goes through `conflict-resolution.md` with the sides named first, and the report names each conflicted file.
 - [x] 2.4 `SKILL.md` Revise stub: one sentence pointing at the new section; a skipped Revise makes Handoff say base drift was not checked. `workflow-diagram.md` REVISE box: one line for the drift merge. The phase order line is unchanged.
 
-manual: change-workflow / Base changes that overlap the pull request are merged in before review: a model follows skill prose against a live remote. Checked in a scratch repo whose base gains an overlapping commit after Ship, and once with a non-overlapping one.
-manual: change-workflow / No base-drift merge lands without review: checked by one scratch run with `--pr-rounds 0` after an overlapping base commit, confirming no fetch-driven merge and the report line.
-manual: change-workflow / The drift merge keeps history and stays on the run's own branch: checked in the same scratch repo with a conflicting base commit, comparing every local and remote branch head before and after, and reading the report.
-manual: change-workflow / A base that could not be checked or merged is never reported as clean: checked by one scratch run whose `origin` is unreachable when Revise starts, and one with an untracked file the merge would overwrite.
+manual: change-workflow / Base changes that overlap the pull request are merged in before review: a model follows skill prose against a live remote. to be checked by the owner before release in a scratch repo whose base gains an overlapping commit after Ship, once with a non-overlapping one, and once on a stacked child (reports not checked: stacked child).
+manual: change-workflow / No base-drift merge lands without review: to be checked by the owner before release with one scratch run with `--pr-rounds 0` after an overlapping base commit, confirming no fetch-driven merge and the report line.
+manual: change-workflow / The drift merge keeps history and stays on the run's own branch: to be checked by the owner before release in the same scratch repo with a conflicting base commit, comparing every local and remote branch head before and after, and reading the report.
+manual: change-workflow / A base that could not be checked or merged is never reported as clean: to be checked by the owner before release with one scratch run whose `origin` is unreachable when Revise starts, one with an untracked file the merge would overwrite, and one whose push fails after the merge (reports merged locally, not pushed).
 
 ## 3. Review-round count (Q2, decisions' resume note)
 
-- [x] 3.1 In `probe_state.py`, `_fix_rounds_applied` ranges over `origin/<base>..<branch>` when that ref resolves, else the local name (design decision 3). Edit no other range or field; stacked runs are out of scope.
+- [x] 3.1 In `probe_state.py`, `_fix_rounds_applied` ranges over `refs/remotes/origin/<base>..<branch>` when that ref resolves, else the local name (design decision 3). Edit no other range or field; stacked runs are out of scope.
 - [x] 3.2 In `test_probe_state.py`, a regression test: a stale local `main` behind `origin/main`, whose `fix: review round 1` commit is merged into the branch, counts 0; a branch-own round still counts 1. It fails on the pre-edit code. Run the spec-to-pr area.
 - [x] 3.3 Real-file check: run `probe_state.py` read-only on a change in this repo before and after 3.1, and confirm its JSON is identical. measured: identical stdout JSON on 3 changes (see below).
 
@@ -49,7 +49,7 @@ requirement marker in 3.2: `change-workflow / Merged-in base commits are not cou
 - [x] 4.2 Same subsection, brief contents: each brief enumerates its own group, marks other groups `held by orchestrator`, and carries a summary of at most about 150 words of earlier groups, built from earlier returns, ticked boxes and `git diff --stat`.
 - [x] 4.3 `SKILL.md` Implement step 3: one clause naming the over-40 split, pointing at 4.1's subsection. A resume restarts at the first group with an unticked task.
 
-manual: change-workflow / A large change's build is never left half-done by one helper running out of context: delegate sequencing is model behaviour. Checked by one run on a scratch change with 45 subtasks in three groups, interrupted after group 2 and resumed, and one with a flat 45-subtask list.
+manual: change-workflow / A large change's build is never left half-done by one helper running out of context: delegate sequencing is model behaviour. to be checked by the owner before release with one run on a scratch change with 45 subtasks in three groups, interrupted after group 2 and resumed, and one with a flat 45-subtask list.
 
 ## 5. Corrections continue the agent (Q6)
 

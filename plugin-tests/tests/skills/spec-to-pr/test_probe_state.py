@@ -741,6 +741,20 @@ def test_fix_rounds_still_counts_the_branchs_own_round_beside_a_merged_in_one(
     assert probe_state.probe("demo")["fix_rounds_applied"] == 1
 
 
+# requirement: change-workflow / Merged-in base commits are not counted as review rounds
+def test_fix_rounds_uses_the_full_remote_ref_not_a_local_branch_named_like_it(
+    tmp_repo: Path, monkeypatch,
+):
+    _drift_merged_repo(tmp_repo)
+    _git_in(tmp_repo, "branch", "origin/master", "master")
+    monkeypatch.setattr(probe_state, "_run", _stub_run({
+        ("openspec", "status", "--change", "demo", "--json"):
+            subprocess.CompletedProcess([], 1, "", ""),
+        REPO_VIEW_KEY: REPO_VIEW_FAIL,
+    }))
+    assert probe_state.probe("demo")["fix_rounds_applied"] == 0
+
+
 def test_fix_rounds_reports_a_failed_range(tmp_repo: Path, monkeypatch, capsys):
     """Same hazard: `0` reads as "no fix rounds applied yet"."""
     def fake_run(cmd, cwd=None, check=False):

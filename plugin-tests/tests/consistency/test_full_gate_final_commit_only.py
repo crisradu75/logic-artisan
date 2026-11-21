@@ -89,7 +89,10 @@ def test_chain_merge_reuses_the_gate_only_on_the_gated_commit_or_the_two_handoff
         "names only `TODO.md` and the run-log path Handoff stages",
         "void when the full gate may read `TODO.md`",
         "Unknown means run the gate",
-        "A reused run that was red means do not merge, and do not run the gate again",
+        "A recorded red result means do not merge, and do not run the gate again",
+        "recorded as `gated_sha` with its result in the item's run-notes row",
+        "A missing record runs the gate",
+        "A non-zero exit from the `git log` or `git diff` above runs the gate",
         "Any other case runs the gate here",
     ):
         assert wanted in step, f"chain-merge step 3 lost {wanted!r}"

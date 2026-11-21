@@ -150,13 +150,14 @@ of its own before these.
    `cla.io/project-facts.md`. A green run this session on exactly `head_sha`, with the tree
    unchanged since, counts. Under `Full gate: final-commit-only` in `cla.io/project-facts.md`, the
    item's own Test phase ran smoke and touched tests only and then one full gate after Archive, and
-   its Handoff Test row names that run's commit `<gated>` (`full gate: green|red on <gated>`), read
-   when the `/cla:spec-to-pr` call returned, before the head was recorded. That run is reused, not
+   its Handoff Test row names that run's commit `<gated>` (`full gate: green|red on <gated>`), which
+   change-loop step 3 recorded as `gated_sha` with its result in the item's run-notes row; read
+   them from the notes, not from context. A missing record runs the gate. That run is reused, not
    repeated, when either holds:
    - `<gated>` equals `head_sha`; or
    - `git log --format=%s <gated>..<head_sha>` lists only `docs: TODO.md` and `chore: spec-to-pr run log`, each at most once, and `git diff --name-only <gated>..<head_sha>` names only `TODO.md` and the run-log path Handoff stages (`cla.io/retro/spec-to-pr-runs.jsonl`).
 
-   The allowance for those two commits is void when the full gate may read `TODO.md` or the run log: a gate command in `cla.io/project-facts.md` that names `TODO.md`, a Markdown linter or a `*.md` glob, or a wrapper whose contents this step does not read (a `make` target, a script). Unknown means run the gate. A reused run that was red means do not merge, and do not run the gate again. Any other case runs the gate here.
+   The allowance for those two commits is void when the full gate may read `TODO.md` or the run log: a gate command in `cla.io/project-facts.md` that names `TODO.md`, a Markdown linter or a `*.md` glob, or a wrapper whose contents this step does not read (a `make` target, a script). Unknown means run the gate. A recorded red result means do not merge, and do not run the gate again. A non-zero exit from the `git log` or `git diff` above runs the gate. Any other case runs the gate here.
    - Green → continue.
    - Red → do not merge; the reason is `full gate red: <failing check>`. Do not re-run it hoping
      for green. A flaky gate is a finding for the user, not a retry.

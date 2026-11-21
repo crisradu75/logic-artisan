@@ -21,7 +21,7 @@ When the repo's facts file has the line `Full gate: final-commit-only` and the r
 
 ### Requirement: Base changes that overlap the pull request are merged in before review
 
-After opening its pull request and before the first review round, `/cla:spec-to-pr` SHALL fetch the branch the pull request targets and, only when a file changed there since the branch point is also changed by the pull request, SHALL merge that branch into the feature branch, run the tests for the touched area, and push, so the first review round reads the merged code.
+After opening its pull request and before the first review round, when the pull request targets the repo's default branch, `/cla:spec-to-pr` SHALL fetch that branch and, only when a file changed there since the branch point is also changed by the pull request, SHALL merge that branch into the feature branch, run the tests for the touched area, and push, so the first review round reads the merged code.
 
 #### Scenario: The base changed a file the pull request also changes
 
@@ -52,6 +52,11 @@ After opening its pull request and before the first review round, `/cla:spec-to-
 - **WHEN** the run is told to skip review
 - **THEN** the base is neither fetched nor merged, and the report says base drift was not checked because review was skipped
 
+#### Scenario: A stacked child
+
+- **WHEN** the pull request targets a parent branch, not the default branch
+- **THEN** nothing is fetched or merged, and the report says base drift was not checked: stacked child
+
 ### Requirement: The drift merge keeps history and stays on the run's own branch
 
 The base-drift step SHALL only ever merge, never rebase, force-push or rewrite a commit; SHALL change no local or remote branch but the run's own feature branch; and on a conflict SHALL follow the plugin's conflict procedure, naming each side before resolving, with the report naming each conflicted file.
@@ -74,6 +79,11 @@ When the base-drift step cannot fetch or compare the base, or its merge refuses 
 
 - **WHEN** the fetch of the base fails
 - **THEN** no merge is made, the run goes on to review, and the report says base drift was not checked and why
+
+#### Scenario: The merge is made but not pushed
+
+- **WHEN** the merge is made but the push fails or cannot be verified
+- **THEN** the report says the base was merged locally, not pushed, and never that it was merged
 
 #### Scenario: The merge cannot complete
 
