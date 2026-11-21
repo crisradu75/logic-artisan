@@ -39,13 +39,24 @@ def test_every_site_names_the_fact(site: str) -> None:
 
 
 # requirement: change-workflow / One full gate on every run, naming its commit
-def test_the_test_phase_keeps_its_ends_and_names_the_commit() -> None:
+def test_the_test_phase_keeps_its_ends_and_hands_the_full_gate_to_handoff() -> None:
     text = _read(_SITES["spec-to-pr Test"])
     para = text.split(f"**`{FACT}`.**", 1)[1].split("\n\n", 1)[0]
-    for wanted in ("smoke and the touched tests only", "after Archive's push post-check", "orchestration-economy.md",
-                   "on every run whichever skill or prompt invoked it", "names the commit it ran on",
-                   "`ok` to `warn`", "The line absent"):
+    for wanted in ("smoke and the touched tests only", "orchestration-economy.md", "runs in Handoff", "The line absent"):
         assert wanted in para, f"the Full gate paragraph lost {wanted!r}"
+    # The phase order is Test, Ship, Revise, Archive, Handoff: a Test paragraph that runs the gate
+    # "after Archive" contradicts it, so the post-Archive run is stated in Handoff's gate rules only.
+    assert "after Archive" not in para, "the Test phase again places a post-Archive run inside Test"
+
+
+# requirement: change-workflow / One full gate on every run, naming its commit
+def test_handoffs_gate_rules_run_the_one_full_gate_on_the_final_commit() -> None:
+    text = _read(_SITES["spec-to-pr Test"])
+    gate_rules = text.split("\n### Handoff\n", 1)[1].split("\n## ", 1)[0]
+    for wanted in (f"Under `{FACT}`, run the one full gate first", "after Archive's push post-check",
+                   "on every run whichever skill or prompt invoked it", "names the commit it ran on",
+                   "`ok` to `warn`", "no fix loop"):
+        assert wanted in gate_rules, f"Handoff's gate rules lost {wanted!r}"
 
 
 # requirement: change-workflow / One full gate on every run, naming its commit

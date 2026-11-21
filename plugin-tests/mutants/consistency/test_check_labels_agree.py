@@ -79,8 +79,8 @@ MUTANTS = [
     (
         "an entry point advertises the old check count",
         RC_SKILL,
-        "the 12 high-yield verification checks (`0a`–`0l`)",
-        "the 10 high-yield verification checks",
+        "the 8 high-yield checks (`0a`–`0e`, `0j`–`0l`; a repo overlay may add `0f`–`0i`)",
+        "the 12 high-yield checks (`0a`–`0l`)",
         TARGETS,
     ),
     (

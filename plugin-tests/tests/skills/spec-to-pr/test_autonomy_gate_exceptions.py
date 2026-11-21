@@ -27,6 +27,14 @@ def test_the_pausing_flags_are_listed_as_exceptions():
         assert flag in section, f"{flag} is not among the autonomy gate's exceptions"
 
 
+def test_the_halts_the_skill_describes_elsewhere_are_listed_as_exceptions():
+    # `git_state.py` non-zero exits and the working-tree precheck both ask the user, so the
+    # default must not read as forbidding them.
+    section = _gate_section()
+    assert "git_state.py" in section, "the non-zero git_state halt is not among the exceptions"
+    assert "Working-tree precheck" in section, "the precheck three-path ask is not among the exceptions"
+
+
 def test_the_no_pause_default_defers_to_the_exceptions():
     default = _gate_section().strip().split("\n\n")[0]
     # Pinned word for word: "no exceptions authorize a pause" also holds the word "exceptions".

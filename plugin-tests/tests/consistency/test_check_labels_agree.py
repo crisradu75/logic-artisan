@@ -75,7 +75,8 @@ _DEFINITION = re.compile(r"^(?:\*\*)?(0[a-z])(?:\.|\s*[–—-])\s", re.MULTILIN
 # a correct line as an incomplete one.
 _RANGE = re.compile(r"`?\b(0[a-z])\b`?\s*[–—-]\s*`?\b(0[a-z])\b`?")
 
-# "the 12 high-yield verification checks"
+# "the 8 high-yield checks": the count is the checks the checklist itself defines, so the labels
+# it delegates to a repo overlay (`0f`-`0i`) are not in it.
 _COUNT = re.compile(r"\b(\d+)\s+high-yield(?:\s+verification)?\s+checks\b")
 
 _ENUMERATION_MARKER = "<!-- enumerates-checks -->"
@@ -420,8 +421,13 @@ def test_each_load_bearing_enumeration_still_carries_its_marker(
 
 
 def test_advertised_check_count_matches_the_definitions() -> None:
-    """"the N high-yield verification checks" must equal the number defined."""
-    defined = _defined_labels()
+    """"the N high-yield checks" must equal the number the checklist defines itself.
+
+    The expected number is read from the checklist, never typed here: the labels it only
+    delegates to a repo overlay are not checks it defines, and counting them is how the
+    entry points came to say 12 for 8.
+    """
+    defined = _defined_labels() - _delegated_labels()
     wrong = []
     for path in _enumerating_files():
         for claimed in _COUNT.findall(path.read_text(encoding="utf-8")):
