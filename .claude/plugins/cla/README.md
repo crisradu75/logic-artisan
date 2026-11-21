@@ -245,14 +245,14 @@ copilot plugin list
 - **Instructions are not shipped by the plugin.** The plugin reference lists no instructions
   component, so the plugin cannot deliver the writing convention that `output-styles/CLA.md` gives
   Claude Code. Copilot CLI instead reads instructions from files you own: in your repo
-  `.github/copilot-instructions.md` (the usual choice: copy `output-styles/COPILOT.md` there) or
+  `.github/copilot-instructions.md` (the usual choice: copy `com.github.copilot/COPILOT.md` there) or
   `AGENTS.md`, or for all your repos
   `$HOME/.copilot/copilot-instructions.md` (the docs say `COPILOT_HOME` replaces `$HOME/.copilot`).
   The docs define no precedence between these files and say to avoid conflicting instructions, so
   put the text below in one of them, not several. Copilot CLI also reads `CLAUDE.md`, `GEMINI.md`,
   `.github/instructions/**/*.instructions.md` and any directory in `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`,
   so check those do not conflict with it. After updating the plugin, refresh any copied CLA guidance
-  from the updated `output-styles/COPILOT.md`, preserving other repository-specific instructions.
+  from the updated `com.github.copilot/COPILOT.md`, preserving other repository-specific instructions.
   Claude Code keeps the output style unchanged.
 
 ```markdown
@@ -357,12 +357,12 @@ to install.
   plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, smoke-tested with CLI 1.0.105
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers)
   com.github.copilot/agents/   the same two agents for GitHub Copilot CLI, generated from agents/
-  com.github.copilot/hooks/    the Copilot CLI wiring for the guard hooks (hooks.json)
+  com.github.copilot/          Copilot CLI: hooks/hooks.json wiring, agents/, and COPILOT.md (copied to repository instructions)
   hooks/                       guard hooks + hooks.json wiring; copilot-pretooluse.py and
                                copilot-posttooluse.py (Copilot CLI adapters over the same dispatchers);
                                probe-python.sh and probe-python.ps1 (interpreter probes); git/pre-push
   lib/                         log_run.py — writes the one run ledger, spec-to-pr-runs.jsonl
-  output-styles/               CLA.md applies to Claude Code; COPILOT.md is copied to repository instructions
+  output-styles/               CLA.md, the Claude Code output style
   skills/<name>/               (references/ scripts/ present as each skill needs)
     SKILL.md                   the skill (portable procedure)
     references/                supporting refs (portable — overlays live in your cla.io/)
