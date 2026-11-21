@@ -6,7 +6,7 @@ on, and learns from each run.**
 CLA holds no product code. It is the *process* layer: skills (packaged steps you run with a slash
 command) that run the workflow, guard hooks (checks that run before a tool call and block, ask
 about or warn on a risky command), and helper agents (small agents that do the mechanical
-checking). You install it into a
+checking, such as that docs and code references still point at real files). You install it into a
 repo; the repo keeps its own facts.
 
 ```
@@ -25,12 +25,12 @@ completion.
 ## Words you'll meet
 
 - **`lite-pr` and `spec-to-pr`**: the two ways to take a change to a PR. `lite-pr` is the default;
-  `spec-to-pr` is the full path, built on OpenSpec (a spec tool CLA depends on), for a change in a
+  `spec-to-pr` is the full path, built on OpenSpec (a spec-writing tool CLA works with: each non-trivial change is written up as a small spec before it is built), for a change in a
   protected area.
 - **Protected area**: a part of the work where a mistake costs too much to leave to chance, such as
   money, personal data, the user's own files or anything shipped to other repos. A review finding
   that touches one always blocks the merge.
-- **Stakes**: the section of your repo's `cla.io/project-facts.md` that says who uses it, what a bug
+- **Stakes**: the section of your repo's `cla.io/project-facts.md` (`cla.io/` is the folder in your repo where CLA keeps its per-repo files: facts, decisions, notes) that says who uses it, what a bug
   costs, which areas are protected and the change budget (how much spec detail and review a change
   gets).
 - **`project-facts`**: your repo's own file of commands, paths, ports and Stakes. It lives in
@@ -66,20 +66,22 @@ idea ─► feedback / shape-decision ─┬─► lite-pr ───────
         after a session: codify-learnings · periodically: spec-to-pr-retro
 ```
 
-Every skill runs as `/cla:<name>`. The [developer guide](DEVELOPER-GUIDE.md) walks the steps one
+In short: `multi-spec` writes specs for several changes, `review-change` checks one before it is built, `multi-lite` and `multi-pr` run batches, `codify-learnings` turns a session's failures into fixes.
+
+Every skill runs as `/cla:<name>`. The [developer guide](DEVELOPER-GUIDE.md) walks them one
 step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--which-skill) maps
 "I want to…" to a skill.
 
 ## Engineering highlights
 
-**19 skills · 18 guard hooks · 6,000 tests · 75 mutation batches · 25 live OpenSpec specs ·
+**19 skills · 18 guard hooks · 6,000 tests · 75 mutation batches (tests that check the tests) · 25 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
 in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/history.md):
 
 - **A git hook, not a parser, guards `main`.** A Claude Code hook would have to parse each push
-  command, and every spelling it missed was a hole. The `pre-push` hook reads the refspec git has
+  command, and every spelling it missed was a hole. The `pre-push` hook reads the target branch git has
   already resolved, so no way of naming the target branch gets past it; it also refuses deleting
   or moving a tag the remote already has, so a published release tag stays put. `--no-verify`
   skips it, and the documented overrides `ALLOW_PUSH_TO_MAIN=1` and `ALLOW_TAG_REWRITE=1` each lift
@@ -104,7 +106,7 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   for guard hooks ([the evidence](docs/evidence.md#mutation-testing-is-opt-in-the-pr-behind-the-rule)).
 - **Features are deleted when the data says so.** A guard that kept work inside its git worktree (a separate checkout of the repo) recorded 0 blocks
   across 127 session transcripts and was removed, with the launcher that existed to dodge it.
-- **No CI, by decision.** The local gate is the gate, and its consequences are written down: a
+- **No CI, by decision.** The local gate (the test run that must pass before a PR opens) is the gate, and its consequences are written down: a
   green run speaks only for the platform it ran on
   ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
 
