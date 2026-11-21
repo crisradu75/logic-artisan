@@ -303,7 +303,23 @@ def test_a_multi_line_anchor_matches_the_files_own_line_ending(tmp_path, ending)
     assert source.read_bytes() == raw
 
 
-def test_the_replacement_never_leaves_a_bare_newline_in_a_crlf_file(tmp_path):
+def test_a_multi_line_anchor_that_misses_in_a_crlf_only_file_is_not_blamed_on_crlf(tmp_path):
+    """A CRLF-only file reads a bare newline in its own ending, so a miss there
+    has another cause and the line-ending hint would send the author the wrong way."""
+    source, tests = _make_scope(tmp_path)
+    source.write_bytes(b"\r\n".join([b"def verdict():", b"    return 'ON'", b""]))
+    batch = _batch(
+        tmp_path,
+        f'("crlf-miss", Path(r"{source}"), "def nope():\\n    return 1", "x", '
+        f'[Path(r"{tests}")]),',
+    )
+    result = _run(batch)
+    out = result.stdout + result.stderr
+    assert "anchor not found" in out
+    assert "CRLF" not in out, "blamed line endings for a CRLF-only file"
+
+
+def test_the_replacement_never_leaves_a_bare_newline_in_a_crlf_file():
     """A planted multi-line replacement is translated too: a bare LF in the middle
     of a CRLF file would make the file mixed, and the next anchor would miss."""
     text = "def verdict():\n    return 'ON'\n"

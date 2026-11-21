@@ -230,22 +230,17 @@ def preflight(mutants: list[tuple]) -> None:
             continue
         hits = text.count(_in_file_endings(text, old))
         if hits == 0:
-            # Name the CRLF cause when it is the likely one. The module docstring
-            # already explains it ("KEEP \n OUT OF AN ANCHOR"), but a docstring
-            # is not what anyone reads at the moment the preflight refuses — this
-            # message is. Measured: the trap cost two preflight rounds across two
-            # batches in one session, with the explanation sitting 130 lines up.
+            # Name the line-ending cause when it is the likely one. A bare `\n`
+            # in the anchor is read in the file's own ending (`_in_file_endings`),
+            # so a LF-only or CRLF-only file never misses for that reason. Only a
+            # file that MIXES the two has no single ending to read it in, and
+            # there a multi-line anchor cannot match. A message is what anyone
+            # reads at the moment the preflight refuses, so say so here.
             hint = ""
-            # `"\r\n" not in old` matters: an author who spelled the separator
-            # correctly still has `\n` in the anchor, and telling them it
-            # "contains a bare \n, which cannot match" sends the one person who
-            # did the right thing off to fix the one thing that is right.
-            if "\n" in old and "\r\n" not in old and "\r\n" in text:
+            if "\n" in old and "\r\n" in text and re.search(r"(?<!\r)\n", text):
                 hint = (
-                    f" — NOTE: {path.name} uses CRLF line endings and this anchor "
-                    "contains a bare \\n, which cannot match. Anchor within a "
-                    'single line, or build the separator off the file: '
-                    '`_NL = "\\r\\n" if b"\\r\\n" in path.read_bytes() else "\\n"`'
+                    f" — NOTE: {path.name} mixes LF and CRLF line endings; an "
+                    "anchor cannot span lines in it. Anchor within a single line."
                 )
             problems.append(f"{name}: anchor not found in {path.name} — this "
                             f"mutant checks nothing{hint}")

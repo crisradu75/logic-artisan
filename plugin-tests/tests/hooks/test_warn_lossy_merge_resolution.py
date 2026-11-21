@@ -91,8 +91,10 @@ def repo(cached_git_repo, tmp_path) -> Path:
     # A copied work tree keeps the template's index stat data (inode, ctime), which
     # a copy cannot preserve on Windows, so `git merge --abort` there refuses with
     # "Entry ... not uptodate". Refreshing re-reads the stat data and changes no
-    # content. It exits 1 for the unmerged path (still conflicted), hence no check.
-    _git(dest, "update-index", "-q", "--refresh", check=False)
+    # content. It exits 1 for the unmerged path (still conflicted), so 0 and 1 are
+    # both fine; anything else (128: not a repo, a lock) is a real failure.
+    refreshed = _git(dest, "update-index", "-q", "--refresh", check=False)
+    assert refreshed.returncode in (0, 1), refreshed.stderr
     return dest
 
 
