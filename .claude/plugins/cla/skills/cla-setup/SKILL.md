@@ -25,8 +25,15 @@ again whenever a skill reports missing or stale facts. A re-run on a set-up repo
 without a yes, bar the two unasked writes the contract below names.
 
 **The `pre-push` hook is a step you do by hand.** A plugin cannot install a git hook. Copy the
-plugin's `hooks/git/pre-push` to the repo's hooks folder and make it executable:
-`cp "${CLAUDE_PLUGIN_ROOT}/hooks/git/pre-push" "$(git rev-parse --git-path hooks)/pre-push" && chmod +x "$(git rev-parse --git-path hooks)/pre-push"`.
+plugin's `hooks/git/pre-push` to the repo's hooks folder and make it executable, skipping the copy
+when a hook is already there (the folder may be a tracked one such as `.husky`):
+
+```bash
+hooks="$(git rev-parse --git-path hooks)"
+if [ -e "$hooks/pre-push" ]; then echo "exists (skipped): $hooks/pre-push"; else cp "${CLAUDE_PLUGIN_ROOT}/hooks/git/pre-push" "$hooks/pre-push" && chmod +x "$hooks/pre-push" && echo "created: $hooks/pre-push"; fi
+```
+
+When one exists, tell the user to merge the plugin's guard into it by hand.
 
 The plugin itself (`SKILL.md` bodies, agents, hooks) arrives with the install and is never touched
 here: it is a read-only cache.

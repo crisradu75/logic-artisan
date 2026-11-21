@@ -69,6 +69,7 @@ def test_one_prompt_and_nothing_written_before_the_answer():
 # requirement: session-learnings / One prompt before anything is written
 def test_the_exact_before_and_after_text_is_shown_above_the_prompt():
     text = _flat()
+    assert "Apply exactly the shown text; if it changes, show it again." in text
     shown = text.index("show each proposed fix's exact before and after text")
     assert shown < text.index("Apply which? (y = all / n = none / indices, e.g. 1,3)")
     assert "Nothing is written before this answer" in text

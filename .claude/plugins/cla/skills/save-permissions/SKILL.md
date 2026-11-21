@@ -16,18 +16,18 @@ Collect every tool permission the user granted during this conversation session 
 ## Steps
 
 1. **Scan the conversation** for every tool call the user approved at a permission prompt. A call the settings already allowed ran without a prompt and was not granted this session, so it is not listed. Extract the tool name and any scope/pattern from each. Include:
-   - `Bash(command)` — save the exact command. A tighter wildcard such as `Bash(git log *)` is saved only when the user confirms it (step 4 gates that question)
-   - `Read(<path>)` — file-tool paths use gitignore syntax, so write `Read(//abs/path/**)` for an absolute path from the filesystem root, `Read(~/dir/**)` for the home folder, `Read(/dir/**)` for the project root or `Read(./dir/**)` for a relative one; save the exact file path, or, when paths share a common prefix, that prefix with `/**` once the user confirms it (a `/**` rule is a wildcard, so step 4 asks first). A `Glob(...)` or `Grep(...)` path rule is accepted but does not match, and a `Read(...)` rule covers them, so save none
-   - `Write` / `Edit` — save as-is
+   - `Bash(command)` — save the exact command; one containing `*` is a wildcard and needs the user's confirmation (step 4). A compound command (`a && b`, a pipe, `;`) is saved as one entry per subcommand, or the user is told a rule for the whole line will not match as written. A tighter wildcard such as `Bash(git log *)` is saved only when the user confirms it (step 4 gates that question)
+   - `Read(<path>)` — file-tool paths use gitignore syntax, so write `Read(//abs/path/**)` for an absolute path from the filesystem root, `Read(~/dir/**)` for the home folder, `Read(/dir/**)` for the project root or `Read(./dir/**)` for a relative one; save the exact file path, or, when paths share a common prefix, that prefix with `/**` once the user confirms it (a `/**` rule is a wildcard, so step 4 asks first). On Windows a drive path is normalised before matching (`C:\Users\a` becomes `/c/Users/a`), so write `Read(//c/Users/a/**)`. A literal `[`, `]` or `*` in a path needs gitignore escaping and the permissions page does not show how to write it by hand, so ask the user for that rule. A `Glob(...)` or `Grep(...)` path rule is accepted but does not match, and a `Read(...)` rule covers them, so save none
+   - `Edit(<path>)` — a `Write(<path>)` rule does not match; save `Edit(<path>)` instead, which covers writes. A bare `Write` or `Edit` with no path is saved as-is
    - `Skill(name)` — save with the skill name
    - `WebFetch(domain:...)` — save with the domain
    - `WebSearch` — save as-is
    - `mcp__*` — save the full tool name
    - Any other tool — save as `ToolName` or `ToolName(scope)` as appropriate
 
-2. **Read** the current settings file at `.claude/settings.local.json` (just to extract the existing `allow` list — do NOT pull all 100+ entries into your reasoning context; you do not need to think about them individually).
+2. **Read** the current settings file at `.claude/settings.local.json` (just to extract the existing `allow` list — do NOT pull all 100+ entries into your reasoning context; you do not need to think about them individually). Scan it for dead entries: `Read(path:...)` and any `Glob(` or `Grep(` path rule.
 
-3. **Present the diff** to the user: list the NEW permissions (the ones not already in the file). If there are none, say so and stop.
+3. **Present the diff** to the user: list the NEW permissions (the ones not already in the file). If there are none, say so and stop. List each dead entry from step 2 apart from the new ones as "dead, cannot match; replace with Read(...)?"; remove one with `Edit` on its exact line only on the user's yes, and do not remove any silently.
 
 4. **Merge + write with the bundled script — NEVER rewrite the full file via Write.** From the project root, pass ONLY the new entries from step 3, each as its own single-quoted argument (or one per line on stdin, through a quoted heredoc, when an entry holds a single quote):
 

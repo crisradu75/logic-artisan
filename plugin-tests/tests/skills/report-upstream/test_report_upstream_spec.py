@@ -93,6 +93,17 @@ def test_the_draft_is_shown_and_approved_before_any_comment_or_new_issue():
 
 
 # requirement: upstream-reports / A known defect gets a comment, not a second issue
+def test_a_failed_gh_call_stops_and_the_draft_carries_no_secrets():
+    text = _flat()
+    assert "If `gh issue list` exits non-zero" in text and 'An error is not "no match"' in text
+    assert "it carries no secret, env value, token, local absolute path or username" in text
+    assert "paths relative to the plugin root" in text
+    assert "only if `gh` printed one" in text
+    assert "A failed `gh issue create` or `gh issue comment` shows its error and stops" in text
+    assert "step 4 drafts the comment text instead of an issue" in text
+
+
+# requirement: upstream-reports / A known defect gets a comment, not a second issue
 def test_a_match_must_share_a_concrete_detail_and_is_shown_to_the_user():
     text = _flat()
     assert "a symbol, an error text or a file path" in text

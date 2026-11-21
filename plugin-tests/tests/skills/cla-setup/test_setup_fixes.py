@@ -215,3 +215,26 @@ def test_the_report_never_lists_both_tasks_rules_as_missing(tmp_path: Path, gran
     repo = _repo(tmp_path, granularity, "schema: spec-driven\n")
     adds = [l for l in _seed(repo).splitlines() if l.startswith("+ tasks: ") and ("requirement: <spec>" in l or "scenario: <spec>" in l)]
     assert len(adds) == 1
+
+
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
+@_needs_bash
+def test_the_pre_push_copy_skips_an_existing_hook_and_copies_a_missing_one(tmp_path: Path):
+    block = re.findall(r"```bash\n(.*?)```", _section("**The `pre-push` hook is a step", "The plugin itself"), re.DOTALL)
+    assert len(block) == 1
+    script = block[0].replace("${CLAUDE_PLUGIN_ROOT}", _PLUGIN.as_posix())
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, timeout=60)
+    hook = repo / ".git" / "hooks" / "pre-push"
+    hook.parent.mkdir(exist_ok=True)
+
+    def run() -> str:
+        out = subprocess.run([_bash, "-c", script], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        assert out.returncode == 0, out.stderr
+        return out.stdout
+
+    hook.write_text("#!/bin/sh\nmine\n", encoding="utf-8")
+    assert "exists (skipped)" in run() and hook.read_text(encoding="utf-8") == "#!/bin/sh\nmine\n"
+    hook.unlink()
+    assert "created:" in run() and hook.read_bytes() == (_PLUGIN / "hooks" / "git" / "pre-push").read_bytes()

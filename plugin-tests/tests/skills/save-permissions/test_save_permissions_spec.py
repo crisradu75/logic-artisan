@@ -325,9 +325,22 @@ def test_a_wildcard_entry_is_confirmed_and_never_retried_in_another_phrasing():
 def test_a_file_path_rule_is_saved_in_gitignore_form_and_no_dead_glob_rule_is_saved():
     text = _flat()
     assert "`Read(//abs/path/**)`" in text and "`Read(~/dir/**)`" in text
-    assert "Read(path:" not in text, "the path: form never matches a file"
+    assert "Read(path:/" not in text, "the path: form never matches a file"
     assert "Glob(path:" not in text
     assert "does not match" in text
+
+
+# requirement: permission-saving / Only permissions approved at a prompt are collected
+def test_windows_paths_edit_not_write_dead_entries_and_wildcard_or_compound_bash():
+    text = _flat()
+    assert "`Read(//c/Users/a/**)`" in text and "`C:\\Users\\a` becomes `/c/Users/a`" in text
+    assert "ask the user for that rule" in text
+    assert "a `Write(<path>)` rule does not match; save `Edit(<path>)` instead" in text
+    assert "Scan it for dead entries: `Read(path:...)`" in text
+    assert "dead, cannot match; replace with Read(...)?" in text
+    assert "only on the user's yes, and do not remove any silently" in text
+    assert "one containing `*` is a wildcard and needs the user's confirmation" in text
+    assert "one entry per subcommand" in text
 
 
 # requirement: permission-saving / Only permissions approved at a prompt are collected

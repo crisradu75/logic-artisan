@@ -57,7 +57,7 @@ Before opening an issue, `/cla:report-upstream` SHALL search the target's issues
 #### Scenario: A match on a keyword only
 
 - **WHEN** an issue shares a keyword with the defect but no symbol, error text or file path
-- **THEN** the skill does not treat it as a duplicate without the user's confirmation
+- **THEN** it is a duplicate only if it shares such a concrete detail and the user confirms it
 
 ### Requirement: A report opens an issue and changes nothing else
 
@@ -65,7 +65,7 @@ Before opening an issue, `/cla:report-upstream` SHALL search the target's issues
 
 #### Scenario: A confirmed core defect
 
-- **WHEN** the checks pass and no duplicate exists
+- **WHEN** the checks pass, no duplicate exists and the user approves the draft
 - **THEN** one issue is opened with those parts and its URL is the last line of output
 
 ### Requirement: Nothing is posted before the user approves the text

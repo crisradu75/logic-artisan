@@ -98,6 +98,7 @@ N fixes proposed. Apply which? (y = all / n = none / indices, e.g. 1,3)
 - **Empty input is not consent.** Ask once more; a second empty answer is `n`.
 - Rejection is an ordinary outcome. The user has decided: leave a rejected fix off the list.
 - Nothing is written before this answer — memory included.
+- Apply exactly the shown text; if it changes, show it again.
 
 Apply each accepted fix with the tool it needs; for one going upstream, invoke
 `/cla:report-upstream` with the fix and the failure it answers.
