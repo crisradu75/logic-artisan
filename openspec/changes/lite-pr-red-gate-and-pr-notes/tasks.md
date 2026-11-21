@@ -5,14 +5,14 @@ Settle the proposal's `## Open questions` with the owner before group 2. Tasks 2
 **Every shipped edit (files under `.claude/plugins/cla/`) cites no issue or pull request number of this repo.** State the lesson in words. Check (e) of `check_no_project_tokens.py` catches only "issue/PR/pull request #N" and the repo's GitHub URLs, not a bare `#12` or "see #12"; task 4.3 greps for those.
 ## 1. Baseline
 
-- [ ] 1.1 Before any shipped edit, run `measure_load.py --skill lite-pr` and record its `profile:` words as a `measured:` note here. At proposal time it read 4,690, but re-measure, since `main` may have moved. measured:
+- [x] 1.1 Before any shipped edit, run `measure_load.py --skill lite-pr` and record its `profile:` words as a `measured:` note here. At proposal time it read 4,690, but re-measure, since `main` may have moved. measured: 4690 words on current main
 
 ## 2. The failure-only reference (new `lite-pr/references/red-gate.md`)
 
-- [ ] 2.1 Write the reference, read only when a test fails: the attended ask, the unattended halt naming the label, and a decline handled as an unlabelled failure. With a labelled and an unlabelled failure, the one fix goes to the unlabelled one first.
-- [ ] 2.2 In it, write the label method as an instruction to the skill. Judge by reading alone: no extra test run, no stash, no second worktree. Label only test failures, never build or typecheck failures. Count code the test reaches through untouched modules, not only files it names.
-- [ ] 2.3 In it, add the one rerun: only when the log shows no failed assertion, compiler or test error and names an unreachable network or service (a timeout alone is no trigger); once per run, before the label, no fix spent, reported. Add the long-log rule: over 4,000 characters, read the first error and the final summary.
-- [ ] 2.4 Confirm the reference leaves the escalation reference's budget intact. A labelled test is never sent to `/cla:diagnose`, and a red rerun returns to the one fix. Verify by reading both references side by side.
+- [x] 2.1 Write the reference, read only when a test fails: the attended ask, the unattended halt naming the label, and a decline handled as an unlabelled failure. With a labelled and an unlabelled failure, the one fix goes to the unlabelled one first.
+- [x] 2.2 In it, write the label method as an instruction to the skill. Judge by reading alone: no extra test run, no stash, no second worktree. Label only test failures, never build or typecheck failures. Count code the test reaches through untouched modules, not only files it names.
+- [x] 2.3 In it, add the one rerun: only when the log shows no failed assertion, compiler or test error and names an unreachable network or service (a timeout alone is no trigger); once per run, before the label, no fix spent, reported. Add the long-log rule: over 4,000 characters, read the first error and the final summary.
+- [x] 2.4 Confirm the reference leaves the escalation reference's budget intact. A labelled test is never sent to `/cla:diagnose`, and a red rerun returns to the one fix. Verify by reading both references side by side.
 
 manual: change-workflow / A test already failing on the base is labelled, not fixed: the label is a reading judgement made by the model from skill prose; checked in a scratch repo where one test fails on the base and the change touches other files, and where a test fails only through a touched module reached via an untouched one (it must not be labelled).
 manual: change-workflow / A labelled failure ships only by a person's choice: the ask and the halt are model behaviour from skill prose; checked by one attended run (accept, then decline) and one `/cla:multi-lite` run in a scratch repo.
@@ -20,12 +20,12 @@ manual: change-workflow / One reported rerun for a failure with no code error: m
 
 ## 3. `lite-pr/SKILL.md` and `multi-lite` wording
 
-- [ ] 3.1 Test step 3: add the Q1 label sentence (test failures only) and one pointer to the reference from 2.1, read when a test fails. Nothing else from groups 2 or 3 goes in SKILL.md.
-- [ ] 3.2 Ship: add the `Checks:` line next to the `Risk:` line, naming what ran, what was skipped and why, and the known-failing, flake and duplicate notes. Keep `Risk: <level> — <reason>; reviewers: <list>.` verbatim and on one line, so `test_review_sizing_single_source.py` still passes.
-- [ ] 3.3 Plan: add the duplicate-work search: `gh pr list --state all --search "<key words>"` plus the base branch's last 50 commits, no fetch; read-only on every match. Skip with no GitHub remote or a failed search: the run's report says so, and the `Checks:` line from 3.2 when a PR is opened.
-- [ ] 3.4 Per open question 1, amend in `lite-pr/SKILL.md` the phrases "Stops only on an unresolved test failure", Autonomy's only-stop sentence, Plan's "no pause" and "the one deliberate stop point", naming the duplicate wait and the labelled-failure ask. Grep each phrase: no stale copy.
-- [ ] 3.5 Amend the same claim in `skills/multi-lite/references/candidate-loop.md` ("its one deliberate halt (an unresolved Test failure)") and `skills/multi-lite/SKILL.md` ("no inter-phase approval gate"). Grep each phrase: no stale copy.
-- [ ] 3.6 Run `pytest plugin-tests/tests/skills/lite-pr -n 4 --dist loadfile` (the frontmatter `description` changes) and `python3 .claude/plugins/cla/skills/_shared/scripts/check_no_project_tokens.py`. Both exit 0.
+- [x] 3.1 Test step 3: add the Q1 label sentence (test failures only) and one pointer to the reference from 2.1, read when a test fails. Nothing else from groups 2 or 3 goes in SKILL.md.
+- [x] 3.2 Ship: add the `Checks:` line next to the `Risk:` line, naming what ran, what was skipped and why, and the known-failing, flake and duplicate notes. Keep `Risk: <level> — <reason>; reviewers: <list>.` verbatim and on one line, so `test_review_sizing_single_source.py` still passes.
+- [x] 3.3 Plan: add the duplicate-work search: `gh pr list --state all --search "<key words>"` plus the base branch's last 50 commits, no fetch; read-only on every match. Skip with no GitHub remote or a failed search: the run's report says so, and the `Checks:` line from 3.2 when a PR is opened.
+- [x] 3.4 Per open question 1, amend in `lite-pr/SKILL.md` the phrases "Stops only on an unresolved test failure", Autonomy's only-stop sentence, Plan's "no pause" and "the one deliberate stop point", naming the duplicate wait and the labelled-failure ask. Grep each phrase: no stale copy.
+- [x] 3.5 Amend the same claim in `skills/multi-lite/references/candidate-loop.md` ("its one deliberate halt (an unresolved Test failure)") and `skills/multi-lite/SKILL.md` ("no inter-phase approval gate"). Grep each phrase: no stale copy.
+- [x] 3.6 Run `pytest plugin-tests/tests/skills/lite-pr -n 4 --dist loadfile` (the frontmatter `description` changes) and `python3 .claude/plugins/cla/skills/_shared/scripts/check_no_project_tokens.py`. Both exit 0.
 
 manual: change-workflow / A search for duplicate work before building: an end-to-end run needs a real GitHub remote and a model; checked by one attended run and one `/cla:multi-lite` run against a scratch remote holding a matching merged pull request, and one run with no remote.
 manual: change-workflow / Matched work is left untouched: checked in the same scratch runs by comparing the matched pull request's comments, labels, state and head before and after.
@@ -33,10 +33,10 @@ manual: change-workflow / The pull request says what was checked: the line is wr
 
 ## 4. Ledger, changelog, measurement, docs, gate
 
-- [ ] 4.1 Add a `docs/rule-ledger.md` line for each new shipped `never`, `always` or `must`. Prefer guidance wording. Use `keep` only for the unattended halt (`honesty`) and the read-only match (`user's files`). Verify that `test_rule_ledger.py` passes.
-- [ ] 4.2 Add a `CHANGELOG.md` `[Unreleased]` bullet for the patch; this change is first in its batch, so the two later sibling changes append below it. Edit no version and not the "Current release" line.
-- [ ] 4.3 Run `git diff <base>...HEAD -- .claude/plugins/cla | grep -nE '#[0-9]'` over the changed shipped files. Expect no hit.
-- [ ] 4.4 Re-run `measure_load.py --skill lite-pr` and record the profile before and after, with the difference, as a `measured:` note. Flag it to the owner if the result is well above the decision's estimate of about 145 words. measured:
+- [x] 4.1 Add a `docs/rule-ledger.md` line for each new shipped `never`, `always` or `must`. Prefer guidance wording. Use `keep` only for the unattended halt (`honesty`) and the read-only match (`user's files`). Verify that `test_rule_ledger.py` passes.
+- [x] 4.2 Add a `CHANGELOG.md` `[Unreleased]` bullet for the patch; this change is first in its batch, so the two later sibling changes append below it. Edit no version and not the "Current release" line.
+- [x] 4.3 Run `git diff <base>...HEAD -- .claude/plugins/cla | grep -nE '#[0-9]'` over the changed shipped files. Expect no hit.
+- [x] 4.4 Re-run `measure_load.py --skill lite-pr` and record the profile before and after, with the difference, as a `measured:` note. Flag it to the owner if the result is well above the decision's estimate of about 145 words. measured: profile 4690 before, 4930 after, +240 (above the ~145 estimate; flagged to the owner)
 
 ## 5. Review round (owner's session, manual, no code)
 
@@ -44,5 +44,5 @@ manual: change-workflow / The pull request says what was checked: the line is wr
 
 ## 6. Docs and final gate
 
-- [ ] 6.1 docs and spec map: grep `README.md`, `DEVELOPER-GUIDE.md`, root `CLAUDE.md` and the plugin `README.md` phase table for lite-pr's stop and Test wording, and update each hit; `openspec/spec-map.md` none affected: lite-pr's workflow step and spec links are unchanged. Then run `pytest plugin-tests -q -n 4 --dist loadfile` and `openspec validate --specs --strict` once each, on the final commit, so no doc edit lands after the final run. Both pass, apart from the known failures that `main` already has on this Windows checkout.
+- [x] 6.1 docs and spec map: grep `README.md`, `DEVELOPER-GUIDE.md`, root `CLAUDE.md` and the plugin `README.md` phase table for lite-pr's stop and Test wording, and update each hit; `openspec/spec-map.md` none affected: lite-pr's workflow step and spec links are unchanged. Then run `pytest plugin-tests -q -n 4 --dist loadfile` and `openspec validate --specs --strict` once each, on the final commit, so no doc edit lands after the final run. Both pass, apart from the known failures that `main` already has on this Windows checkout.
 
