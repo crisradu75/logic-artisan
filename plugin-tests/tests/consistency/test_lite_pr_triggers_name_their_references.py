@@ -17,7 +17,7 @@ _LITE_PR = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" /
 _PREFIX = "${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/"
 
 
-@pytest.mark.parametrize("name", ["measured-by.md", "mutation-gate.md", "diagnose-escalation.md"])
+@pytest.mark.parametrize("name", ["measured-by.md", "mutation-gate.md", "diagnose-escalation.md", "state-the-cause.md", "regression-test-first.md", "review-dispatch.md"])
 def test_skill_md_names_each_moved_reference_by_full_path(name: str) -> None:
     skill = (_LITE_PR / "SKILL.md").read_text(encoding="utf-8")
     assert _PREFIX + name in skill, f"lite-pr/SKILL.md lost its trigger to read references/{name}"
@@ -81,6 +81,7 @@ def test_a_retry_failing_on_a_new_cause_reaches_diagnose_before_the_halt() -> No
     assert "On a new cause, also name the fix just applied as the first suspect" in ref, (
         "the fix is named first suspect on every failure, steering a same-cause diagnose wrong"
     )
-    assert "a red re-run after `diagnose` goes to step 4's HALT" in skill, (
+    cause_ref = (_LITE_PR / "references" / "state-the-cause.md").read_text(encoding="utf-8")
+    assert "a red re-run after `diagnose` goes to the HALT" in cause_ref, (
         "nothing stops a red re-run after diagnose from going back into diagnose"
     )
