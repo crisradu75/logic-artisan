@@ -10,6 +10,15 @@ the next run. It builds on existing plugins rather than replacing them, and keep
 [developer guide](https://github.com/crisradu75/logic-artisan/blob/main/DEVELOPER-GUIDE.md) walks
 through a first session and a first PR.
 
+**Words you'll meet.** A *protected area* is a part of the work where a mistake costs too much to
+leave to chance (money, personal data, the user's own files, anything shipped to other repos); a
+review finding that touches one blocks the merge. *Stakes* is the section of your repo's
+`cla.io/project-facts.md` that lists its users, what a bug costs and its protected areas. An
+*overlay* is an optional `cla.io/overlays/<skill>.md` with a rule for one skill in your repo only;
+it cannot relax a stop. The developer guide's
+[glossary](https://github.com/crisradu75/logic-artisan/blob/main/DEVELOPER-GUIDE.md#words-used-in-this-guide)
+has the rest.
+
 ## Install these first — CLA calls out to them and cannot substitute for them
 
 `plugin.json` has no field for declaring a dependency, so **nothing installs these for you and
@@ -50,7 +59,7 @@ and invoked bare as `/release`.
 | Phase | Skill | Invoked by | What it does |
 |---|---|---|---|
 | **0. Bootstrap** (per repo; re-run when facts go stale) | `cla-setup` | **you only** | Create whatever is missing of `cla.io/`, seed OpenSpec authoring rules, write `.claude/rules/cla-economy.md` (the plugin owns it and replaces it on every run), and populate or reconcile `cla.io/project-facts.md` — the repo's facts (members, commands, ports, file maps) |
-| | `save-permissions` | **you only** | Persist tool permissions granted this session to `.claude/settings.local.json` |
+| | `save-permissions` | **you only** | Persist tool permissions granted this session to `.claude/settings.local.json`, in the rule forms Claude Code matches |
 | **1. Discover & shape** | `feedback` | you or Claude | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | you or Claude | Walk a decision option-by-option with pros/cons + a recommended pick |
 | | (`opsx:explore`) | n/a — vendored | OpenSpec's thinking-partner mode for investigating a problem before committing to a change |
@@ -66,7 +75,7 @@ and invoked bare as `/release`.
 | | (agents) | n/a — dispatched | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to. The PR reviewers (`code-reviewer`, `silent-failure-hunter`, `comment-analyzer`) are `pr-review-toolkit` agents, which read the change from a diff file |
 | **5. Learn & improve** | `codify-learnings` | **you only** | Turn the current session's failures into up to three fixes — tools and hooks before docs — escalating any rule that failed again; log them `[loop]` |
 | | `spec-to-pr-retro` | **you only** | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
-| | `report-upstream` | you or Claude | File a defect in CLA's own portable core as an issue against the canonical source |
+| | `report-upstream` | you or Claude | File a defect in CLA's own portable core as an issue against the canonical source, after you approve the exact draft |
 | | `checkpoint` | you or Claude | Compact a session into a resumable briefing (`cla.io/checkpoints/`) |
 | **Any phase** (utility) | `right-model` | **you only** | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
 | | `diagnose` | you or Claude | Find a failure's cause instead of guessing: deterministic loop, ranked falsifiable hypotheses, regression test before the fix. Escalated from either Test phase on one cause: after two rounds in spec-to-pr, after one fix and one retry in lite-pr |
@@ -209,7 +218,8 @@ claude plugin update cla@cris-logic-artisan
 **The installed tree is read-only.** Never edit it: it is a version-keyed cache, so an edit either
 fails or lands somewhere the next update discards (the `ask-plugin-cache-edit` guard asks before
 such an edit). A fix that belongs in the harness goes back via
-**`/cla:report-upstream`**, which files it as an issue against the canonical source. A fact that
+**`/cla:report-upstream`**, which files it as an issue against the canonical source once you
+approve the draft it shows. A fact that
 belongs to your repo goes in `cla.io/`.
 
 **Onboarding a fresh repo:** install (above) → `/cla:cla-setup` (scaffold `cla.io/`, write the economy rules file

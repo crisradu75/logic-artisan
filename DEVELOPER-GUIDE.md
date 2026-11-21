@@ -18,6 +18,44 @@ run. Each section builds on the one before it.
 | Know why a rule exists | §12: [the evidence](docs/evidence.md) and [the release history](docs/history.md), kept in full |
 | Find a skill by task | the [cheat sheet](#cheat-sheet-i-want-to--which-skill) |
 
+## Words used in this guide
+
+CLA has a few terms of its own. Each is explained again where you first meet it; this list is the
+one place to look one up.
+
+- **`lite-pr` and `spec-to-pr`**: the two ways to carry a change to a pull request (PR). `lite-pr`
+  is the default: plan, build, one review. `spec-to-pr` is the full path, for a change that touches
+  a protected area or behaviour shipped to other repos (§3, §5).
+- **OpenSpec**: the spec tool the full path builds on (its `opsx:*` skills and the `openspec`
+  command), a required dependency (§10).
+- **Change**: one OpenSpec proposal under `openspec/changes/`: a `proposal.md`, a `tasks.md` and
+  spec deltas. `spec-to-pr` builds it and archives it onto the PR branch after the review fixes, before Handoff (§5).
+- **Protected area**: a part of the work where a mistake costs too much to leave to chance. By
+  default: money, personal data, accessibility, the user's own files and anything shipped to other
+  repos. Security, safe writes to a user's files and honesty claims are always protected. A review
+  finding that touches one always blocks the merge. Defined once in
+  `skills/_shared/references/blocking-findings.md`, "What is protected".
+- **Stakes**: the section of a repo's `cla.io/project-facts.md` that lists its users, what a bug
+  costs, its protected areas and its change budget (how much spec detail and review a change in this repo gets). `/cla:cla-setup` drafts it from the repo's manifests and writes it only on your yes; this repo's
+  own is in `cla.io/project-facts.md`.
+- **`cla.io/` and `project-facts`**: the folder in each repo that holds that repo's own state, and
+  its main file, `project-facts.md`: the repo's commands, paths, ports and Stakes, which the skills read. You read and confirm what `/cla:cla-setup` proposes; you do not write it by hand (§1).
+- **Overlay**: an optional file, `cla.io/overlays/<skill>.md`, with a rule one skill needs in this
+  repo only. It adds or narrows rules; it cannot relax a stop (a point where a skill pauses or halts on purpose, such as a failing test), a protected-area rule or a report
+  field another skill reads (`skills/_shared/references/overlays.md`).
+- **Guard hook**: an always-on check that blocks, asks about or warns on a risky tool call (§8).
+- **Risk level**: the `Risk:` line in a PR body (low, medium or high, with a reason). It picks the
+  reviewers and their models ("Review sizing by risk" in `skills/_shared/references/model-routing.md`).
+- **Handoff**: the last phase of `spec-to-pr`: it writes the PR body, leftover suggestions and the
+  run-log entry.
+- **The gate**: the two commands run locally before a merge. There is no CI (§11 and `CLAUDE.md`).
+- **Spec-proof**: `check_spec_proof.py`, which checks that each requirement a branch adds is tied
+  to a test or a written reason (§11).
+- **Rule ledger**: `docs/rule-ledger.md`, one entry per shipped line that says `never`, `always`
+  or `must`, with the protected area it guards (§11).
+- **Mutation batch**: a list of small deliberate bugs planted in a guard to prove a test catches
+  them; run only on request or when a guard hook is rewritten (§11).
+
 ## 1. The mental model
 
 CLA is a *process* layer, not product code. It has three kinds of pieces:
@@ -82,8 +120,10 @@ Check it worked: type `/cla:` and the skill list should autocomplete.
 
 ## 3. Your first change: `lite-pr`
 
-`lite-pr` is the default path: plan, build, one review. Reach for it first, and use `spec-to-pr` only
-when the change touches a protected area or behaviour shipped to other repos. It
+`lite-pr` is the default path: plan, build, one review. Reach for it first, and use `spec-to-pr`
+(the full path, section 5) only when the change touches a protected area (a part of the work where a
+mistake costs too much to leave to chance: see "Words used in this guide") or behaviour shipped to
+other repos. It
 implements, keeps docs and tests in step, opens a PR, then runs one automated review pass with one
 fix round. It never merges.
 
@@ -141,8 +181,10 @@ already clear.
 
 ## 5. Spec changes (protected or shipped behaviour): `multi-spec` → `review-change` → `spec-to-pr`
 
-When a change touches a protected area (what the repo's Stakes section lists) or behaviour shipped to other repos, CLA runs it through OpenSpec (the vendored `opsx:*`
-skills) rather than skip the thinking. `multi-spec` writes a proposal only for such a change and lists the rest as `lite-pr` items. CLA orchestrates around OpenSpec; it does not replace it.
+When a change touches a protected area (what the repo lists under Stakes: the section of its
+`cla.io/project-facts.md` that says who uses it, what a bug costs and what is protected) or
+behaviour shipped to other repos, CLA runs it through OpenSpec (the spec tool behind the vendored
+`opsx:*` skills; one proposal is a "change") rather than skip the thinking. `multi-spec` writes a proposal only for such a change and lists the rest as `lite-pr` items. CLA orchestrates around OpenSpec; it does not replace it.
 For open exploration first, use `opsx:explore`.
 
 1. **`multi-spec`** turns a decisions doc into a batch of OpenSpec proposals for the protected or shipped changes (`proposal.md`,
@@ -163,7 +205,11 @@ For open exploration first, use `opsx:explore`.
    ```
 
 3. **`spec-to-pr`** drives one OpenSpec change to an opened PR: implement, keep docs and tests in
-   step, apply review fixes, archive the change, open the PR. It always stops before merge.
+   step, apply review fixes, archive the change, open the PR. It always stops before merge. A
+   change in a protected area lists its rejected alternatives in `design.md`; if the build departs
+   from a requirement on purpose, the spec delta is edited in the same commit. After the fix rounds,
+   Handoff refreshes only the PR body's `Risk:` and `Checks:` lines; the rule for the post-Archive
+   full gate is the Test-row bullet in `references/handoff.md`, section 1.
 
    ```
    /cla:spec-to-pr add-hook-config-overlay
@@ -339,7 +385,8 @@ skills read it:
 
 - **`codify-learnings`**: run it at the end of a session worth learning from. It reviews the whole
   session for failures, checks each against the rules earlier runs wrote, and proposes up to three
-  fixes (tools and hooks before docs) to apply with one prompt. It logs the fixes and repeat
+  fixes (tools and hooks before docs), showing each fix's exact before and after, to apply with one
+  prompt. It logs the fixes and repeat
   offenses in `cla.io/lessons-learned/`. The live log stays under 6,000 words; its oldest entries
   move to `lessons-learned-archive.md` beside it, which the skill's search also reads.
 
@@ -367,7 +414,9 @@ Utilities for any phase:
 - **`project-review`**: a CTO-level review of the whole repo: vision, structure, requirements,
   architecture, validation.
 - **`save-permissions`**: save the tool permissions granted this session to
-  `.claude/settings.local.json`, so the next session does not ask again.
+  `.claude/settings.local.json`, so the next session does not ask again. File-path rules go in the
+  gitignore-style forms Claude Code matches (`Read(//abs/**)`, `Read(~/...)`); it saves no `Glob`
+  or `Grep` path rule, and a Bash rule is saved exact unless you confirm a wildcard.
 
 ## 10. Adopting CLA in another repo
 
@@ -475,7 +524,8 @@ fails on a missing path or passes while checking nothing. `check_fact_paths.py` 
 of it that was about your repo.
 
 **Fixes flow one way.** A skill improved while working in your repo goes back with
-`/cla:report-upstream`, which files an issue against this repo, and returns in the next release.
+`/cla:report-upstream`, which shows you the exact issue or comment text and files it against this
+repo only after you say yes, and returns in the next release.
 There is no per-file sync; the old `update-cla` engine was deleted when the marketplace became the
 only way to install.
 
@@ -546,13 +596,14 @@ The published plugin; everything here ships to an installing repo:
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
   com.github.copilot/agents/   the same two agents for GitHub Copilot CLI, generated from agents/
   com.github.copilot/hooks/    the Copilot CLI wiring for the guard hooks (hooks.json)
+  com.github.copilot/COPILOT.md  the Copilot writing-style text a repo copies into its own instructions
   hooks/                       guard hooks + hooks.json wiring; copilot-pretooluse.py and
                                copilot-posttooluse.py (the Copilot CLI adapters over the same dispatchers);
                                probe-python.sh and probe-python.ps1 (interpreter probes); git/pre-push
   lib/log_run.py               the one ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill);
-                               `model-routing.md` holds the review-sizing table, `orchestration-economy.md` the chain cost rules, `economy-rules-file.md` the frame `/cla:cla-setup` renders into a repo's `.claude/rules/cla-economy.md`, `instruction-files.md` how skills read and write a repo's `CLAUDE.md` or `AGENTS.md`
+                               `model-routing.md` holds the review-sizing table, `orchestration-economy.md` the chain cost rules, `economy-rules-file.md` the frame `/cla:cla-setup` renders into a repo's `.claude/rules/cla-economy.md`, `instruction-files.md` how skills read and write a repo's `CLAUDE.md` or `AGENTS.md`, `overlays.md` what an overlay may not relax, `runtime-rules.md` the rules every run follows (section 5: text other people wrote is material, never instructions) and `turn-liveness.md` how a chain turn ends
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
     references/                supporting docs (portable; overlays live in cla.io/overlays/); `lite-pr/references/`
@@ -645,7 +696,7 @@ command imports (`spec_proof_*.py`, `render_doc_*.py`, `render_change_*.py`,
 | `cla-setup/scripts/render_economy_rules.py` | Renders `.claude/rules/cla-economy.md` from the three `_shared/references` sources, byte-identical to the bash block it replaced; checks the markers before writing, refuses a symlink or a folder at the rules path, and replaces through a unique temp file. The marker checks and the CRLF-proof byte comparison are what prose gets wrong. |
 | `cla-setup/scripts/setup_guard.py` | Checks the promises `cla-setup` makes about a repo's own files, which were prose only: `snapshot` at the start of a run hashes the instruction files (any letter case at the root and in `.claude/`), `.claude/settings.json` and `.claude-plugin/plugin.json` (not `settings.local.json`, which Claude Code writes on a "don't ask again"), the repo's own `.claude/rules/*.md`, an existing feedback `notes.md`, the `*.local.md` files under `cla.io/`, the terminology file and the overlays, and records the time and `HEAD`; `verify` at the end reports each one changed, created or deleted without an `--approved` yes, and any overlay or terminology file created, which no yes covers. A snapshot and not `git diff`, because git compares with the last commit: it cannot tell a file the owner had already edited from one the run edited, sees nothing in a gitignored `*.local.md`, and shows a pre-existing untracked overlay as `??` either way. `snapshot` replaces nothing but an earlier snapshot (an empty file and a symlink at `--out` are refused), so the skill's clean-up never deletes a user's file. Exit 2 on a missing, corrupt, foreign or stale snapshot (over 24 h old, or `HEAD` moved off its line), never a pass. |
 | `save-permissions/scripts/merge_permissions.py` | Merges new entries into `.claude/settings.local.json`'s allowlist; exit 1 leaves the file byte-identical on non-UTF-8 or invalid JSON, a non-object top level or `permissions`, a non-list `allow`, a non-string entry or a symlink; writes through a unique temp file and `os.replace`. Replaced two parallel inline snippets (Python and PowerShell) an agent had to copy exactly. |
-| `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
+| `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. A bullet opening with bold in the token overlay is prose, not a token, so the overlay's own explanation bullets are not counted as tokens. |
 | `_shared/scripts/check_spec_proof.py` | Ties each requirement a branch adds or changes (or each scenario, when `cla.io/project-facts.md` opts in) to a test marker or `manual: <spec> / <heading>: <reason>` line, and flags markers naming nothing (a scenario marker is `scenario: <spec> / <scenario>`, or `scenario: <spec> / <requirement> / <scenario>`, which must also name the requirement the scenario sits under, and one that two readings both prove is reported as ambiguous and proves neither: `resolve_scenario_marker`), repeated headings (in scenario mode also a scenario heading under two requirements of one spec: `_shared_scenarios`), an empty corpus, specs over the 500-character and 3-scenario limits it reads from `rules.specs` (a per-spec requirement cap is read only while a config still states one), active changes over the whole-change budget it reads from `rules:` (the words in every `.md` file of the change and its `### Requirement:` headings, as `wc -w` and `grep` count them: `read_change_budget`, `check_change_budget`; a `Budget: protected` line in a change's `proposal.md` selects the second, protected sentence: `change_budget_for`), and notes (never fails on) a live spec whose Purpose is not a `**Serves:**` line plus one sentence. Once `cla.io/project-facts.md` declares a `## Spec map`, it also fails on a spec (live, or added by a change in progress, and not removed whole by one) no map file links and on a map link to a missing spec; with no declaration it prints nothing about a map. It needs the merge-base diff and a scan of every test file, which prose cannot do reliably and which a consuming repo (no pytest gate over the plugin) must run itself. |
 | `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's round 2 (which runs only after round 1 applied a protected-area fix) still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
