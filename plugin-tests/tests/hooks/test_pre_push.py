@@ -43,15 +43,19 @@ def _run(stdin_text: str, env_extra: dict | None = None):
         env.pop(hatch, None)
     if env_extra:
         env.update(env_extra)
-    return subprocess.run(
+    # Bytes in, not `text=True`: text mode writes every "\n" to the child as
+    # "\r\n" on Windows, so the last field of each line (the remote sha) would
+    # carry a stray "\r" that git never sends, and an all-zero sha would not read
+    # as zero. Git writes bare "\n" to a hook's stdin on every platform.
+    done = subprocess.run(
         [_SH, str(_PRE_PUSH)],
-        input=stdin_text,
+        input=stdin_text.encode("utf-8"),
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         env=env,
     )
+    done.stdout = done.stdout.decode("utf-8", errors="replace")
+    done.stderr = done.stderr.decode("utf-8", errors="replace")
+    return done
 
 
 def _line(remote_ref: str, local_sha: str = _SHA) -> str:

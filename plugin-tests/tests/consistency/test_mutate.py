@@ -285,23 +285,62 @@ def test_the_restore_is_byte_exact_for_both_line_endings(tmp_path, ending):
     assert source.read_bytes() == raw, "the restore rewrote the file's line endings"
 
 
-def test_a_multi_line_anchor_against_a_crlf_file_names_the_cause(tmp_path):
-    """The preflight already refuses this; the point is that it says WHY.
+@pytest.mark.parametrize("ending", [b"\n", b"\r\n"])
+def test_a_multi_line_anchor_matches_the_files_own_line_ending(tmp_path, ending):
+    """A bare newline in `old` and `new` is read in the file's own ending, so one
+    batch runs on an LF checkout and a CRLF one. The mutant must be planted (the
+    test fails, so it is killed), and the restore must be byte-exact."""
+    source, tests = _make_scope(tmp_path)
+    raw = ending.join([b"def verdict():", b"    return 'ON'", b""])
+    source.write_bytes(raw)
+    batch = _batch(
+        tmp_path,
+        f'("multi", Path(r"{source}"), "def verdict():\\n    return \'ON\'", '
+        f'"def verdict():\\n    return \'OFF\'", [Path(r"{tests}")]),',
+    )
+    result = _run(batch)
+    assert "killed" in result.stdout, result.stdout + result.stderr
+    assert source.read_bytes() == raw
 
-    Anchors match raw bytes, so a `\\n` in `old` finds nothing in a CRLF file
-    even though the lines are plainly there. The module docstring explains it —
-    130 lines above the error message nobody scrolls back from. Measured: the
-    trap cost two preflight rounds across two batches in one session before the
-    hint existed. Assert the hint, not just the refusal, or removing it leaves
-    this test green and the next author on the same detour."""
+
+def test_a_multi_line_anchor_that_misses_in_a_crlf_only_file_is_not_blamed_on_crlf(tmp_path):
+    """A CRLF-only file reads a bare newline in its own ending, so a miss there
+    has another cause and the line-ending hint would send the author the wrong way."""
     source, tests = _make_scope(tmp_path)
     source.write_bytes(b"\r\n".join([b"def verdict():", b"    return 'ON'", b""]))
     batch = _batch(
         tmp_path,
-        f'("crlf", Path(r"{source}"), "def verdict():\\n    return \'ON\'", '
+        f'("crlf-miss", Path(r"{source}"), "def nope():\\n    return 1", "x", '
+        f'[Path(r"{tests}")]),',
+    )
+    result = _run(batch)
+    out = result.stdout + result.stderr
+    assert "anchor not found" in out
+    assert "CRLF" not in out, "blamed line endings for a CRLF-only file"
+
+
+def test_the_replacement_never_leaves_a_bare_newline_in_a_crlf_file():
+    """A planted multi-line replacement is translated too: a bare LF in the middle
+    of a CRLF file would make the file mixed, and the next anchor would miss."""
+    text = "def verdict():\n    return 'ON'\n"
+    crlf = text.replace("\n", "\r\n")
+    assert mutate._in_file_endings(crlf, "a\nb") == "a\r\nb"
+    assert mutate._in_file_endings(text, "a\nb") == "a\nb"
+    assert mutate._in_file_endings(crlf, "a\r\nb") == "a\r\nb"
+
+
+def test_a_multi_line_anchor_against_a_mixed_file_names_the_cause(tmp_path):
+    """A file mixing LF and CRLF has no single ending to read a bare newline in,
+    so the anchor is used as written, misses, and the refusal says why."""
+    source, tests = _make_scope(tmp_path)
+    source.write_bytes(b"def verdict():\r\n    return 'ON'\n")
+    batch = _batch(
+        tmp_path,
+        f'("mixed", Path(r"{source}"), "def verdict():\\n    return \'ON\'", '
         f'"def verdict():\\n    return \'OFF\'", [Path(r"{tests}")]),',
     )
-    out = _run(batch).stdout + _run(batch).stderr
+    result = _run(batch)
+    out = result.stdout + result.stderr
     assert "anchor not found" in out
     assert "CRLF" in out, "the refusal did not name the cause it can detect"
 
