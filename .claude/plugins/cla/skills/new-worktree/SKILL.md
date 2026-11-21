@@ -5,7 +5,7 @@ description: "Start an isolated git worktree for this repo with dependencies ins
 
 # New worktree, fully set up
 
-A bare `EnterWorktree` leaves the new worktree without a working dev setup — no installed dependencies, no env-derived secrets, so a dependent process silently degrades. This skill does the full setup in two tool round-trips total. This repo's install command, workspace shape and gitignored env file(s) come from `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape", "Env files"; run `/cla:cla-setup` when it is missing or stale). `cla.io/overlays/new-worktree.md`, if present, adds rules specific to this skill in this repo.
+A bare `EnterWorktree` leaves the new worktree without a working dev setup — no installed dependencies, no env-derived secrets, so a dependent process silently degrades. This skill does the full setup in two tool round-trips total. This repo's install command, workspace shape and gitignored env file(s) come from `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape", "Env files"; run `/cla:cla-setup` when it is missing or stale). `cla.io/overlays/new-worktree.md`, if present, adds rules specific to this skill in this repo (what an overlay may change: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/overlays.md`).
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
@@ -24,9 +24,8 @@ Once `EnterWorktree` has run, every subsequent `Write`/`Edit`/`Read`/file-writin
 its returned absolute path) — never a hardcoded primary-clone path. One guard hook
 backs this up — `block-worktree-path-escape.py` blocks any `Write`/`Edit` whose target
 escapes the worktree into the primary clone (escape hatch:
-`ALLOW_WORKTREE_PATH_ESCAPE=1`). It covers writes only; nothing intercepts a stray
-`git checkout`/`switch`/`commit` any more, so treat it as a
-backstop, not a licence to skip relative paths. If work still ends up in the wrong (shared) location, don't delete it to
+`ALLOW_WORKTREE_PATH_ESCAPE=1`). It covers writes only: a stray
+`git checkout`/`switch`/`commit` is not intercepted, so use relative paths whatever the hook does. If work still ends up in the wrong (shared) location, don't delete it to
 fix the mistake until a verified copy exists elsewhere — copy first, confirm, then
 clean up. If a commit ever goes missing after a shared branch gets switched/deleted
 out from under it, check `git reflog` / `git fsck --unreachable` before assuming it's
@@ -92,37 +91,12 @@ files into a different worktree with no copy step needed.
      ```bash
      MAIN="$(dirname "$(git -C <app-dir> rev-parse --path-format=absolute --git-common-dir)")"
      if [ -f "$MAIN/<env-file-path>" ]; then
-       cp "$MAIN/<env-file-path>" "<app-dir>/.env" && echo "copied .env"
+       cp "$MAIN/<env-file-path>" "<env-file-path>" && echo "copied <env-file-path>"
      else
        echo "no <env-file-path> in main checkout — skipping"
      fi
      ```
      If it's missing, note that in the final report — don't fail the whole flow over it.
-
-     **Worth checking once per repo: a `.worktreeinclude` may remove this step
-     entirely.** Recent Claude Code versions read a `.worktreeinclude` file at the
-     project root — `.gitignore` syntax, copying only paths that are both matched
-     *and* gitignored — into every worktree the harness itself creates. Where that is
-     supported, listing this repo's env file(s) there does declaratively what the `cp`
-     above does imperatively, and deletes a command from the hot path this skill spends
-     its whole design budget minimizing. Verify it actually populated the file before
-     dropping the `cp`, and keep the `cp` if it didn't: this skill enters via
-     `EnterWorktree`, and support is worth confirming rather than assuming.
-
-     Two limits, so nobody over-reads this. It is harness machinery, **not** git — the
-     worktrees that `/cla:multi-lite`, `/cla:multi-pr` and `/cla:spec-to-pr` create via
-     raw `git worktree add` are unaffected and still need their own handling. And it
-     copies only gitignored files, which is the point: a tracked file is already in the
-     new checkout.
-
-   An offline-preferring install flag is the default here, not an opt-in: it skips a registry
-   network round-trip, which is a real (if modest) saving and never a regression.
-   Don't oversell it as a big win — it isn't one once the store is warm, disk I/O
-   dominates at that point (a content-addressable package store also means a warm
-   rerun mostly hardlinks rather than re-downloads). If installs are still slow on
-   Windows, a machine-level mitigation (such as an antivirus exclusion for the package
-   store) may be worth mentioning — but don't change that setting without asking; it's
-   machine-level, not project-level.
 
 3. **Report back** using each step's own output — worktree path, branch name, and
    whether the install and the `.env` copy succeeded (or what was skipped and why).

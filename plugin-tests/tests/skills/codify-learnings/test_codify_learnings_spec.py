@@ -66,6 +66,28 @@ def test_one_prompt_and_nothing_written_before_the_answer():
     assert "Nothing is written before this answer — memory included." in text
 
 
+# requirement: session-learnings / One prompt before anything is written
+def test_the_exact_before_and_after_text_is_shown_above_the_prompt():
+    text = _flat()
+    assert "Apply exactly the shown text; if it changes, show it again." in text
+    shown = text.index("show each proposed fix's exact before and after text")
+    assert shown < text.index("Apply which? (y = all / n = none / indices, e.g. 1,3)")
+    assert "Nothing is written before this answer" in text
+
+
+# requirement: session-learnings / A plugin fix goes upstream when the plugin is read-only
+def test_a_shipped_skills_bundled_script_is_routed_not_banned_outright():
+    text = _flat()
+    assert "**Never propose edits to** `openspec/**` or a vendored framework directory" in text
+    assert "a skill's bundled scripts (`**/scripts/**/*.py`)" not in text
+    assert "A bundled script of a shipped skill" in text and "`/cla:report-upstream` when the plugin is read-only here" in text
+
+
+# requirement: session-learnings / Each run is logged, and the log stays small
+def test_the_entry_goes_after_the_title_when_the_log_has_no_entry_yet():
+    assert "or after the title when none exists" in _flat()
+
+
 # requirement: session-learnings / A plugin fix goes upstream when the plugin is read-only
 def test_a_read_only_plugin_sends_its_fix_upstream():
     text, routing = _flat(), _flat(_ROUTING)

@@ -15,7 +15,8 @@ A rule that already existed and failed again is the most important thing this sk
 Before Step 1, read `references/routing.md` — the ladder, where each kind of lesson lives, the
 plugin-writability check, and the failure prompts. This repo's verification commands are in
 `cla.io/project-facts.md`; `cla.io/overlays/codify-learnings.md`, if present, says where memory
-lives and adds this skill's own rules here. If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". `$ARGUMENTS`, if set,
+lives and adds this skill's own rules here (what an overlay may change:
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/overlays.md`). If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". `$ARGUMENTS`, if set,
 narrows the focus; the review still covers the whole session.
 
 ## Step 1 — List the session's failures
@@ -68,8 +69,10 @@ live.
   and `AGENTS.md`: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/instruction-files.md`),
   `cla.io/project-facts.md` or `cla.io/overlays/`; memory holds only how this user personally likes to work.
 - **When a fix graduates a lesson**, the same fix deletes the lower-rung text it duplicates.
-- **Never propose edits to** a skill's bundled scripts (`**/scripts/**/*.py`), `openspec/**`, or a
-  vendored framework directory. The repo's own tooling, configs and source are in scope.
+- **Never propose edits to** `openspec/**` or a vendored framework directory. The repo's own
+  tooling, configs and source are in scope. A bundled script of a shipped skill
+  (`skills/<name>/scripts/`) is plugin code: route it as the reference's table says, to
+  `/cla:report-upstream` when the plugin is read-only here, not an edit of the installed copy.
 
 Show only the numbered list, most valuable first:
 
@@ -84,6 +87,9 @@ its target.
 
 ## Step 4 — One prompt, then apply
 
+Above the prompt, show each proposed fix's exact before and after text (the lines it replaces or
+adds, in the target file), so the user approves the edit, not only its title.
+
 ```
 N fixes proposed. Apply which? (y = all / n = none / indices, e.g. 1,3)
 ```
@@ -92,6 +98,7 @@ N fixes proposed. Apply which? (y = all / n = none / indices, e.g. 1,3)
 - **Empty input is not consent.** Ask once more; a second empty answer is `n`.
 - Rejection is an ordinary outcome. The user has decided: leave a rejected fix off the list.
 - Nothing is written before this answer — memory included.
+- Apply exactly the shown text; if it changes, show it again.
 
 Apply each accepted fix with the tool it needs; for one going upstream, invoke
 `/cla:report-upstream` with the fix and the failure it answers.
@@ -99,7 +106,7 @@ Apply each accepted fix with the tool it needs; for one going upstream, invoke
 ## Step 5 — Log
 
 Prepend one entry of at most 150 words to `cla.io/lessons-learned/lessons-learned.md`,
-above its first `## ` entry (create the file with a `# Lessons learned` title if it is missing; read
+above its first `## ` entry, or after the title when none exists (create the file with a `# Lessons learned` title if it is missing; read
 only its first lines). Newest first, entries separated by `---`:
 
 ```

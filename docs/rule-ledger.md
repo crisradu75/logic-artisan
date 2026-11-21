@@ -102,7 +102,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - not-a-rule | - | - | # always-loaded skill listing. Nothing invokes it programmatically.
 - guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | Grep with the failure's keywords; a whole read of the long log costs tokens:
 - guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | not by a label you invent.
-- keep | shipped to other repos | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | **Never propose edits to** a skill's bundled scripts
+- keep | shipped to other repos | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | **Never propose edits to** `openspec/**`
 - guidance | none | bb691f3c 2026-10-08, cla.io/decisions/retro-and-learning-loop-simplification-2026-10-08.md | The user has decided: leave a rejected fix off the list.
 - keep | safe writes | d09b63d5 #332 2026-10-12, lessons archive move | the total must match.
 
@@ -131,7 +131,6 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | hooks/block-worktree-path-escape.py header, "Observed live": a worktree session wrote files into the primary clone by a hard-coded path (predates ee4034ad) | `Bash` call for the rest of the task must use a path relative to the worktree cwd
 - keep | user's files | hooks/block-worktree-path-escape.py header, "Observed live": a worktree session wrote files into the primary clone by a hard-coded path (predates ee4034ad) | never a hardcoded primary-clone path
 - not-a-rule | - | - | it always resolves to the shared `.git`
-- not-a-rule | - | - | which is a real (if modest) saving and never a regression.
 - keep | user's files | #19 2026-08-06, EnterWorktree path-casing refusal; a rename breaks sessions pinned to the path | Never "fix" it by renaming
 - keep | user's files | 4c88d123 2026-10-07, review findings on #307 | the final report must say this mode was used.
 - keep | user's files | e9c0e46a 2026-08-06, Plain-git fallback for the EnterWorktree path-casing refusal (#19) | path must target the worktree explicitly
