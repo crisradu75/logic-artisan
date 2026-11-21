@@ -272,8 +272,7 @@ it as `--approved`.
 **Then run the staleness checker against what was just written:**
 
 ```bash
-: "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/check_fact_paths.py" --repo-root "$ROOT"
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/check_fact_paths.py"
 ```
 
 It MUST exit 0. Exit 1 names each stale path: fix every one and re-run. A path containing a
