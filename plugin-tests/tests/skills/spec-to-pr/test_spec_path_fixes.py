@@ -92,7 +92,7 @@ def test_the_references_list_files_each_shared_file_under_one_read_condition() -
 
 # requirement: change-workflow / The pull request body is current after the review rounds
 def test_the_output_table_does_not_limit_the_body_update_to_issues() -> None:
-    row = next(line for line in _SKILL.read_text(encoding="utf-8").splitlines() if line.startswith("| PR body refresh"))
+    row = next(line for line in _SKILL.read_text(encoding="utf-8").splitlines() if line.startswith("| PR body update (Handoff"))
     assert "only when issues exist" not in row
     assert "after any Revise fix round" in row and "`Risk:` and `Checks:` clauses" in row
     assert "when issues exist" in row

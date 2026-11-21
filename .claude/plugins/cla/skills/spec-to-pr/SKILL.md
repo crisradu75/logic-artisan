@@ -95,7 +95,7 @@ Before any workflow step, compare `${CLAUDE_PLUGIN_ROOT}/skills/_shared/referenc
 | Handoff, optional | `docs: TODO.md` |
 | Handoff, run log | `chore: spec-to-pr run log` (feature branch only) |
 | PR body (Ship) | one line — `Closes openspec/changes/<name>/. Checks: <the checks that ran>. Risk: <level> — <reason>; reviewers: <list>.` |
-| PR body refresh and update (Handoff) | after any Revise fix round the `Risk:` and `Checks:` clauses of the one-line body are refreshed; when issues exist the body is also updated: one line with the `Risk:` clause kept, or one short Markdown file via `--body-file` that keeps it |
+| PR body update (Handoff) | after any Revise fix round the `Risk:` and `Checks:` clauses of the one-line body are refreshed; when issues exist it is also updated: one line with the `Risk:` clause kept, or one short Markdown file via `--body-file` that keeps it |
 
 Subjects only; no commit bodies, Test-plan checklists or restated proposals. **One exception:** a commit asserting a measurement carries one `Measured-by: <command> — <claim>` trailer per claim in its last paragraph (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/ship.md` §2b). No per-phase logs: the only run log is Handoff's record, and resume reads repo state.
 
