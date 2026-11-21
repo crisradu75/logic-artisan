@@ -10,6 +10,22 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ### Changed
 
+- **`/cla:lite-pr` labels a test that already fails and says what was checked.** A failing test
+  (never a build or typecheck failure) that shares no file with the change, through the code it
+  reaches, is labelled probably already failing on the base branch, judged by reading alone, and
+  gets no fix: a present user chooses whether to ship with a known-failing note, and a
+  `/cla:multi-lite` run halts. A failure showing no code error and an unreachable service gets one
+  reported rerun. Plan searches pull requests and recent commits for duplicate work, read-only, and
+  waits for a present user on a match. The pull request body gains a `Checks:` line beside `Risk:`.
+  The failure handling is a new `lite-pr/references/red-gate.md`, read only when a test fails.
+- **A long task list no longer buys the three-agent review.** `/cla:review-change` grades a change
+  Large for more than 20 subtasks only when its proposal carries `Budget: protected`; files,
+  capabilities, claims and the concentration override are unchanged, and the report's Mode line
+  says whether the marker was read. A `Budget:` value other than `protected` is graded as
+  unmarked and reported as an Important finding. `/cla:multi-spec` authors now check the
+  whole-change budget and the proposal and design word limits before reporting `done`, cut what
+  is over (never an open question or a protected requirement), and name any overrun they could
+  not cut; the batch goes on.
 - **One full gate per run, base drift merged before review, large builds split, corrections
   continue the agent.** Under `Full gate: final-commit-only`, spec-to-pr runs its one full gate
   after Archive on every run, including one a chain starts and a resume, and Handoff's Test row

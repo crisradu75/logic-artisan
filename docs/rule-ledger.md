@@ -520,10 +520,14 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | user's files | #426 (a43f5ca1, 2026-10-26) and #420 (775fa0b9): reviewers hold Bash and Edit in the user's checkout | run no git command (not `git diff`, and never `git checkout`
 - keep | honesty | 775fa0b9 2026-10-25, Reviewer agents: say which line number the line field means (#420) | never a line counted inside the diff file
 - not-a-rule | - | - | one pass, plus one pass over the fix diff of a protected-area fix; never a third.
+- keep | user's files | autocraft-adoptions decision 2026-11-21 (Q8); another session's open pull request may match, and only reading it leaves it intact | Only read what matches: never comment on, edit, label, close, merge, check out or push to a matched pull request or branch.
 
 ## skills/lite-pr/references/diagnose-escalation.md
 - keep | honesty | #233 (a227647a, 2026-09-12): a second edit after a failed diagnose risks a symptom fix; a `diagnose` commit would land on the base branch | never another edit round
 - keep | shipped to other repos | a227647a 2026-09-12, feat: add the /cla:diagnose skill and its two Test-phase escalations... | never put a question mid-chain to a user who is not there
+
+## skills/lite-pr/references/red-gate.md
+- keep | honesty | autocraft-adoptions decision 2026-11-21 (Q2); a red gate shipped with nobody to read the label is a false green | An unattended run never ships a red gate.
 
 ## skills/lite-pr/references/measured-by.md
 - keep | honesty | #145 (eaa579b0, 2026-08-24): a trailer that certifies a check nobody ran; block-dishonest-commit enforces it | never `Measured-by: none`
@@ -710,6 +714,7 @@ benchmark run: step 6 of `plugin-tests/benchmarks/mnemo/README.md` gives the com
 - keep | honesty | #510 (b89b2369 2026-11-17), authoring brief tested on the mnemo benchmark | design.md and the specs must agree; where they would differ, the spec wins
 - keep | safe writes | #510 (b89b2369 2026-11-17), authoring brief tested on the mnemo benchmark | Tests and manual checks run on copies or scratch data, never on what the Stakes protect.
 - guidance | none | #510 (b89b2369 2026-11-17), authoring brief tested on the mnemo benchmark | so its exit code and `uncovered` lines do not fail the post-check.
+- keep | honesty | spec-size-and-review-tiers (2026-11-21), exit 2 means the budget was not checked | reported as "budget not checked", never as fitting.
 
 ## skills/multi-spec/references/phases.md
 - not-a-rule | - | - | (which this skill never pushes), so it wouldn't survive a dead disk anyway

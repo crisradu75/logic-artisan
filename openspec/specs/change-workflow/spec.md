@@ -159,6 +159,126 @@ Before a push, the ship check's `trailers` SHALL exit 1 when the number of `Meas
 - **WHEN** a commit message has no `Measured-by:` line
 - **THEN** `trailers` exits 0
 
+### Requirement: A test already failing on the base is labelled, not fixed
+
+Before spending its one fix, `/cla:lite-pr` SHALL label a failing test `probably already failing on the base branch: <test>` when neither the test nor any code it reaches, directly or through other modules, shares a file with the change, and SHALL make no edit to fix a labelled test.
+
+#### Scenario: A failing test unrelated to the change
+
+- **WHEN** the gate fails on a test that, with all the code it reaches, shares no file with the change
+- **THEN** the test is labelled as probably already failing on the base branch, and the one fix is not spent on it
+- **AND** the uncommitted changes and every other branch are left exactly as they were, and no extra test run is made to establish the label
+
+#### Scenario: A failing test the change touched
+
+- **WHEN** the failing test, or code it reaches, is in a file the change added or edited
+- **THEN** the test is not labelled, and the usual one fix applies to it
+
+#### Scenario: A failure reached only indirectly, or not a test failure
+
+- **WHEN** a test fails because it reaches changed code only through an untouched module, or the failure is a build or typecheck error
+- **THEN** it is not labelled, and the usual one fix applies to it
+
+### Requirement: A labelled failure ships only by a person's choice
+
+When a failure carries that label, `/cla:lite-pr` SHALL ask a present user whether to open the pull request with `Known failing before this change: <test>, not fixed here` in its body, and when run by `/cla:multi-lite` SHALL halt with the label as its reason, so a red gate never ships unattended.
+
+#### Scenario: The user chooses to ship
+
+- **WHEN** the user agrees to ship with a labelled failure
+- **THEN** the pull request is opened, and its body says `Known failing before this change: <test>, not fixed here`
+
+#### Scenario: The user declines
+
+- **WHEN** the user declines to ship with a labelled failure
+- **THEN** the test is handled as an unlabelled failure, and no pull request is opened while it is still red
+
+#### Scenario: An unattended run
+
+- **WHEN** a run started by `/cla:multi-lite` has a labelled failure
+- **THEN** the run halts without opening a pull request, and its reason names the labelled test
+
+### Requirement: One reported rerun for a failure with no code error
+
+When a failure's log shows no failed assertion, compiler error or test error and names an unreachable network or service, `/cla:lite-pr` SHALL rerun the failing check once with no edit, at most once per run and without using its one fix, and SHALL report the failure as a suspected flake.
+
+#### Scenario: An unreachable service, then a green rerun
+
+- **WHEN** the only error in the log is a refused connection to a service, and the rerun passes
+- **THEN** the run goes on to open the pull request, and the pull request reports the suspected flake
+
+#### Scenario: A real failure or a bare timeout
+
+- **WHEN** the log shows a failed assertion, or shows only a timeout
+- **THEN** no rerun happens, and the usual one fix applies
+
+#### Scenario: The rerun is still red
+
+- **WHEN** the rerun fails again
+- **THEN** the one fix is still available, and no second rerun happens
+
+### Requirement: A search for duplicate work before building
+
+While planning, `/cla:lite-pr` SHALL search the repo's pull requests in every state and the base branch's recent commits for work matching the change, and on a likely match SHALL show it and wait for a present user's reply, or, when run by `/cla:multi-lite`, continue and name the match in the pull request body.
+
+#### Scenario: A likely match with the user present
+
+- **WHEN** the search finds a merged pull request that made the same change
+- **THEN** the match is shown, and implementation waits for the user's reply
+
+#### Scenario: A likely match in an unattended run
+
+- **WHEN** a run started by `/cla:multi-lite` finds a likely match
+- **THEN** the run continues, and the pull request body names the match
+
+#### Scenario: No GitHub remote, or a failed search
+
+- **WHEN** the repo has no GitHub remote, or the search cannot run
+- **THEN** the run continues without halting, and its report says the search was skipped and why
+- **AND** when a pull request is opened, its body says so too
+
+### Requirement: Matched work is left untouched
+
+`/cla:lite-pr` SHALL only read what its duplicate-work search finds, and SHALL never comment on, edit, label, close, merge, check out or push to a matched pull request or its branch.
+
+#### Scenario: Another session's open pull request matches
+
+- **WHEN** the search matches an open pull request this run did not open
+- **THEN** that pull request and its branch are left exactly as they were, and the match is only shown or named
+
+### Requirement: The pull request says what was checked
+
+`/cla:lite-pr` SHALL put one `Checks:` line next to the `Risk:` line in the pull request body, naming the checks that ran, each check skipped with its reason, and any known-failing, suspected-flake or likely-duplicate note.
+
+#### Scenario: A docs-only change
+
+- **WHEN** a change touches no source-affecting file, so the test gate is skipped
+- **THEN** the `Checks:` line says the test gate was skipped because the change is docs-only
+
+#### Scenario: A run with notes
+
+- **WHEN** a run reran a suspected flake and found a likely duplicate
+- **THEN** the `Checks:` line names both notes, and the `Risk:` line still appears next to it, unchanged
+
+### Requirement: Task count alone does not buy the full review
+
+`/cla:review-change` SHALL NOT give a change its multi-agent review for its number of tasks alone, unless the value of the proposal's `Budget:` line is exactly `protected`, whatever else the budget checker prints about that line, and its report SHALL say whether that line was read.
+
+#### Scenario: Many tasks, no marker
+
+- **WHEN** a change lists four files, touches one capability, makes few claims about existing code and has 30 tasks spread across the four files, and its proposal has no `Budget: protected` line
+- **THEN** the review runs without dispatching reviewer agents, and its report says no marker was read
+
+#### Scenario: The same change, marked protected
+
+- **WHEN** the same change's proposal carries the line `Budget: protected`, in a repo whose config states a protected budget sentence or in one whose config states none
+- **THEN** the review dispatches its three reviewers, and its report says the marker was read
+
+#### Scenario: A Budget line the review cannot honour
+
+- **WHEN** the proposal carries a `Budget:` line with any value other than `protected`
+- **THEN** the review grades the change as unmarked and reports that line as an Important finding
+
 ### Requirement: One full gate on every run, naming its commit
 
 When the repo's facts file has the line `Full gate: final-commit-only` and the run changes a file the tests build from, every `/cla:spec-to-pr` run SHALL run the full test gate once after archiving, whichever skill or prompt invoked it, and its report SHALL name the commit that run passed or failed on, or say that the gate did not run and why.
