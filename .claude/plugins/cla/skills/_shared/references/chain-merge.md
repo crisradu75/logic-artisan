@@ -148,8 +148,15 @@ of its own before these.
 3. **The full Test gate is green on `head_sha`.** Every merge needs this, because review fixes are
    committed after the item's own Test phase. Run the full gate the skill names, from
    `cla.io/project-facts.md`. A green run this session on exactly `head_sha`, with the tree
-   unchanged since, counts. Under `Full gate: final-commit-only` in `cla.io/project-facts.md`, this
-   is the run `/cla:spec-to-pr` skipped: the item's own Test phase ran smoke and touched tests only.
+   unchanged since, counts. Under `Full gate: final-commit-only` in `cla.io/project-facts.md`, the
+   item's own Test phase ran smoke and touched tests only and then one full gate after Archive, and
+   its Handoff Test row names that run's commit `<gated>` (`full gate: green|red on <gated>`), read
+   when the `/cla:spec-to-pr` call returned, before the head was recorded. That run is reused, not
+   repeated, when either holds:
+   - `<gated>` equals `head_sha`; or
+   - `git log --format=%s <gated>..<head_sha>` lists only `docs: TODO.md` and `chore: spec-to-pr run log`, each at most once, and `git diff --name-only <gated>..<head_sha>` names only `TODO.md` and the run-log path Handoff stages (`cla.io/retro/spec-to-pr-runs.jsonl`).
+
+   The allowance for those two commits is void when the full gate may read `TODO.md` or the run log: a gate command in `cla.io/project-facts.md` that names `TODO.md`, a Markdown linter or a `*.md` glob, or a wrapper whose contents this step does not read (a `make` target, a script). Unknown means run the gate. A reused run that was red means do not merge, and do not run the gate again. Any other case runs the gate here.
    - Green → continue.
    - Red → do not merge; the reason is `full gate red: <failing check>`. Do not re-run it hoping
      for green. A flaky gate is a finding for the user, not a retry.

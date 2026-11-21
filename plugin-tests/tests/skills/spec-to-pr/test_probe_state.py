@@ -697,6 +697,50 @@ def test_branch_state_reports_a_failed_range(tmp_repo: Path, monkeypatch, capsys
     assert "unknown revision" in capsys.readouterr().err
 
 
+def _git_in(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(repo), *args], check=True,
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+
+def _drift_merged_repo(repo: Path) -> None:
+    """A feature branch holding a base-drift merge: the base gained a
+    `fix: review round 1` commit, `origin/master` records it, the local `master`
+    stays behind (a fetch never moves it), and `feature/demo` merged it in."""
+    commit_on_branch(repo, "feature/demo", "feat: demo")
+    _git_in(repo, "checkout", "-q", "-b", "base-side", "master")
+    commit_on_branch(repo, "base-side", "fix: review round 1", file="base.txt")
+    _git_in(repo, "update-ref", "refs/remotes/origin/master", "base-side")
+    _git_in(repo, "checkout", "-q", "feature/demo")
+    _git_in(repo, "merge", "-q", "--no-ff", "--no-edit", "base-side")
+
+
+# requirement: change-workflow / Merged-in base commits are not counted as review rounds
+def test_fix_rounds_ignores_a_review_round_merged_in_from_a_stale_local_base(
+    tmp_repo: Path, monkeypatch,
+):
+    _drift_merged_repo(tmp_repo)
+    monkeypatch.setattr(probe_state, "_run", _stub_run({
+        ("openspec", "status", "--change", "demo", "--json"):
+            subprocess.CompletedProcess([], 1, "", ""),
+        REPO_VIEW_KEY: REPO_VIEW_FAIL,
+    }))
+    assert probe_state.probe("demo")["fix_rounds_applied"] == 0
+
+
+# requirement: change-workflow / Merged-in base commits are not counted as review rounds
+def test_fix_rounds_still_counts_the_branchs_own_round_beside_a_merged_in_one(
+    tmp_repo: Path, monkeypatch,
+):
+    _drift_merged_repo(tmp_repo)
+    commit_on_branch(tmp_repo, "feature/demo", "fix: review round 1", file="own.txt")
+    monkeypatch.setattr(probe_state, "_run", _stub_run({
+        ("openspec", "status", "--change", "demo", "--json"):
+            subprocess.CompletedProcess([], 1, "", ""),
+        REPO_VIEW_KEY: REPO_VIEW_FAIL,
+    }))
+    assert probe_state.probe("demo")["fix_rounds_applied"] == 1
+
+
 def test_fix_rounds_reports_a_failed_range(tmp_repo: Path, monkeypatch, capsys):
     """Same hazard: `0` reads as "no fix rounds applied yet"."""
     def fake_run(cmd, cwd=None, check=False):

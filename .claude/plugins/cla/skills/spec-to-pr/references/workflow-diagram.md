@@ -66,6 +66,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
                        ▼
             ┌─────────────────────┐
             │  REVISE             │   cap: --pr-rounds (default 2)
+            │  base-drift merge   │   overlap only, before round 1; merge, no rebase
             │  R1 parallel Agent  │   round 1: sliced per agent, sized by risk
             │  R2+ Agent direct   │   round 2+: after a protected-area fix, on its diff
             │     ↓               │            (reviewers per model-routing.md)
