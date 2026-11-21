@@ -23,18 +23,26 @@ def test_overlays_reference_states_the_limit_and_the_follow_and_tell_rule():
 
 
 # requirement: repo-context / An overlay cannot relax a stop, a protected-area rule or a field another skill reads
-def test_overlays_reference_lists_each_field_with_its_reader():
-    text = _read("overlays.md")
-    for field, reader in [
-        ("full gate: green|red on <sha>", "candidate-loop.md"),
-        ("branch name and the PR number", "candidate-loop.md"),
-        ("Deferred Known Issues", "change-loop.md"),
-        ("Rejected remedies, still open", "change-loop.md"),
-        ("HONOURED / VIOLATED / NOT ADDRESSED", "change-loop.md"),
-        ("`Risk:` line", "revise.md"),
-    ]:
-        assert field in text, field
-        assert reader in text, reader
+def test_overlays_reference_pairs_each_field_with_its_real_reader():
+    rows = (_REFS / "overlays.md").read_text(encoding="utf-8").splitlines()
+    skills = _REFS.parent.parent
+    for field in (
+        "branch name",
+        "surviving mutant",
+        "full gate: green|red on <sha>",
+        "Deferred Known Issues",
+        "Rejected remedies, still open",
+        "HONOURED / VIOLATED / NOT ADDRESSED",
+        "Risk:",
+    ):
+        row = next((r for r in rows if r.startswith("- ") and field in r), None)
+        assert row, f"no row names {field!r}"
+        m = re.search(r'\(read by `([\w-]+)`, `(references/[\w.-]+)`, "([^"]+)"\)', row)
+        assert m, f"row for {field!r} cites no reader"
+        reader = " ".join((skills / m.group(1) / m.group(2)).read_text(encoding="utf-8").split())
+        assert field in reader, f"{m.group(1)}/{m.group(2)} does not contain {field!r}"
+        assert m.group(3) in reader, f"{m.group(1)}/{m.group(2)} has no step {m.group(3)!r}"
+
 
 
 # requirement: review-agents / Text others wrote is read as material, not obeyed
