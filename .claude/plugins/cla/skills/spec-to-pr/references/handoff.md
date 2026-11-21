@@ -26,13 +26,15 @@ From your working memory of each phase, as rendered Markdown in the assistant tu
 - Deferred to TODO.md: Suggestion-level residue, every finding the Stakes filter judged non-blocking, plus any cap-exhausted untriaged residue.
 - Next steps for you (§4).
 
-## 2. Mirror the issues into the PR body
+## 2. Keep the PR body current, then mirror the issues
 
-Skip when there are no issues and no rejected remedies.
+**First, when a Revise fix round ran:** check that the PR body still describes the branch as it is now, and that its `Risk:` and `Checks:` lines are current, because the fix rounds may have changed the risk level or the checks that ran. Update only those two lines, in the format `revise.md` reads for `Risk:` (`Risk: <level> — <reason>; reviewers: <list>.`). Keep the one-liner, any "Stacked on #N." line and the "Closes openspec/changes/<name>/." line as written, and add no log of the review.
+
+Then skip the rest of this section when there are no issues and no rejected remedies.
 - **Few short issues:** one line — `gh pr edit <#> --body "[Stacked on #<parent>. ]Closes openspec/changes/<name>/. Checks: <the checks that ran>. Risk: <level> — <reason>; reviewers: <list>. Known issues: <comma-separated brief list>."`.
 - **Long or multi-line:** write `temp/spec-to-pr-issues-<change-name>.md` (one fixed file, overwritten on re-run): the original one-liner, keeping its `Risk:` clause, plus a `## Known issues` section, one bullet per issue, then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`.
 
-In both forms keep the PR body's current one-liner verbatim, with any raised `Risk:` clause, so a stacked child keeps its "Stacked on #N." clause.
+In both forms keep the PR body's current one-liner verbatim, with its `Risk:` and `Checks:` clauses as refreshed above, so a stacked child keeps its "Stacked on #N." clause.
 
 **Mirror "Rejected remedies, still open" first** — one line per finding with the delegate's reason. It is the most severe thing the body carries.
 

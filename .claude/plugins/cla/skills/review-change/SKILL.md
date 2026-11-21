@@ -1,6 +1,6 @@
 ---
 name: review-change
-description: "Pre-implementation review of an OpenSpec change: verify its claims and file and symbol references, size it, then review directly (small) or with three parallel agents (large). Triggers: /cla:review-change, 'review the openspec change', 'check the change before I implement it'."
+description: "Pre-implementation review of an OpenSpec change: verify its claims and file and symbol references, size it, then review directly (small) or with three parallel agents (large). Reports only and edits nothing. Triggers: /cla:review-change, 'review the openspec change', 'check the change before I implement it'."
 argument-hint: "[change-name]"
 ---
 
@@ -9,7 +9,7 @@ argument-hint: "[change-name]"
 > **Copilot CLI support: unsupported.** Large changes require Claude Code's parallel agent
 > dispatch; use Claude Code for the complete review workflow.
 
-The full review workflow lives in `references/checklist.md` and, for a large change's agent prompts, `references/dispatch.md` (the single source of truth, also read directly by `/cla:spec-to-pr`'s Review phase).
+The full review workflow lives in `references/checklist.md` and, for a large change's agent prompts, `references/dispatch.md` (the single source of truth). `/cla:spec-to-pr`'s Review phase reads `checklist.md` directly, and `dispatch.md` only for a large change.
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
@@ -19,7 +19,7 @@ path with `/skills/<name>` removed, or the absolute path of any plugin file you 
 at `.../plugins/cla`. If neither works, say so and stop. Detail:
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
-**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and follow it end-to-end.** It defines: change selection, parallel artifact reads, the 12 high-yield verification checks (`0a`–`0l`), the context-brief table format, the size gate (small vs large), the 3-agent dispatch (pointer to `references/dispatch.md`, read only for a large change), the weight and proof checks, and the final report shape + verdict rubric (READY / FIX FIRST / RETHINK).
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and follow it end-to-end.** It defines: change selection, parallel artifact reads, the 8 high-yield checks (`0a`–`0e`, `0j`–`0l`; a repo overlay may add `0f`–`0i`), the context-brief table format, the size gate (small vs large), the 3-agent dispatch (pointer to `references/dispatch.md`, read only for a large change), the weight and proof checks, and the final report shape + verdict rubric (READY / FIX FIRST / RETHINK).
 
 Pass `$ARGUMENTS` (the change name, optional) through to Step 1 of the checklist.
 
