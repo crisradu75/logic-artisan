@@ -15,15 +15,14 @@ Collect every tool permission the user granted during this conversation session 
 
 ## Steps
 
-1. **Scan the conversation** for every tool call that was executed (approved by the user). Extract the tool name and any scope/pattern from each. Include:
-   - `Bash(command)` — save as `Bash(*)` or a tighter pattern like `Bash(git log *)` when the command family recurs
-   - `Read(path:...)` — if paths share a common prefix, save as `Read(path:/common/prefix/**)`
+1. **Scan the conversation** for every tool call the user approved at a permission prompt. A call the settings already allowed ran without a prompt and was not granted this session, so it is not listed. Extract the tool name and any scope/pattern from each. Include:
+   - `Bash(command)` — save the exact command. A tighter wildcard such as `Bash(git log *)` is saved only when the user confirms it (step 4 gates that question)
+   - `Read(<path>)` — file-tool paths use gitignore syntax, so write `Read(//abs/path/**)` for an absolute path from the filesystem root, `Read(~/dir/**)` for the home folder, `Read(/dir/**)` for the project root or `Read(./dir/**)` for a relative one; save the exact file path, or, when paths share a common prefix, that prefix with `/**` once the user confirms it (a `/**` rule is a wildcard, so step 4 asks first). A `Glob(...)` or `Grep(...)` path rule is accepted but does not match, and a `Read(...)` rule covers them, so save none
    - `Write` / `Edit` — save as-is
    - `Skill(name)` — save with the skill name
    - `WebFetch(domain:...)` — save with the domain
    - `WebSearch` — save as-is
    - `mcp__*` — save the full tool name
-   - `Glob(path:...)` — if paths share a common prefix, save as `Glob(path:/common/prefix/**)`
    - Any other tool — save as `ToolName` or `ToolName(scope)` as appropriate
 
 2. **Read** the current settings file at `.claude/settings.local.json` (just to extract the existing `allow` list — do NOT pull all 100+ entries into your reasoning context; you do not need to think about them individually).
@@ -38,7 +37,7 @@ Collect every tool permission the user granted during this conversation session 
 
    Exit 1 prints `stopped, nothing written: <why>` and leaves the file as it was (a symlinked `.claude/` or settings file is refused this way too): show the message to the user and fix the file with them rather than working around the check. Exit 2 means no usable entry reached the script (none given, one empty once trimmed, or stdin not UTF-8) and nothing was written: re-run it with the entries from step 3.
 
-   Do NOT pause for user confirmation before running the script — just run it. **This applies only to exact, non-wildcard entries** (a literal tool name, a literal skill name, an exact path scope actually exercised this session — nothing containing `*`). For **any** wildcard or broad pattern at all — `Bash(*)`, `Bash(rm *)`, `Bash(cp *)`, `Bash(docker *)`, `Bash(sed *)`, or any other `Bash(<command> *)`-shaped entry, regardless of whether the command "looks" destructive — present it as a question and get explicit confirmation before writing it, even if that exact command family was used and worked fine this session. **Do not self-classify a wildcard as "narrow enough to skip asking" — there is no such exemption.** A wildcard is a wildcard; the confirm-before-write rule does not have a destructiveness threshold. Non-destructive-looking wildcards such as `Bash(grep *)`, `Bash(head *)`, `Bash(wc *)` and `Bash(find *)` are covered too: a wildcard grants every future command of that shape. The harness's auto-mode classifier will independently block broad grants regardless of this skill's instructions, and retrying different wildcard phrasings after a block is itself a bad pattern — ask instead of retrying.
+   Do NOT pause for user confirmation before running the script — just run it. **This applies only to exact, non-wildcard entries** (a literal tool name, a literal skill name, an exact path scope actually exercised this session — nothing containing `*`). For **any** wildcard or broad pattern at all — `Bash(*)`, `Bash(rm *)`, `Bash(cp *)`, `Bash(docker *)`, `Bash(sed *)`, or any other `Bash(<command> *)`-shaped entry, regardless of whether the command "looks" destructive — present it as a question and get explicit confirmation before writing it, even if that exact command family was used and worked fine this session. **Do not self-classify a wildcard as "narrow enough to skip asking" — there is no such exemption.** Non-destructive-looking wildcards such as `Bash(grep *)`, `Bash(head *)`, `Bash(wc *)` and `Bash(find *)` are covered too: a wildcard grants every future command of that shape. The harness's auto-mode classifier will independently block broad grants regardless of this skill's instructions, and retrying different wildcard phrasings after a block is itself a bad pattern — ask instead of retrying.
 
    Do NOT use the `Write` tool on `settings.local.json` — that pattern rewrites all untouched entries token-by-token and is wasteful. The merge script is the documented way.
 

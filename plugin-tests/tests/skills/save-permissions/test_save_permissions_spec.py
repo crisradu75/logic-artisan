@@ -319,3 +319,20 @@ def test_a_wildcard_entry_is_confirmed_and_never_retried_in_another_phrasing():
     assert "Do not self-classify a wildcard as \"narrow enough to skip asking\"" in text
     assert "retrying different wildcard phrasings after a block is itself a bad pattern" in text
     assert "This applies only to exact, non-wildcard entries" in text
+
+
+# requirement: permission-saving / A path rule uses the form that matches
+def test_a_file_path_rule_is_saved_in_gitignore_form_and_no_dead_glob_rule_is_saved():
+    text = _flat()
+    assert "`Read(//abs/path/**)`" in text and "`Read(~/dir/**)`" in text
+    assert "Read(path:" not in text, "the path: form never matches a file"
+    assert "Glob(path:" not in text
+    assert "does not match" in text
+
+
+# requirement: permission-saving / Only permissions approved at a prompt are collected
+def test_the_scan_covers_only_calls_approved_at_a_prompt_and_bash_is_saved_exact():
+    text = _flat()
+    assert "approved at a permission prompt" in text
+    assert "save the exact command" in text
+    assert "save as `Bash(*)`" not in text

@@ -22,7 +22,11 @@ One skill for a repo's own `cla` data, in two parts:
 
 Run it once at onboarding (marketplace install → `/cla:cla-setup` → install the `pre-push` hook) and
 again whenever a skill reports missing or stale facts. A re-run on a set-up repo changes nothing
-without a yes, except that it replaces the economy rules file with the plugin's current text and appends the run-notes line to `.gitignore` when that is missing.
+without a yes, bar the two unasked writes the contract below names.
+
+**The `pre-push` hook is a step you do by hand.** A plugin cannot install a git hook. Copy the
+plugin's `hooks/git/pre-push` to the repo's hooks folder and make it executable:
+`cp "${CLAUDE_PLUGIN_ROOT}/hooks/git/pre-push" "$(git rev-parse --git-path hooks)/pre-push" && chmod +x "$(git rev-parse --git-path hooks)/pre-push"`.
 
 The plugin itself (`SKILL.md` bodies, agents, hooks) arrives with the install and is never touched
 here: it is a read-only cache.
@@ -97,7 +101,8 @@ stop, since nothing is written yet and the run's promises could not be checked a
 
 ## Part 1 — Structure
 
-All paths relative to `$ROOT`. Items 1 to 4 create what is missing and skip what exists. Item 5 compares an existing OpenSpec config and edits it only on a yes. Item 6 deletes retired ledgers only on a yes. Item 7 appends one line to `.gitignore` unasked and untracks notes only on a yes. Item 7a replaces its rules file whole on every run.
+All paths relative to `$ROOT`. Each item says what it creates, compares or asks; the contract above
+governs all of them.
 
 ### 1. `cla.io/` directories
 
@@ -259,8 +264,9 @@ it as `--approved`.
 
 **Then run the staleness checker against what was just written:**
 
-```
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/check_fact_paths.py
+```bash
+: "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/check_fact_paths.py" --repo-root "$ROOT"
 ```
 
 It MUST exit 0. Exit 1 names each stale path: fix every one and re-run. A path containing a
