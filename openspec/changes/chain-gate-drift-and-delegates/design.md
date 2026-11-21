@@ -4,52 +4,48 @@ Stock trigger: **cross-cutting change**. It touches `spec-to-pr`, `multi-pr`, tw
 
 ## Context
 
-The post-Archive full gate, the merge-step reuse rule ("a green run this session on exactly `head_sha` … counts", `chain-merge.md` "Pre-merge checks" step 3), the Revise diff anchor (`origin/<pr-base>...<branch>`), and the single Implement delegate all exist today. This design records only the choices the specs leave open.
+The post-Archive gate, the merge-step reuse rule (`chain-merge.md` "Pre-merge checks" step 3), the Revise diff anchor and the single Implement delegate exist. This records only choices the specs leave open.
 
 ## Decisions
 
-### 1. How the merge step learns the gated commit
+### 1. How the merge step learns the gated commit and reuses its run
 
-**Choice:** spec-to-pr's Handoff report carries one line in its Test row: `full gate: green|red on <sha>`. `multi-pr` reads that line when the `Skill` call returns, in the same session. It compares the line with the `head_sha` it records under "Record the head" right afterwards. `chain-merge.md` step 3's existing "this session" rule then decides. No new field.
-**Why:** the reuse rule already counts only this session's runs. An in-session report line is all it needs.
-- *Rejected: a `gate_sha` column in the run notes.* A fresh-session resume must not reuse it anyway, so it would store a value nothing may read.
+**Choice:** spec-to-pr's Handoff Test row carries `full gate: green|red on <gated>`, or `full gate: skipped (<reason>)`. `multi-pr` reads it when the `Skill` call returns, in the same session, before "Record the head" stores `head_sha`. Step 3 then reuses that run when either holds:
+- `<gated>` equals `head_sha`; or
+- `git log --format=%s <gated>..<head_sha>` lists only `docs: TODO.md` and `chore: spec-to-pr run log`, each at most once, and `git diff --name-only <gated>..<head_sha>` names only `TODO.md` and the run-log path Handoff stages.
+
+The allowance is void when the full gate may read `TODO.md`: a gate command from `cla.io/project-facts.md` that names `TODO.md`, a Markdown linter or a `*.md` glob, or a wrapper whose contents the step does not read (a `make` target, a script). Unknown means run. A red reused run means do not merge and do not re-run. Any other case runs the gate.
+**Why:** Handoff commits after the gate, so equality alone never fires; those two commits change nothing the suite tests.
+- *Rejected: a `gate_sha` column in the run notes.* A fresh-session resume must not reuse it, so nothing may read it.
 - *Rejected: a field in the spec-to-pr run record.* That means a `log_run.py` schema change for a value the retro never reads.
 
 ### 2. Where the base-drift step lives
 
-**Choice:** a new first section of `spec-to-pr/references/revise.md`, "Before round 1: base drift", plus one sentence in SKILL.md's Revise stub. The steps:
-1. `git fetch origin <pr-base>`.
-2. Compute the base's files as `git diff --name-only <merge-base> origin/<pr-base>`, and the PR's files the same way against `HEAD`. Intersect the two lists.
-3. If they overlap: `git merge --no-edit origin/<pr-base>`, then the touched tests (found the way the `Full gate: final-commit-only` paragraph finds them), then a push checked by `ship_check.py pushed`.
-
-**Why:** the step then runs exactly when Revise round 1 runs (open question 4). And because round 1's three-dot diff anchor moves to the new merge base, the reviewers read the merged code with no extra step.
-- *Rejected: inside `_shared/references/ship.md`.* Ship's steps are about cutting and opening the PR, and the fetch belongs after the PR exists.
-- *Rejected: a new phase.* It would change the phase order, the probe, the workflow diagram and the docs for one conditional step.
+**Choice:** a new first section of `spec-to-pr/references/revise.md`, "Before round 1: base drift", plus one sentence in SKILL.md's Revise stub; it runs only when round 1 runs: `git fetch origin <pr-base>`; the base's files are `git diff --name-only <merge-base> origin/<pr-base>`, the PR's the same against `HEAD`; on overlap, `git merge --no-edit origin/<pr-base>`, the touched tests (found as the `Full gate: final-commit-only` paragraph finds them), and a push checked by `ship_check.py pushed`. A merge that refuses to start or fails its commit is aborted (`git merge --abort` when `MERGE_HEAD` exists) and reported as not merged.
+**Why:** round 1's three-dot anchor moves to the new merge base, so reviewers read the merged code with no extra step.
+- *Rejected: inside `_shared/references/ship.md`.* Ship cuts and opens the PR; the fetch belongs after the PR exists.
+- *Rejected: a new phase.* It changes the phase order, probe, diagram and docs for one conditional step.
 
 ### 3. The review-round count after a drift merge
 
-**Choice:** `_fix_rounds_applied` ranges over `origin/<base>..<branch>` when `refs/remotes/origin/<base>` resolves. Otherwise it falls back to the local name, as today.
-**Why:** the remote-tracking ref holds every commit a drift merge took, because the merge was made from it after a fetch. That is the "fetched base" the decision names.
-- *Rejected: `git log --first-parent`.* It is also correct, but it drifts from the decision's wording and from the probe's other ranges.
-- *Rejected: a fetch inside the probe.* That would make a read-only probe call the network, and it would fail offline.
+**Choice:** `_fix_rounds_applied` ranges over `origin/<base>..<branch>` when `refs/remotes/origin/<base>` resolves, else the local name. `<base>` stays `_base_branch()`, the default branch; stacked runs are out of scope.
+**Why:** the remote-tracking ref holds every commit a drift merge took, because the merge was made from it after a fetch.
+- *Rejected: `git log --first-parent`.* Correct, but unlike the decision's wording and the probe's other ranges.
+- *Rejected: a fetch inside the probe.* A read-only probe would need the network.
 
 ### 4. The Implement split
 
-**Choice:** subtasks are the checkbox lines in `tasks.md`, and groups are its `## N.` headings. Above 40 subtasks, the orchestrator dispatches one delegate per group, in order. Each brief does three things:
-- enumerates only that group's tasks, under the existing eight delegation rules;
-- carries a summary of at most about 150 words of the earlier groups: the files they touched, the names they introduced, and any deviation from the tasks, built from the earlier returns, the ticked boxes and `git diff --stat`;
-- marks the other groups' tasks `held by orchestrator`.
-
-Each return goes through the existing miss handling before the next dispatch, which goes in the same message (turn liveness). The Post-check still counts the whole `tasks.md` after the last group.
+**Choice:** subtasks are `tasks.md` checkbox lines; groups are its `## N.` headings. Above 40 subtasks with two or more groups, one delegate per group runs in order. Each brief enumerates its group, marks other groups `held by orchestrator`, and carries a summary of at most about 150 words of earlier groups (files, names, deviations), built from earlier returns, ticked boxes and `git diff --stat`. Miss handling runs on each return; the next dispatch goes in the same message. A flat `tasks.md` keeps one delegate. The Post-check counts the whole file at the end.
 - *Rejected: groups in parallel.* Later groups build on earlier ones, and two writers in one checkout break the orchestrator-vs-delegate rule.
 - *Rejected: a checkpoint hand-off.* The owner declined it.
 
 ### 5. Continuing an agent for a correction
 
-**Choice:** one short section in `_shared/references/subagent-brief.md`, "Correcting a reply". When `SendMessage` is available, the correction goes to the same agent id and names only the gap. When the tool is absent or the call errors, the fallback is a fresh dispatch with the full brief (open question 5). Each case keeps its existing attempt limit. An implementer's continuation still waits for the settle-the-tree check. The three call sites each carry one pointer sentence, and nothing else restates the rule.
+**Choice:** one section in `_shared/references/subagent-brief.md`, "Correcting a reply". A correction continues the same agent id, naming only the gap, when `SendMessage` is available and the agent returned a non-empty report with an identified gap. An agent that returned nothing, or stopped on exhausted context, gets one fresh dispatch scoped to what remains (`implement-delegate.md`'s recovery). A continuation that errors or comes back unfinished gets one fresh dispatch, never a third try. An implementer's continuation still waits for the settle-the-tree check. Three call sites carry one pointer sentence each.
+**Why:** continuing an agent whose context ran out repeats the failure Q3 fixes.
 - *Rejected: continuing reviewers into a later round.* Round 2 must read the fix independently.
 
 ## Risks / Trade-offs
 
 - [A summary drops a detail a later group needs] → the delegate can still read the branch, and the Post-check catches unticked tasks.
-- [The decided reuse never fires while Handoff commits after the gate (open question 1)] → this is safe, because the merge step re-gates. It only costs one full run per merged change until the owner decides.
+- [A test reading `TODO.md` or the run log is not detected] → the reuse assumes suites read neither; a gate command naming them voids it.

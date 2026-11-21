@@ -8,8 +8,8 @@ Budget: protected
 
 ## What Changes
 
-- Review sizing (Q4): the subtask count alone no longer grades a change Large. The exception is a proposal carrying the line `Budget: protected`, read the way the budget checker reads it. The complexity-concentration override and the file, capability and claim thresholds stay as they are. The review's mode line says whether the marker was read.
-- multi-spec authoring (Q5): before reporting `done`, the author checks the whole-change budget with `check_spec_proof.py` and the proposal and design word limits with `wc -w`, then cuts what is over. It never cuts a requirement that guards a protected area, and never cuts an open question. It reports what still does not fit, and the batch goes on.
+- Review sizing (Q4): the subtask count alone no longer grades a change Large. The exception is a proposal whose `Budget:` line (outside a code fence) has exactly the value `protected`. The review grades on that value, not on what the budget checker prints about it. The complexity-concentration override and the file, capability and claim thresholds stay as they are. The review's mode line says whether the marker was read.
+- multi-spec authoring (Q5): before reporting `done`, the author checks the whole-change budget with `check_spec_proof.py` and the proposal and design word limits with `wc -w`, then cuts what is over, counting proposal.md without its open-questions and risks sections. It never cuts an open question or a requirement that guards a protected area. It reports what still does not fit, and the batch goes on.
 - multi-spec's batch review gate reuses the checklist's size gate, so Q4 reaches it with no edit there.
 
 ## Capabilities

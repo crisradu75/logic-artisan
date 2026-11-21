@@ -1,20 +1,20 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
-### Requirement: A chain merge reuses the change's own full gate only on the head it ran on
+### Requirement: An OpenSpec change chain merges only a later change's prerequisite, on the head it checked
 
-Before merging a change, `/cla:multi-pr` SHALL count the full gate `/cla:spec-to-pr` ran only when that run, in the same session, ran on exactly the recorded head; otherwise it SHALL run the full gate itself, so no change merges without a full gate on the commit it merges and none runs it twice on one commit.
+`/cla:multi-pr` SHALL merge a pull request only when the merges were confirmed at the start of the run and a later change needs it merged, and only when its head is the commit its review and full test suite covered, or that commit followed only by the change's own closing commits touching nothing but its TODO list and run log, and the host reports it merged rather than queued, leaving every other pull request open for the user and stopping the chain when a needed merge cannot happen.
 
-#### Scenario: The head is the commit the change's run gated
+#### Scenario: A change later in the order
 
-- **WHEN** the change's report names a green full gate on a commit equal to the recorded head
-- **THEN** the merge goes ahead without a second full gate run
+- **WHEN** one change depends on another in the batch, and the other's head is the commit its full test suite covered or that commit followed only by its own closing commits
+- **THEN** the dependency is merged before the dependent starts
 
-#### Scenario: The head moved after the run
+#### Scenario: An independent change
 
-- **WHEN** the recorded head differs from the commit the change's run gated, after a fix the chain committed or a resolved conflict
-- **THEN** the chain runs the full gate on the recorded head before merging
+- **WHEN** a change that nothing later depends on, and that moves no shared environment state, is done
+- **THEN** its pull request is left open for the user to merge
 
-#### Scenario: The change's run was red on the head
+#### Scenario: Commits pushed after review
 
-- **WHEN** the change's report names a failing full gate on a commit equal to the recorded head
-- **THEN** the change is not merged, its reason is `full gate red: <failing check>`, and the gate is not run again
+- **WHEN** a change a later change needs merged has a pull request head other than the one its review and full test suite covered, and a commit after that one is not its own closing commit or touches another file
+- **THEN** it is not merged and no later change starts

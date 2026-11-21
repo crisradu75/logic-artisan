@@ -24,5 +24,13 @@
       "depends_on": ["spec-size-and-review-tiers"]
     }
   ],
-  "lite_items": []
+  "lite_items": [
+    {
+      "name": "script-table-row-test",
+      "decisions_covered": ["autocraft:Q3"],
+      "one_line_scope": "a consistency test that every script has a row in DEVELOPER-GUIDE section 11's script table and every row names a script",
+      "reason": "dev-only test under plugin-tests; nothing ships and no protected area is touched. Built outside this batch as its own pull request",
+      "depends_on": []
+    }
+  ]
 }

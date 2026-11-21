@@ -2,18 +2,23 @@
 
 ### Requirement: A test already failing on the base is labelled, not fixed
 
-Before spending its one fix, `/cla:lite-pr` SHALL label a failing test `probably already failing on the base branch: <test>` when neither the test nor the code it exercises shares a file with the change, judging by reading alone with no extra test run, no stash and no second worktree, and SHALL make no edit to fix a labelled test.
+Before spending its one fix, `/cla:lite-pr` SHALL label a failing test `probably already failing on the base branch: <test>` when neither the test nor any code it reaches, directly or through other modules, shares a file with the change, and SHALL make no edit to fix a labelled test.
 
 #### Scenario: A failing test unrelated to the change
 
-- **WHEN** the gate fails on a test that, together with the code it exercises, shares no file with the change
+- **WHEN** the gate fails on a test that, with all the code it reaches, shares no file with the change
 - **THEN** the test is labelled as probably already failing on the base branch, and the one fix is not spent on it
-- **AND** the uncommitted changes in the working tree are left exactly as they were
+- **AND** the uncommitted changes and every other branch are left exactly as they were, and no extra test run is made to establish the label
 
 #### Scenario: A failing test the change touched
 
-- **WHEN** the failing test, or the code it exercises, is in a file the change added or edited
+- **WHEN** the failing test, or code it reaches, is in a file the change added or edited
 - **THEN** the test is not labelled, and the usual one fix applies to it
+
+#### Scenario: A failure reached only indirectly, or not a test failure
+
+- **WHEN** a test fails because it reaches changed code only through an untouched module, or the failure is a build or typecheck error
+- **THEN** it is not labelled, and the usual one fix applies to it
 
 ### Requirement: A labelled failure ships only by a person's choice
 
@@ -70,7 +75,8 @@ While planning, `/cla:lite-pr` SHALL search the repo's pull requests in every st
 #### Scenario: No GitHub remote, or a failed search
 
 - **WHEN** the repo has no GitHub remote, or the search cannot run
-- **THEN** the run continues without halting, and the pull request body says the search was skipped and why
+- **THEN** the run continues without halting, and its report says the search was skipped and why
+- **AND** when a pull request is opened, its body says so too
 
 ### Requirement: Matched work is left untouched
 
