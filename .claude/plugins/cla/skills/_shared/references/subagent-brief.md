@@ -196,7 +196,7 @@ round ends), rather than pasting raw diff text inline.
 
 **A review brief asks for this shape, so every skill that briefs a reviewer inherits it:**
 
-- **On a diff that touches a protected area** (a changed file inside "What is protected" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`), the reviewer lists each changed hunk in a protected file as `path:line — verdict` before its findings, so a skimmed hunk shows as a missing line. A diff touching no protected file asks for no list.
+- **On a diff that touches a protected area** (the caller decides which changed files fall inside "What is protected" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/blocking-findings.md`, which lists areas, not files), the reviewer lists each changed hunk in a protected file as `path:line — verdict` before its findings, so a skimmed hunk shows as a missing line. A diff touching no protected file asks for no list.
 - **Report a non-blocking style comment only with a one-line concrete fix**, and do not suggest a test that repeats coverage an existing test already gives.
 
 ### 5. Done when — a condition you will check, with evidence

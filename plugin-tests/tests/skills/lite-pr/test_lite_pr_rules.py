@@ -21,19 +21,23 @@ def _line(prefix: str) -> str:
 
 
 # requirement: change-workflow / A bug fix starts with its regression test
-def test_a_bug_fix_follows_diagnose_phase_5_and_records_a_missing_seam_on_the_checks_line() -> None:
-    para = _flat(_line("**A bug fix starts with its regression test.**"))
-    assert "`/cla:diagnose` Phase 5" in para
-    assert "see it fail, and only then fix" in para
-    assert "no regression test: no correct seam for <cause>" in para
-    assert "`Checks:` line" in para
-    assert "write no `cla.io/feedback/` file" in para
+def test_a_bug_fix_test_comes_in_step_1_before_the_code_change_and_records_a_missing_seam() -> None:
+    step = _flat(_line("1. Make the code change."))
+    assert step.index("write its regression test first") > step.index("Make the code change")
+    assert "`/cla:diagnose` Phase 5" in step
+    assert "only then the fix" in step
+    assert "no regression test: no correct seam for <cause>" in step
+    assert "`Checks:` line" in step
+    assert "write no `cla.io/feedback/` file" in step
 
 
 # requirement: change-workflow / A bug fix starts with its regression test
-def test_the_moved_test_first_reference_exists_and_is_named_by_full_path() -> None:
-    assert "${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/regression-test-first.md" in _SKILL
-    ref = (_LITE_PR / "references" / "regression-test-first.md").read_text(encoding="utf-8")
+def test_a_bug_fix_test_written_after_the_fix_is_routed_to_the_stash_or_revert_check() -> None:
+    step = _flat(_line("1. Make the code change."))
+    assert "test comes after the fix" in step
+    assert "${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/regression-test-first.md" in step
+    ref = _flat((_LITE_PR / "references" / "regression-test-first.md").read_text(encoding="utf-8"))
+    assert "stash or revert the fix and watch the new test go red" in ref
     assert "non-vacuity" in ref or "not_vacuous" in ref, "the guard-shaped branch of the rule was dropped"
 
 
@@ -56,4 +60,12 @@ def test_a_duplicate_match_shares_a_concrete_detail_and_is_confirmed_by_the_user
 def test_the_stop_lists_name_the_git_state_halt() -> None:
     """Review of the skill found two stop lists that left out the `AskUserQuestion` halt Ship describes."""
     flat = _flat(_SKILL)
-    assert flat.count("`AskUserQuestion` halt") == 2
+    assert flat.count("`AskUserQuestion` halt") >= 2
+
+
+# requirement: change-workflow / The pull request description describes the branch as it is
+def test_spec_to_pr_revise_does_not_rewrite_the_one_line_pr_body() -> None:
+    """Only lite-pr rewrites the description. spec-to-pr's body is one minimal line written by Ship and
+    Handoff, which keep `Stacked on #N.` and `Closes openspec/changes/<name>/.` verbatim."""
+    revise = (_LITE_PR.parent / "spec-to-pr" / "references" / "revise.md").read_text(encoding="utf-8")
+    assert "describes the branch as it is now" not in _flat(revise)

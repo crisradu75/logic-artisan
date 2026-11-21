@@ -7,3 +7,5 @@ Read this from Review, before the dispatch. `SKILL.md` holds the diff-review sen
 **Save the diff first.** Save the diff to a file outside the working tree: the session scratchpad, or when none is listed a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows). Delete it when the round ends.
 
 **Launch them in parallel in one message.** Pass each reviewer the diff described by file and symbol plus the absolute path of its diff file, not the raw diff pasted inline.
+
+**Ask each reviewer for the report shape** in slot 4 of `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md`: on a diff the caller judges to touch a protected area, the per-hunk `path:line — verdict` list before the findings.

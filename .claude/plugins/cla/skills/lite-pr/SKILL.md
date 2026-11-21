@@ -58,7 +58,7 @@ Tests written in this phase follow `${CLAUDE_PLUGIN_ROOT}/skills/_shared/referen
 
 Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (there's no `tasks.md` to walk; the plan's bullet list from above is the task list). For each item in the plan:
 
-1. Make the code change.
+1. Make the code change. **For a bug fix, write its regression test first**, following `/cla:diagnose` Phase 5: the test that fails for the confirmed cause, seen failing, and only then the fix. When no correct place for a test exists, record it on the PR's `Checks:` line (`no regression test: no correct seam for <cause>`) and write no `cla.io/feedback/` file. When a bug fix's test comes after the fix anyway, or for any other new test or a check whose job is detecting something, read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/regression-test-first.md` (the stash-or-revert check, and the non-vacuity test).
 2. Update the spec.md section(s) the plan named, only to change an outcome or interface they state, applying `openspec/config.yaml` `rules.specs` — edit the existing `### Requirement:` / `#### Scenario:` blocks in place, or for a genuinely new capability start the file in that structure. Prefer this repo's canonical terms from `cla.io/terminology.md` if it exists and covers the concept (soft — proceed on your own judgement if absent or silent on the term). Never create a delta file, never touch `openspec/changes/`.
 
    **A live spec is a parsed document, not a prose file — validate it before the commit.** This is the plugin's one write site with no delta or archive behind it, so nothing downstream re-parses it, and a prose edit can break structure while reading fine: a duplicated `## Requirements` heading *closes* the section, hiding every requirement below it from `validate`, `list` and `archive`. In a repo using OpenSpec, run:
@@ -72,9 +72,7 @@ Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (th
 
    `✗ spec/<cap>` in the output → fix it before committing. Non-zero with **no** `✗` line (`command not found`, `unknown option`) is a tooling fault, not a spec fault — say so rather than attributing it to this edit. `No items found to validate.` is **not** a pass: it means nothing was checked, which is also what a repo not using OpenSpec sees — there, say so once and skip the step rather than recording a vacuous success.
 3. Update the instruction-file section(s) (`CLAUDE.md` or `AGENTS.md`; see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/instruction-files.md`) and the docs the plan named (in the instruction file, most often the section that states the rule or convention the change touches).
-4. Add or update the test file(s) the plan named.
-
-**A bug fix starts with its regression test.** Follow `/cla:diagnose` Phase 5: write the test that fails for the confirmed cause, see it fail, and only then fix. When no correct place for a test exists, record it on the PR's `Checks:` line (`no regression test: no correct seam for <cause>`) and write no `cla.io/feedback/` file. For any other new test, and for a check whose job is detecting something, read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/regression-test-first.md`: it covers watching a test fail and the non-vacuity test.
+4. Add or update the test file(s) the plan named (a bug fix's regression test is already written by step 1).
 
 **Task tracking:** use `TaskCreate` only when part of the plan is genuinely parallel or independently resumable (e.g. several unrelated files touched at once). Skip it for a straightforward linear implementation — the common case, since lite-pr is the default path and most changes on it are narrow. Ignore generic harness `TaskCreate` nudges when they don't fit this rule.
 

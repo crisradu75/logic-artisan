@@ -163,6 +163,24 @@ def test_a_review_brief_asks_for_the_protected_hunk_list_only_on_a_protected_dif
     assert "lists each changed hunk in a protected file as `path:line — verdict` before its findings" in flat
     assert "A diff touching no protected file asks for no list." in flat
     assert "blocking-findings.md" in flat
+    assert "the caller decides which changed files fall inside" in flat
+
+
+# requirement: review-agents / A reviewer lists the protected hunks it checked
+def test_every_site_that_dispatches_reviewers_asks_for_the_hunk_list() -> None:
+    """subagent-brief.md slot 4 is read only by a skill that briefs from it. Revise (the path for
+    protected-area changes) and lite-pr's dispatch reference build their prompts themselves."""
+    sites = {
+        "revise.md": _SKILLS / "spec-to-pr" / "references" / "revise.md",
+        "lite-pr review-dispatch.md": _SKILLS / "lite-pr" / "references" / "review-dispatch.md",
+    }
+    for name, path in sites.items():
+        flat = _flat(path.read_text(encoding="utf-8"))
+        assert "slot 4 of `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md`" in flat, name
+        assert "`path:line — verdict`" in flat, name
+    revise = _flat(sites["revise.md"].read_text(encoding="utf-8"))
+    assert "hunks?: [{path, line, verdict}]" in revise, "FINDINGS_SCHEMA has no field for the hunk list"
+    assert "hunks: reported.flatMap" in revise, "the merged result drops the hunk list"
 
 
 # requirement: review-agents / A reviewer's style notes carry a fix and add no repeat tests
